@@ -1,0 +1,15 @@
+{
+  "name": "Creo → FLUKA Geometry",
+  "short_name": "Creo→FLUKA",
+  "description": "Transfer geometry from Creo Parametric (STL / OBJ) to FLUKA / Flair cards (RPP, PLA, regions).",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "en",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

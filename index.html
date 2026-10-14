@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Creo → FLUKA Geometry</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
+    <div class="brand"><b>Creo → FLUKA</b><span>geometry</span></div>
+    <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
+    <div class="spacer"></div>
+    <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
+    <button id="btnRedo" class="ib" title="Redo (Ctrl+Y)">↷</button>
+    <button id="btnInstall" class="pill" hidden>Install</button>
+    <button id="btnInp" class="pill" title="GEOBEGIN … GEOEND block">.inp <i id="warnBadge" hidden>0</i></button>
+    <button id="btnSettings" class="ib" aria-label="Settings" title="Settings">⚙</button>
+    <button id="btnRight" class="ib" aria-label="Properties" title="Properties of the selected item">▤</button>
+  </header>
+
+  <div id="body">
+    <aside id="drawerLeft" class="drawer left">
+      <div class="dhead"><b>Project</b><button class="ib closeD" data-close="left">✕</button></div>
+      <div class="dbody" id="leftBody"></div>
+    </aside>
+
+    <main id="main">
+      <div id="viewport">
+        <canvas id="gl"></canvas>
+        <div id="labels"></div>
+        <div id="triad" title="View orientation — click an axis to look along it"></div>
+        <div id="toolwin"></div>
+        <div id="vtools">
+          <div class="grp" id="grpFilter" role="group" aria-label="Selection filter">
+            <button data-filter="point" title="Select points"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+            <button data-filter="edge" title="Select edges"><svg viewBox="0 0 24 24"><path d="M5 19L19 5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="5" cy="19" r="2.5" fill="currentColor"/><circle cx="19" cy="5" r="2.5" fill="currentColor"/></svg></button>
+            <button data-filter="face" title="Select faces"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4-8 4z" fill="currentColor" opacity=".9"/><path d="M4 8v8l8 4v-8zM20 8v8l-8 4v-8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+            <button data-filter="object" title="Select objects"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+          </div>
+          <div class="grp" id="grpTool" role="group" aria-label="Tools">
+            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          </div>
+          <div class="grp" id="grpProj" role="group" aria-label="Projection">
+            <button data-proj="persp" title="Perspective view"><svg viewBox="0 0 24 24"><path d="M3 19l4-11h10l4 11z M7 8l2 11M17 8l-2 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+            <button data-proj="ortho" title="Orthographic (parallel) view"><svg viewBox="0 0 24 24"><path d="M5 9l7-4 7 4v8l-7 4-7-4z M5 9l7 4 7-4M12 13v8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+            <button id="btnCut" title="Section view (cut plane)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 14.5h19" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/><path d="M8 5v9M16 5v9" stroke="currentColor" stroke-width="1.2" opacity=".6"/></svg></button>
+          </div>
+          <div class="grp" id="viewBtns" role="group" aria-label="View">
+            <button data-view="fit" title="Fit the view to what is displayed">⤢</button>
+            <button data-view="iso" title="Isometric view">Iso</button>
+            <button data-view="top" title="Top view (Z)">Z</button>
+            <button data-view="front" title="Front view (Y)">Y</button>
+            <button data-view="side" title="Side view (X)">X</button>
+            <button data-view="normal" title="Look normal to a face (uses the selected face, or click one)">⟂</button>
+            <button data-view="flip" title="View from the opposite side">⇄</button>
+          </div>
+        </div>
+        <div id="status"></div>
+        <div id="dropHint">Drop a .stl or .obj file here<small>or use File ▸ Import / the Meshes ＋ menu</small></div>
+      </div>
+      <section id="sheet">
+        <div class="sheetHead">
+          <b>Geometry block</b>
+          <select id="inpStyle" title="Output style">
+            <option value="1">Flair style (REGION + line)</option>
+            <option value="2">Compact aligned style</option>
+            <option value="3">Fixed columns (Fortran-like, ≤132 col)</option>
+          </select>
+          <div class="spacer"></div>
+          <button id="btnInpImport" class="pill">Import…</button>
+          <button id="btnInpCopy" class="pill">Copy</button>
+          <button id="btnInpSave" class="pill">.inp</button>
+          <button class="ib" id="btnInpClose">✕</button>
+        </div>
+        <div id="inpWarn"></div>
+        <textarea id="inpText" readonly spellcheck="false"></textarea>
+      </section>
+    </main>
+
+    <aside id="drawerRight" class="drawer right">
+      <div class="dhead"><b>Properties</b><button class="ib closeD" data-close="right">✕</button></div>
+      <div class="dbody" id="rightBody"></div>
+    </aside>
+  </div>
+  <div id="scrim"></div>
+</div>
+
+<dialog id="dlgImport">
+  <form method="dialog">
+    <h3>Import a geometry block</h3>
+    <p class="muted">Paste the text between <code>GEOBEGIN</code> and <code>GEOEND</code> (Flair or compact formats, free COMBNAME names).</p>
+    <div class="btns"><button type="button" id="btnPickInp" class="pill">Choose an .inp file…</button></div>
+    <textarea id="importText" spellcheck="false" placeholder="GEOBEGIN COMBNAME&#10;..."></textarea>
+    <label class="row"><input type="radio" name="impMode" value="replace" checked> Replace the current model</label>
+    <label class="row"><input type="radio" name="impMode" value="append"> Append to the current model</label>
+    <div class="dlgBtns">
+      <button value="cancel" class="pill">Cancel</button>
+      <button id="btnImportOk" value="ok" class="pill primary">Import</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="dlgSettings">
+  <form method="dialog">
+    <h3>Settings</h3>
+    <div id="settingsBody"></div>
+    <div class="dlgBtns"><button value="close" class="pill primary">Close</button></div>
+  </form>
+</dialog>
+<dialog id="dlgConfirm">
+  <form method="dialog">
+    <p id="confirmMsg"></p>
+    <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="confirmOk">OK</button></div>
+  </form>
+</dialog>
+<input type="file" id="fileStl" accept=".stl,.STL,.obj,.OBJ" multiple hidden>
+<input type="file" id="fileInp" accept=".inp,.txt" hidden>
+<input type="file" id="fileProj" accept=".json" hidden>
+<div id="toast" role="status"></div>
+
+<script src="js/lib/three.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/state.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/cut.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pwa.js"></script>
+</body>
+</html>
