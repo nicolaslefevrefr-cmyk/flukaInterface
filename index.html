@@ -142,6 +142,13 @@
   <form method="dialog">
     <div class="fw-h"><b>Detect features <small class="muted">(experimental)</small></b><button type="button" class="ib" value="close" aria-label="Close">✕</button></div>
     <div class="muted" id="featSrc"></div>
+    <div class="fw-guided">
+      <b>Guided fit</b> <span class="muted">— click triangles of the mesh; more triangles = more confidence</span>
+      <div class="fw-row"><select id="gKind"><option value="auto">Auto (plane / cylinder / sphere)</option><option value="cylinder">Cylinder</option><option value="plane">Plane</option><option value="sphere">Sphere</option></select>
+        <button type="button" class="pill" id="gPick">Pick triangles</button><button type="button" class="pill" id="gClear">Clear</button></div>
+      <div class="muted" id="gInfo"></div>
+      <div id="gResult"></div>
+    </div>
     <div id="featParams"></div>
     <div class="dlgBtns" style="justify-content:flex-start"><button type="button" class="pill primary" id="featRun">Detect</button><button type="button" class="pill" id="featReset">Reset parameters</button><span class="muted" id="featMsg" style="align-self:center"></span></div>
     <div id="featList"></div>

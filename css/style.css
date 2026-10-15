@@ -254,3 +254,11 @@ dialog.featwin[open] { display: block; }
 #featList .fr.sel { border-color: #16a34a; background: rgba(22,163,74,.08); } #featList .fr.done { opacity: .55; }
 #featList .fr .lb { flex: 1; word-break: break-word; } #featList .fr small { display: block; color: var(--muted, #6b7686); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
 #featList .fr button { padding: 2px 9px; }
+
+.fw-guided { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin: 4px 0 6px; font-size: 12.5px; }
+.fw-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; } .fw-row select { flex: 1; min-width: 140px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 6px; }
+#gPick.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+#gResult .fr { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid #16a34a; background: rgba(22,163,74,.08); border-radius: 8px; }
+#gResult .fr .lb { flex: 1; } #gResult small { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--muted, #6b7686); }
+#gResult .cf { font-weight: 700; } #gResult .cf.lo { color: #b45309; } #gResult .cf.hi { color: #15803d; } #gResult .er { color: var(--danger, #b91c1c); font-size: 12.5px; }
+body.featpick #gl { cursor: crosshair; }

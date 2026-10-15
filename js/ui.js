@@ -244,7 +244,7 @@
     });
   }
   /* ---------- Automatic feature detection (experimental) ---------- */
-  const FEAT = { stl: null, params: null, res: null, sel: null, done: new Set() };
+  const FEAT = { stl: null, params: null, res: null, sel: null, done: new Set(), armed: false, seeds: [], g: null, topo: null };
   const FEAT_UI = [
     ['Planes', 'planes', [['minArea', 'Min. patch area (cm²)'], ['angTol', 'Normal tolerance (°)'], ['distTol', 'Distance tolerance (cm)']]],
     ['Cylinders', 'cylinders', [['curvMinArea', 'Min. patch area (cm²)'], ['fitTol', 'Fit tolerance (cm)'], ['minRadius', 'Min. radius (cm)'], ['maxRadius', 'Max. radius (cm, 0 = ∞)'], ['minHeight', 'Min. length (cm)'], ['minArc', 'Min. angular coverage (°)'], ['smoothAngle', 'Smooth-surface angle (°)'], ['minTris', 'Min. triangles']]],
@@ -268,8 +268,35 @@
     APP.setFeaturePreview(f || null, FEAT.stl && FEAT.stl.positions);
     $('#featList').innerHTML = featListHTML();
   }
+  /* guided fit: the user clicks triangles, a primitive is fitted to them */
+  function guidedKind() { return $('#gKind').value; }
+  function guidedRefit() {
+    const box = $('#gResult'), info = $('#gInfo');
+    FEAT.g = null;
+    if (!FEAT.seeds.length) { box.innerHTML = ''; info.textContent = FEAT.armed ? 'Click triangles on the mesh (click a selected one again to remove it).' : ''; APP.setFeaturePreview(null); return; }
+    if (!FEAT.topo) FEAT.topo = FK.buildTopology(FEAT.stl.positions);
+    const r = FK.fitFromSeeds(FEAT.stl.positions, FEAT.seeds, guidedKind(), FEAT.params, FEAT.topo);
+    info.textContent = FEAT.seeds.length + ' triangle(s) selected';
+    if (r.error) { box.innerHTML = `<div class="er">${esc(r.error)}</div>`; APP.setFeaturePreview(null, FEAT.stl.positions, FEAT.seeds); return; }
+    r.feature.box = FEAT.stl.stats.bbox; FEAT.g = r;
+    const c = r.confidence, rp = r.report;
+    box.innerHTML = `<div class="fr"><span class="lb">${esc(r.feature.label)}<small>${r.feature.type} ${esc(r.feature.p.map(x => +(+x).toFixed(4)).join(' '))}</small><small>${rp.seedsFitted}/${rp.seeds} clicked triangles fit · patch ${rp.patchTris} triangles · rms ${(+rp.rms).toPrecision(2)} cm${r.feature.kind === 'cylinder' ? ' · coverage ' + rp.coverage.toFixed(0) + '°' : ''}</small></span><span class="cf ${c >= 75 ? 'hi' : c < 45 ? 'lo' : ''}">${c}%</span><button type="button" class="pill" id="gAdd">Add</button></div>`;
+    APP.setFeaturePreview(r.feature, FEAT.stl.positions, FEAT.seeds);
+  }
+  function guidedToggle(tri) {
+    const i = FEAT.seeds.indexOf(tri);
+    if (i >= 0) FEAT.seeds.splice(i, 1); else FEAT.seeds.push(tri);
+    guidedRefit();
+  }
+  function guidedArm(on) {
+    FEAT.armed = on; $('#gPick').classList.toggle('on', on); document.body.classList.toggle('featpick', on);
+    $('#gPick').textContent = on ? 'Picking… (click to stop)' : 'Pick triangles';
+    if (on) { setTool('select'); S.info = false; syncToolbar(); }
+    guidedRefit();
+  }
   function openFeatDlg(stl) {
     if (!stl.positions || !stl.positions.length) { toast('This mesh has no triangles'); return; }
+    FEAT.seeds = []; FEAT.g = null; FEAT.topo = null; FEAT.armed = false; $('#gPick').classList.remove('on'); $('#gPick').textContent = 'Pick triangles'; document.body.classList.remove('featpick'); $('#gResult').innerHTML = ''; $('#gInfo').textContent = '';
     FEAT.stl = stl; FEAT.params = FK.detectDefaults(stl.positions); FEAT.res = null; FEAT.sel = null; FEAT.done = new Set();
     $('#featSrc').textContent = `Mesh "${stl.name}" · ${stl.stats.count} triangles · lengths in cm`;
     $('#featParams').innerHTML = featParamsHTML(); $('#featList').innerHTML = ''; $('#featMsg').textContent = '';
@@ -278,7 +305,15 @@
   }
   (function () {
     const d = $('#dlgFeat'); if (!d) return;
-    d.addEventListener('close', () => APP.setFeaturePreview(null));
+    d.addEventListener('close', () => { FEAT.armed = false; FEAT.seeds = []; FEAT.g = null; document.body.classList.remove('featpick'); APP.setFeaturePreview(null); });
+    $('#gPick').onclick = () => guidedArm(!FEAT.armed);
+    $('#gClear').onclick = () => { FEAT.seeds = []; guidedRefit(); };
+    $('#gKind').onchange = () => guidedRefit();
+    $('#gResult').addEventListener('click', e => {
+      if (!e.target.closest('#gAdd') || !FEAT.g) return;
+      const b = APP.addFeature(FEAT.g.feature); toast(`${b.name} (${b.type}) added to the model`);
+      FEAT.seeds = []; FEAT.g = null; $('#gResult').innerHTML = ''; $('#gInfo').textContent = 'Added. Pick the next surface.'; APP.setFeaturePreview(null);
+    });
     d.addEventListener('change', e => { const k = e.target.dataset.fp; if (!k) return; FEAT.params[k] = e.target.type === 'checkbox' ? e.target.checked : (+e.target.value); });
     $('#featReset').onclick = () => { FEAT.params = FK.detectDefaults(FEAT.stl.positions); $('#featParams').innerHTML = featParamsHTML(); };
     $('#featRun').onclick = () => {
@@ -1187,6 +1222,11 @@
   APP.hooks.leave = () => { APP.clearHover(); if (hoverText) { hoverText = ''; updateStatus(); } };
   APP.hooks.click = (x, y) => {
     APP.clearHover(); hoverText = '';
+    if (FEAT.armed && FEAT.stl) {          // guided feature fit: the click selects a triangle of the mesh
+      const h = APP.raycast(x, y);
+      if (h && h.object && h.object.userData && h.object.userData.kind === 'stl' && h.object.userData.id === FEAT.stl.id && h.faceIndex != null) guidedToggle(h.faceIndex);
+      return;
+    }
     if (S.tool === 'select' && !S.info && !S.fill) return;
     const hit = APP.raycast(x, y);
     if (S.fill) { if (hit) { try { fillFromHit(hit, x, y); } catch (err) { console.error(err); toast('Pick error: ' + err.message); } } return; }
@@ -1326,5 +1366,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

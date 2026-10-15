@@ -77,3 +77,7 @@ Mesh ⋮ menu ▸ *Detect features…* opens a floating window (the 3D view stay
 | Box | connected component aligned with 3 orthogonal directions that fills its oriented bounding box | RPP (a rotated box also creates its own coordinate system) |
 
 Defaults are derived from the mesh size and can be reset. Adjacency is by shared vertices, so meshes with T-junctions or duplicated vertices are detected in several pieces (planes in the same plane are merged). Not yet detected: cones (TRC), fillets, partial arcs below the coverage limit.
+
+### Guided fit (click triangles)
+
+In the *Detect features* window, *Guided fit* lets you force the recognition on a surface: choose *Auto / Cylinder / Plane / Sphere*, press *Pick triangles*, then click one or several triangles of the mesh (click again to unselect). After every click the primitive is refitted and shown (blue = clicked triangles, orange = the patch it explains, green = the primitive) with a confidence percentage and a report (clicked triangles that fit, patch size, rms deviation, angular coverage). More triangles spread over the surface make the fit more reliable. The cylinder axis is free (any direction, snapped to a global axis only within the snap angle), so tilted cylinders work; one facet is enough because its neighbours are used to find the curvature. Flat selections are refused as cylinders with an explanation. *Add* puts the result in the tree.

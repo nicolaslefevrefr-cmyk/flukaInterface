@@ -366,10 +366,17 @@
   };
 
   /* ---------- Temporary preview of a detected feature (not part of the model until validated) ---------- */
-  APP.setFeaturePreview = function (feat, positions) {
+  APP.setFeaturePreview = function (feat, positions, seeds) {
     for (const c of gFeat.children.slice()) { gFeat.remove(c); disposeObj(c); }
     needRender = true;
-    if (!feat) return;
+    const tri = (tris, hex, op, off) => {
+      const pp = new Float32Array(tris.length * 9);
+      tris.forEach((t, i) => { for (let k = 0; k < 9; k++) pp[i * 9 + k] = positions[t * 9 + k]; });
+      const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+      const mm = new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide, transparent: true, opacity: op, polygonOffset: true, polygonOffsetFactor: off, polygonOffsetUnits: off, depthWrite: false }));
+      mm.raycast = () => {}; gFeat.add(mm);
+    };
+    if (!feat) { if (seeds && seeds.length) tri(seeds, 0x2563eb, 0.85, -3); return; }
     // 1. the mesh triangles the feature was recognised on
     const pos = new Float32Array(feat.tris.length * 9);
     feat.tris.forEach((t, i) => { for (let k = 0; k < 9; k++) pos[i * 9 + k] = positions[t * 9 + k]; });
@@ -396,6 +403,7 @@
       }
       if (prim) gFeat.add(prim);
     } catch (e) { /* preview of the primitive is best effort */ }
+    if (seeds && seeds.length) tri(seeds, 0x2563eb, 0.9, -3);   // the triangles clicked by the user
   };
 
   // Wireframe mode: every facet edge (coplanar triangle diagonals are skipped), built lazily
