@@ -260,7 +260,8 @@
     const stlBoxes = S.stls.filter(s => s.stats && s.stats.bbox).map(s => s.stats.bbox);
     const wbodies = new Map(S.model.bodies.map(b => [b.id, APP.wbody(b)]));
     const W = S.W = FK.computeWorldBox(stlBoxes, Array.from(wbodies.values()), S.opt.margin);
-    const wsig = W.min.concat(W.max).map(x => x.toFixed(3)).join(',');
+    FK.resolution = S.opt.res || 1;
+    const wsig = W.min.concat(W.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
     const byName = new Map();
     for (const b of S.model.bodies) if (!byName.has(b.name)) byName.set(b.name, b);
     if (wsig !== lastWsig) {

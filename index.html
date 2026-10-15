@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.3">
+<link rel="stylesheet" href="css/style.css?v=1.4">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.3</i></b><span>Creo → FLUKA</span></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.4</i></b><span>Creo → FLUKA</span></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -61,6 +61,9 @@
             <button data-render="ghost" title="All transparent (see-through)"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.5 2" stroke-linejoin="round"/></svg></button>
             <button id="btnEdges" title="Show / hide edge lines"><svg viewBox="0 0 24 24"><path d="M4 18L12 5l8 13z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 11.5l8 0" stroke="currentColor" stroke-width="1" opacity=".5"/></svg></button>
           </div>
+          <div class="grp" id="grpRes" role="group" aria-label="Resolution">
+            <button id="btnRes" title="Resolution of curved surfaces (number of facets of cylinders / spheres)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7" stroke="currentColor" stroke-width="1" opacity=".7"/></svg></button>
+          </div>
           <div class="grp" id="grpRot" role="group" aria-label="Mouse rotation">
             <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -74,6 +77,13 @@
             <button data-view="normal" title="Look normal to a face (uses the selected face, or click one)">⟂</button>
             <button data-view="flip" title="View from the opposite side">⇄</button>
           </div>
+        </div>
+        <div id="resPop" hidden>
+          <div class="rp-h"><b>Resolution</b> <span id="resVal"></span></div>
+          <input type="range" id="resSlider" min="0.25" max="3" step="0.05" aria-label="Resolution">
+          <div class="rp-s"><span>coarse</span><span>fine</span></div>
+          <div class="muted" id="resInfo"></div>
+          <div class="rp-b"><button type="button" class="btn sm" id="resReset">Reset (×1)</button></div>
         </div>
         <div id="status"></div>
         <div id="dropHint">Drop a .stl or .obj file here<small>or use File ▸ Import / the Meshes ＋ menu</small></div>
@@ -143,6 +153,22 @@
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="voidOk">Create</button></div>
   </form>
 </dialog>
+<dialog id="dlgBool">
+  <form method="dialog">
+    <h3>Combine two regions <small class="muted">(experimental)</small></h3>
+    <p class="muted">FLUKA cannot subtract a region from another one, so the <i>formulas</i> are combined: the new region is written only with the bodies of the two regions, which stay untouched.</p>
+    <div class="fld"><label>First region (A)</label><div id="boolA" class="boolA"></div></div>
+    <div class="fld" style="margin-top:6px"><label>Operation</label>
+      <label class="row"><input type="radio" name="boolOp" value="sub" checked> A − B &nbsp;<span class="muted">(A without B: <code>+A −B</code>)</span></label>
+      <label class="row"><input type="radio" name="boolOp" value="int"> A ∩ B &nbsp;<span class="muted">(common part)</span></label>
+      <label class="row"><input type="radio" name="boolOp" value="union"> A ∪ B &nbsp;<span class="muted">(union)</span></label></div>
+    <div class="fld" style="margin-top:6px"><label>Second region (B)</label><select id="boolB"></select></div>
+    <label class="row"><input type="radio" name="boolMode" value="compact" checked> Compact: parentheses, <code>+( A ) −( B )</code></label>
+    <label class="row"><input type="radio" name="boolMode" value="expanded"> Expanded (De Morgan: no negated parenthesis)</label>
+    <div id="boolPrev" class="voidprev"></div>
+    <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="boolOk">Create region</button></div>
+  </form>
+</dialog>
 <dialog id="dlgFeat" class="featwin">
   <form method="dialog">
     <div class="fw-h"><b>Detect features <small class="muted">(experimental)</small></b><span class="fw-ctl"><button type="button" class="ib" id="featDock" title="Dock beside the project panel / float" aria-label="Dock">⇥</button><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
@@ -165,12 +191,12 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.3"></script>
-<script src="js/core.js?v=1.3"></script>
-<script src="js/state.js?v=1.3"></script>
-<script src="js/scene.js?v=1.3"></script>
-<script src="js/cut.js?v=1.3"></script>
-<script src="js/ui.js?v=1.3"></script>
-<script src="js/pwa.js?v=1.3"></script>
+<script src="js/lib/three.min.js?v=1.4"></script>
+<script src="js/core.js?v=1.4"></script>
+<script src="js/state.js?v=1.4"></script>
+<script src="js/scene.js?v=1.4"></script>
+<script src="js/cut.js?v=1.4"></script>
+<script src="js/ui.js?v=1.4"></script>
+<script src="js/pwa.js?v=1.4"></script>
 </body>
 </html>

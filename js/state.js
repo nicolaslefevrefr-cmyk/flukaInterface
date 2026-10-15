@@ -444,6 +444,28 @@
     APP.toast(`Void region ${reg.name} created with RPP ${body.name} (hidden; show it from the tree)`);
     return { body, region: reg, plan: pl };
   };
+  /* ---------- Boolean of two regions, written with their bodies only (experimental) ---------- */
+  const BOOL_SYM = { sub: 'm', int: 'i', union: 'u' };
+  APP.boolPlan = function (a, b, op, mode) {
+    if (!a || !b) return { error: 'Choose the second region.' };
+    mode = mode || 'compact'; op = op || 'sub';
+    let expr;
+    try { expr = FK.combineExpr(a.expr, b.expr, op, mode); } catch (e) { return { error: e.message }; }
+    const regName = FK.uniqueName(BOOL_SYM[op] + '_' + a.name, regionNames());
+    const ev = APP.evalRegionNow({ expr }), ea = APP.evalRegionNow(a), eb = APP.evalRegionNow(b);
+    return { expr, regName, op, mode, vol: ev.error ? null : ev.vol, volA: ea.error ? null : ea.vol, volB: eb.error ? null : eb.vol, error2: ev.error || null };
+  };
+  APP.createBoolRegion = function (a, b, op, mode) {
+    const pl = APP.boolPlan(a, b, op, mode);
+    if (pl.error) return pl;
+    APP.snap();
+    const reg = APP.addRegion(pl.regName, pl.expr, { visible: true, nvois: a.nvois });
+    reg.meta = { boolOf: [a.name, b.name, op] };
+    S.sel = { t: 'region', id: reg.id };
+    APP.changed({ tree: true, right: true });
+    APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged`);
+    return { region: reg, plan: pl };
+  };
   /* ---------- Detected features (experimental) ---------- */
   /** Add a detected feature to the model as a body (world coordinates; a rotated box also gets its own coordinate system). */
   APP.addFeature = function (f) {

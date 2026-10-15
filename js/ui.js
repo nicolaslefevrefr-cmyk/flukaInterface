@@ -106,6 +106,15 @@
   $$('#grpProj button[data-proj]').forEach(b => b.onclick = () => { APP.setProjection(b.dataset.proj); syncToolbar(); APP.save(); });
   $$('#grpRender button[data-render]').forEach(b => b.onclick = () => { S.opt.render = b.dataset.render; APP.applyStyles(); syncToolbar(); APP.save(); });
   $('#btnEdges').onclick = () => { S.opt.edges = S.opt.edges === false; APP.applyStyles(); syncToolbar(); APP.save(); };
+  { // global tessellation resolution (display + section + region booleans use the same facets)
+    const pop = $('#resPop'), sl = $('#resSlider'); let tm = null;
+    const label = () => { const r = S.opt.res || 1; $('#resVal').textContent = '×' + r.toFixed(2); sl.value = r; $('#resInfo').textContent = `Cylinder / cone: ${FK.seg(48)} facets · infinite cylinder: ${FK.seg(64)} · sphere: ${FK.seg(32)} × ${FK.seg(20)}`; };
+    const apply = (v) => { S.opt.res = v; FK.resolution = v; label(); clearTimeout(tm); tm = setTimeout(() => { APP.changed({}); APP.save(); }, 120); };
+    $('#btnRes').onclick = () => { pop.hidden = !pop.hidden; $('#btnRes').classList.toggle('on', !pop.hidden); if (!pop.hidden) { FK.resolution = S.opt.res || 1; label(); const vr = $('#viewport').getBoundingClientRect(), br = $('#btnRes').getBoundingClientRect(); pop.style.left = Math.max(4, Math.min(br.left - vr.left - 20, vr.width - 260)) + 'px'; } };
+    sl.addEventListener('input', () => apply(+sl.value));
+    $('#resReset').onclick = () => apply(1);
+    document.addEventListener('pointerdown', e => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('#btnRes')) { pop.hidden = true; $('#btnRes').classList.remove('on'); } }, true);
+  }
   $('#btnInvX').onclick = () => { S.opt.invX = !S.opt.invX; syncToolbar(); APP.save(); };
   $('#btnInvY').onclick = () => { S.opt.invY = !S.opt.invY; syncToolbar(); APP.save(); };
   $('#btnCut').onclick = () => APP.cutSetOpen(!APP.cut.open);
@@ -411,6 +420,36 @@
       if (res.error) toast(res.error);
     });
   })();
+  /* ---------- Boolean of two regions (experimental) ---------- */
+  function boolArgs() { const q = (n) => (document.querySelector('input[name=' + n + ']:checked') || {}).value; return [APP.getRegion(+$('#boolB').value), q('boolOp') || 'sub', q('boolMode') || 'compact']; }
+  function updateBoolPrev() {
+    const d = $('#dlgBool'), a = APP.getRegion(+d.dataset.rid), box = $('#boolPrev'), ok = $('#boolOk');
+    const pl = APP.boolPlan(a, ...boolArgs());
+    if (pl.error) { box.innerHTML = '<div class="msg bad">' + esc(pl.error) + '</div>'; ok.disabled = true; return; }
+    ok.disabled = false;
+    const v = (x) => x === null ? '?' : (+x.toPrecision(5)) + ' cm³';
+    box.innerHTML = '<div class="msg"><b>Region ' + esc(pl.regName) + '</b><br><code>' + esc(pl.expr) + '</code><br>' +
+      'Volume in the render zone: A ' + v(pl.volA) + ' · B ' + v(pl.volB) + ' → result <b>' + v(pl.vol) + '</b>' + (pl.error2 ? '<br><span class="bad">' + esc(pl.error2) + '</span>' : '') + '</div>';
+  }
+  function openBoolDlg(a) {
+    const d = $('#dlgBool'); d.dataset.rid = a.id; d.returnValue = '';
+    const others = S.model.regions.filter(r => r.id !== a.id);
+    if (!others.length) { toast('Create a second region first'); return; }
+    $('#boolA').innerHTML = '<b>' + esc(a.name) + '</b> <code>' + esc(a.expr) + '</code>';
+    $('#boolB').innerHTML = others.map(r => `<option value="${r.id}">${esc(r.name)} — ${esc(r.expr.slice(0, 40))}</option>`).join('');
+    updateBoolPrev();
+    if (!d.open) d.showModal();
+  }
+  (function () {
+    const d = $('#dlgBool'); if (!d) return;
+    d.addEventListener('input', updateBoolPrev); d.addEventListener('change', updateBoolPrev);
+    d.addEventListener('close', () => {
+      if (d.returnValue !== 'ok') return;
+      const a = APP.getRegion(+d.dataset.rid); if (!a) return;
+      const res = APP.createBoolRegion(a, ...boolArgs());
+      if (res.error) toast(res.error);
+    });
+  })();
   async function newProject() {
     if (await askConfirm('Start a new project? Meshes, bodies, regions, coordinate systems and measures are removed (the model part can be undone with Ctrl+Z; meshes cannot).', 'Clear everything')) { APP.newModel(true); toast('New project'); }
   }
@@ -631,6 +670,7 @@
         return m.concat([{ sep: 1 }, del]);
       }
       case 'region': return [rename, toggle, { label: 'Duplicate', fn: () => { const c = APP.duplicateRegion(o); S.sel = { t: 'region', id: c.id }; APP.changed({ tree: true, right: true }); } },
+        { label: 'Combine with another region… (A − B, A ∩ B, A ∪ B) (experimental)', fn: () => openBoolDlg(o) },
         { label: 'Create void region around this one… (experimental)', fn: () => openVoidDlg(o) }, { sep: 1 }, del];
       case 'csys': return [rename, toggle, { label: 'Set as active', fn: () => APP.setActiveCsys(o.id) },
         { label: APP.exportCs() === o.id ? 'Stop using as export coordinate system' : 'Use as export coordinate system (INP)', fn: () => APP.setExportCsys(APP.exportCs() === o.id ? 0 : o.id) },
@@ -997,6 +1037,7 @@
       <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
+      <div class="btns"><button class="btn" data-act="boolRegion" title="Experimental: new region = this region minus / intersected with / united with another one, written only with their bodies">Combine with another region… <small>(experimental)</small></button></div>
       <div class="btns"><button class="btn" data-act="voidRegion" title="Experimental: creates an RPP around this region and a region = RPP minus this one">Create void region… <small>(experimental)</small></button></div>
       <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
@@ -1149,6 +1190,7 @@
       case 'fillUndo': if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } break;
       case 'pickCsysPos': if (it && S.sel.t === 'csys') startFill({ kind: 'csys', id: it.id, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
       case 'rtab': S.rtab = a.dataset.tab; $$('#rightBody .rtab').forEach(x => x.classList.toggle('on', x.dataset.tab === S.rtab)); $$('#rightBody .rpane').forEach(x => { x.hidden = x.dataset.pane !== S.rtab; }); break;
+      case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
       case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;
       case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
       case 'csysCut': if (it && S.sel.t === 'csys') APP.cutUseSrc('cs:' + it.id + ':' + a.dataset.pl); break;

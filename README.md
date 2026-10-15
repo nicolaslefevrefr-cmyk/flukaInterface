@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.3)
+# Combinatorial Geometry Tool  (v1.4)
 
 Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
@@ -98,5 +98,12 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.4** — resolution slider (top band): global facet count of cylinders / cones / spheres; *Combine with another region…* (A − B, A ∩ B, A ∪ B written with the bodies of both regions only).
 - **1.3** — renamed *Combinatorial Geometry Tool*; version display; toolbar moved to a top band; floating / dockable feature window; mouse-rotation inversion; update mechanism; overlapping-entities pop-up; properties tabs and collapsible scale tool.
 - **1.2** — automatic and guided feature detection (baseline).
+
+## Resolution of curved surfaces (v1.4)
+The ◍ button of the top band opens a slider (×0.25 … ×3) that multiplies the number of facets used to draw (and to evaluate sections / region booleans for) cylinders, cones and spheres: ×1 = 48 facets per cylinder / cone, 64 per infinite cylinder, 32 × 20 per sphere. It is a display setting only: the INP is unchanged. Stored in the project.
+
+## Combine two regions (experimental, v1.4)
+FLUKA cannot subtract a region from another one, but the *formulas* can be combined. On region **reg1**, *Operations ▸ Combine with another region…* (or its ⋮ menu) opens a dialog: choose reg2 and **A − B**, **A ∩ B** or **A ∪ B**. A new region is created whose expression uses only the bodies of reg1 and reg2 (which stay untouched), e.g. `+rpp1 -xzp1 -( +rcc1 -xzp1 )` for reg1 − reg2. *Compact* keeps parentheses; *Expanded* applies De Morgan (`-( +a -b )` → `+( -a | +b )`), with no negated parenthesis. The dialog previews the expression and the volumes of A, B and the result (inside the render zone).

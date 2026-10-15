@@ -297,3 +297,8 @@ dialog.featwin { z-index: 40; }
 #pickPop .pp-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 #pickPop .pp-k { color: var(--muted); font-size: 11.5px; flex: none; }
 #pickPop .pp-b { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--line); }
+#resPop { position: absolute; top: 46px; left: 190px; z-index: 6; width: 250px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 8px 12px 10px; font-size: 12.5px; }
+#resPop[hidden] { display: none; }
+#resPop input[type=range] { width: 100%; }
+#resPop .rp-s { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+#resPop .rp-b { margin-top: 6px; }

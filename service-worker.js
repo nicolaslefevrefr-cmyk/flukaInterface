@@ -1,7 +1,7 @@
 /* Combinatorial Geometry Tool — service worker.
  * Network-first: the latest files are always fetched when online; the cache is only an offline fallback.
  * The cache name carries the version, so each release starts from a clean cache. */
-const VERSION = '1.3';
+const VERSION = '1.4';
 const CACHE = 'cgt-' + VERSION;
 const ASSETS = ['./', './index.html', './css/style.css', './js/lib/three.min.js', './js/core.js', './js/state.js', './js/scene.js', './js/cut.js', './js/ui.js', './js/pwa.js', './manifest.json', './version.json', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {

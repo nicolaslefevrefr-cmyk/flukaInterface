@@ -4,8 +4,10 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.3';
+  FK.VERSION = '1.4';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
+  FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
+  FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
 
   /* ---------------- Vecteurs ---------------- */
   const V = {
@@ -853,9 +855,9 @@
     const diag = boxDiag(W), C = boxCenter(W);
     switch (b.type) {
       case 'RPP': raw = boxPolys(FK.bodyBBox(b)); break;
-      case 'SPH': raw = spherePolys([p[0], p[1], p[2]], p[3], 32, 20); break;
-      case 'RCC': raw = cylinderPolys([p[0], p[1], p[2]], [p[3], p[4], p[5]], p[6], p[6], 48); break;
-      case 'TRC': raw = cylinderPolys([p[0], p[1], p[2]], [p[3], p[4], p[5]], p[6], p[7], 48); break;
+      case 'SPH': raw = spherePolys([p[0], p[1], p[2]], p[3], FK.seg(32), FK.seg(20)); break;
+      case 'RCC': raw = cylinderPolys([p[0], p[1], p[2]], [p[3], p[4], p[5]], p[6], p[6], FK.seg(48)); break;
+      case 'TRC': raw = cylinderPolys([p[0], p[1], p[2]], [p[3], p[4], p[5]], p[6], p[7], FK.seg(48)); break;
       case 'PLA': case 'XYP': case 'XZP': case 'YZP': {
         const pl = FK.planeOf(b);
         const n = V.norm(pl.H);
@@ -873,15 +875,15 @@
         if (p[6] <= 0 || V.len(d) === 0) return [];
         const L = diag * 2 + 1, sC = V.dot(V.sub(C, c), d);
         const base = V.sub(V.add(c, V.mul(d, sC)), V.mul(d, L));
-        raw = cylinderPolys(base, V.mul(d, 2 * L), p[6], p[6], 64);
+        raw = cylinderPolys(base, V.mul(d, 2 * L), p[6], p[6], FK.seg(64));
         break;
       }
       case 'XCC': case 'YCC': case 'ZCC': {
         const L = diag * 2 + 1;
         if (p[2] <= 0) return [];
-        if (b.type === 'ZCC') raw = cylinderPolys([p[0], p[1], C[2] - L], [0, 0, 2 * L], p[2], p[2], 64);
-        else if (b.type === 'XCC') raw = cylinderPolys([C[0] - L, p[0], p[1]], [2 * L, 0, 0], p[2], p[2], 64);
-        else raw = cylinderPolys([p[1], C[1] - L, p[0]], [0, 2 * L, 0], p[2], p[2], 64);
+        if (b.type === 'ZCC') raw = cylinderPolys([p[0], p[1], C[2] - L], [0, 0, 2 * L], p[2], p[2], FK.seg(64));
+        else if (b.type === 'XCC') raw = cylinderPolys([C[0] - L, p[0], p[1]], [2 * L, 0, 0], p[2], p[2], FK.seg(64));
+        else raw = cylinderPolys([p[1], C[1] - L, p[0]], [0, 2 * L, 0], p[2], p[2], FK.seg(64));
         break;
       }
       default: return null;
@@ -1055,24 +1057,48 @@
   };
 
   /**
-   * Exact complement of a region inside a bounding body: "void = box − region".
-   * mode 'compact'  : +box -( <whole expression> )                       (a union becomes one negated parenthesis)
-   * mode 'expanded' : De Morgan, one factor per zone:  +box +(-t1 | -t2) …  (a zone  t1 t2  becomes  not t1 or not t2)
-   * Returns the expression string.
+   * Boolean combination of two region expressions, written ONLY with the bodies they already use
+   * (FLUKA cannot reference a region inside another region, so the formulas themselves are combined).
+   *   op 'sub'   : A − B   =  A ∩ not B
+   *   op 'int'   : A ∩ B
+   *   op 'union' : A ∪ B
+   * mode 'compact'  : negated / grouped parentheses   +A -( B )
+   * mode 'expanded' : De Morgan, no negated parenthesis for the subtraction (one factor per zone of B:  not(t1 t2) = (not t1 | not t2)),
+   *                   and intersections of unions are distributed into a union of zones.
+   * Returns the expression string. Throws on an empty operand or if the expansion becomes too large.
    */
-  FK.complementExpr = function (expr, boxName, mode) {
-    const ast = typeof expr === 'string' ? FK.parseExpr(expr) : expr;
+  FK.combineExpr = function (a, b, op, mode) {
+    const pa = typeof a === 'string' ? FK.parseExpr(a) : a, pb = typeof b === 'string' ? FK.parseExpr(b) : b;
+    if (!pa.zones.length || !pa.zones[0].length) throw new Error('The first expression is empty');
+    if (!pb.zones.length || !pb.zones[0].length) throw new Error('The second expression is empty');
     const clone = (o) => JSON.parse(JSON.stringify(o));
     const flip = (t) => { const c = clone(t); c.sign = -c.sign; return c; };
-    const terms = [{ sign: 1, name: boxName }];
-    if (mode === 'expanded') {
-      for (const zone of ast.zones) {
-        if (zone.length === 1) terms.push(flip(zone[0]));                       // not (single term)
-        else terms.push({ sign: 1, sub: { zones: zone.map(t => [flip(t)]) } }); // not (t1 t2 …) = (not t1 | not t2 | …)
+    const termsOf = (ast) => ast.zones.length === 1 ? clone(ast.zones[0]) : [{ sign: 1, sub: clone(ast) }];
+    const expanded = mode === 'expanded';
+    if (op === 'union') return FK.formatExpr({ zones: clone(pa.zones).concat(clone(pb.zones)) });
+    if (op === 'int') {
+      if (expanded && (pa.zones.length > 1 || pb.zones.length > 1)) {
+        if (pa.zones.length * pb.zones.length > 200) throw new Error('Too many zones after distribution (' + pa.zones.length * pb.zones.length + '): use the compact form');
+        const zones = [];
+        for (const za of pa.zones) for (const zb of pb.zones) zones.push(clone(za).concat(clone(zb)));
+        return FK.formatExpr({ zones });
       }
-    } else if (ast.zones.length === 1 && ast.zones[0].length === 1) terms.push(flip(ast.zones[0][0]));
-    else terms.push({ sign: -1, sub: clone(ast) });
+      return FK.formatExpr({ zones: [termsOf(pa).concat(termsOf(pb))] });
+    }
+    // subtraction
+    const terms = termsOf(pa);
+    if (expanded) {
+      for (const zone of pb.zones) {
+        if (zone.length === 1) terms.push(flip(zone[0]));
+        else terms.push({ sign: 1, sub: { zones: zone.map(t => [flip(t)]) } });
+      }
+    } else if (pb.zones.length === 1 && pb.zones[0].length === 1) terms.push(flip(pb.zones[0][0]));
+    else terms.push({ sign: -1, sub: clone(pb) });
     return FK.formatExpr({ zones: [terms] });
+  };
+  /** Exact complement of a region inside a bounding body: "void = box − region". */
+  FK.complementExpr = function (expr, boxName, mode) {
+    return FK.combineExpr('+' + boxName, expr, 'sub', mode);
   };
 
   /* ---------------- Automatic feature detection on a triangle mesh (experimental) ----------------
