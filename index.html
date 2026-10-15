@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.4">
+<link rel="stylesheet" href="css/style.css?v=1.5">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.4</i></b><span>Creo → FLUKA</span></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.5</i></b><span>Creo → FLUKA</span></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -89,6 +89,7 @@
         <div id="dropHint">Drop a .stl or .obj file here<small>or use File ▸ Import / the Meshes ＋ menu</small></div>
       </div>
       <section id="sheet">
+        <div id="sheetGrip" title="Drag to resize the .inp panel"></div>
         <div class="sheetHead">
           <b>Geometry block</b>
           <select id="inpStyle" title="Output style">
@@ -191,12 +192,12 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.4"></script>
-<script src="js/core.js?v=1.4"></script>
-<script src="js/state.js?v=1.4"></script>
-<script src="js/scene.js?v=1.4"></script>
-<script src="js/cut.js?v=1.4"></script>
-<script src="js/ui.js?v=1.4"></script>
-<script src="js/pwa.js?v=1.4"></script>
+<script src="js/lib/three.min.js?v=1.5"></script>
+<script src="js/core.js?v=1.5"></script>
+<script src="js/state.js?v=1.5"></script>
+<script src="js/scene.js?v=1.5"></script>
+<script src="js/cut.js?v=1.5"></script>
+<script src="js/ui.js?v=1.5"></script>
+<script src="js/pwa.js?v=1.5"></script>
 </body>
 </html>

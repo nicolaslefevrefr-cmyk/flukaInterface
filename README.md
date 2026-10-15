@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.4)
+# Combinatorial Geometry Tool  (v1.5)
 
 Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.5** — region quality check (separate / nearly touching pieces, thin regions, degenerate polygons, nearly coincident faces); resizable `.inp` panel; *Import STL / INP* and *New project* buttons removed from the tree (STL import: Meshes ＋ menu; INP import and New project: File menu).
 - **1.4** — resolution slider (top band): global facet count of cylinders / cones / spheres; *Combine with another region…* (A − B, A ∩ B, A ∪ B written with the bodies of both regions only).
 - **1.3** — renamed *Combinatorial Geometry Tool*; version display; toolbar moved to a top band; floating / dockable feature window; mouse-rotation inversion; update mechanism; overlapping-entities pop-up; properties tabs and collapsible scale tool.
 - **1.2** — automatic and guided feature detection (baseline).
@@ -107,3 +108,9 @@ The ◍ button of the top band opens a slider (×0.25 … ×3) that multiplies t
 
 ## Combine two regions (experimental, v1.4)
 FLUKA cannot subtract a region from another one, but the *formulas* can be combined. On region **reg1**, *Operations ▸ Combine with another region…* (or its ⋮ menu) opens a dialog: choose reg2 and **A − B**, **A ∩ B** or **A ∪ B**. A new region is created whose expression uses only the bodies of reg1 and reg2 (which stay untouched), e.g. `+rpp1 -xzp1 -( +rcc1 -xzp1 )` for reg1 − reg2. *Compact* keeps parentheses; *Expanded* applies De Morgan (`-( +a -b )` → `+( -a | +b )`), with no negated parenthesis. The dialog previews the expression and the volumes of A, B and the result (inside the render zone).
+
+## Region quality check (v1.5)
+Every non-empty region is checked after evaluation; warnings appear under *Valid expression* in the region's Definition tab, in the INP warnings list (badge on `.inp`), and as a toast when a region is created by *Combine with another region*. Checks: **separate pieces** (info) and pieces whose bounding boxes are almost touching (e.g. two bodies of a union 0.01 mm apart); **tiny fragments** (slivers); **extremely thin** regions (tiny overlap of two bodies); **degenerate polygons**; **nearly coincident faces** between RPP / coordinate-plane bodies of the expression (a few 1e-4 of the model size apart but not equal). The near-tolerance is 1e-4 × the render-zone diagonal (≥ 1e-5 cm).
+
+## `.inp` panel
+Drag the grip on the top edge of the panel to resize it (double-click the grip to reset); the height is remembered.

@@ -455,6 +455,13 @@
     const ev = APP.evalRegionNow({ expr }), ea = APP.evalRegionNow(a), eb = APP.evalRegionNow(b);
     return { expr, regName, op, mode, vol: ev.error ? null : ev.vol, volA: ea.error ? null : ea.vol, volB: eb.error ? null : eb.vol, error2: ev.error || null };
   };
+  /** Toast summarising the quality check of a freshly created region (the full text is in its properties). */
+  APP.reportQuality = function (reg) {
+    const ev = APP.evalRegionNow(reg);
+    if (ev.error || !ev.quality || !ev.quality.length) return ev;
+    APP.toast(`⚠ Region ${reg.name}: ${ev.quality[0].text}` + (ev.quality.length > 1 ? ` (+${ev.quality.length - 1} more, see its properties)` : ''));
+    return ev;
+  };
   APP.createBoolRegion = function (a, b, op, mode) {
     const pl = APP.boolPlan(a, b, op, mode);
     if (pl.error) return pl;
@@ -463,7 +470,7 @@
     reg.meta = { boolOf: [a.name, b.name, op] };
     S.sel = { t: 'region', id: reg.id };
     APP.changed({ tree: true, right: true });
-    APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged`);
+    { const ev = APP.reportQuality(reg); if (!(ev.quality && ev.quality.length)) APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged`); }
     return { region: reg, plan: pl };
   };
   /* ---------- Detected features (experimental) ---------- */
@@ -690,6 +697,7 @@
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (FLUKA limit)`);
     for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${c.diag[0].text}`); }
+    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" quality: ${q.text}`); }
     return w;
   };
 })();

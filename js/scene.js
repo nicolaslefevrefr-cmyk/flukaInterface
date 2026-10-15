@@ -326,7 +326,8 @@
         const polys = FK.evalExpr(ast, ctx);
         c.polys = polys;
         c.vol = FK.polysVolume(polys); c.area = FK.polysArea(polys); c.bbox = FK.polysBBox(polys);
-        c.diag = null;
+        c.diag = null; c.quality = null;
+        if (polys.length && c.vol >= 1e-9) { try { c.quality = FK.checkRegionQuality(ast, { W, polys, vol: c.vol, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.quality = null; } }
         if (!polys.length || c.vol < 1e-9) {
           try { c.diag = FK.diagnoseRegion(ast, { W, world: ctx.world, body: ctx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.diag = null; }
         }
@@ -362,7 +363,9 @@
       if (!polys.length || vol < 1e-9) {
         try { diag = FK.diagnoseRegion(ast, { W, world: ctx.world, body: ctx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { diag = null; }
       }
-      return { ast, polys, bbox, vol, diag, W };
+      let quality = null;
+      if (polys.length && vol >= 1e-9) { try { quality = FK.checkRegionQuality(ast, { W, polys, vol, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { quality = null; } }
+      return { ast, polys, bbox, vol, diag, W, quality };
     } catch (e) { return { error: e.message }; }
   };
 

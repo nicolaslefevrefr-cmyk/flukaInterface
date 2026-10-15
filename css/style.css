@@ -302,3 +302,12 @@ dialog.featwin { z-index: 40; }
 #resPop input[type=range] { width: 100%; }
 #resPop .rp-s { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
 #resPop .rp-b { margin-top: 6px; }
+/* resizable .inp panel */
+#sheet { position: relative; }
+#sheet:not(.open) { height: 0 !important; }
+#sheet.resizing { transition: none; user-select: none; }
+#sheetGrip { position: absolute; top: -4px; left: 0; right: 0; height: 9px; cursor: ns-resize; z-index: 5; touch-action: none; }
+#sheetGrip::after { content: ''; position: absolute; left: 50%; top: 3px; width: 44px; height: 3px; margin-left: -22px; border-radius: 2px; background: #c2cad6; }
+#sheetGrip:hover::after { background: var(--accent); }
+.msg.warnq { color: #9a5b00; background: #fff7e6; border: 1px solid #f3d9a4; border-radius: 8px; padding: 5px 8px; }
+.msg.warnq .dg { margin-top: 3px; }

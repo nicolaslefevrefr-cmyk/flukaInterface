@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.4';
+  FK.VERSION = '1.5';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1657,6 +1657,66 @@
         acc = r;
       }
     });
+    return out;
+  };
+
+  /**
+   * Quality check of a NON-empty region: returns [{ kind, text }] (empty list = nothing suspicious).
+   * ctx: { W: render zone, polys, vol, wbody(name) -> world body | null }
+   *   gap      : the region is made of several pieces whose bounding boxes are almost touching (bodies that should have been joined)
+   *   pieces   : the region is made of several separate pieces (info), tiny fragments are flagged
+   *   thin     : the region is extremely thin (typically a tiny overlap of two bodies)
+   *   degen    : degenerate / zero-area polygons
+   *   nearface : faces of two bodies of the expression lie on almost, but not exactly, the same plane (creates slivers)
+   */
+  FK.checkRegionQuality = function (ast, ctx) {
+    const out = [], f = (x) => FK.fmt(x, 4), AX = ['X', 'Y', 'Z'];
+    const diag = boxDiag(ctx.W), nearTol = Math.max(1e-5, diag * 1e-4), polys = ctx.polys || [];
+    if (!polys.length) return out;
+    // --- connected pieces (union-find on welded vertices) ---
+    const wtol = Math.max(diag * 1e-5, 1e-9), key = (v) => Math.round(v[0] / wtol) + ',' + Math.round(v[1] / wtol) + ',' + Math.round(v[2] / wtol);
+    const par = polys.map((_, i) => i), find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const owner = new Map();
+    polys.forEach((pl, i) => { for (const v of pl.v) { const k = key(v), o = owner.get(k); if (o === undefined) owner.set(k, i); else par[find(i)] = find(o); } });
+    const groups = new Map();
+    polys.forEach((pl, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(pl); });
+    const comps = Array.from(groups.values()).map(g => ({ polys: g, vol: Math.abs(FK.polysVolume(g)), bb: bboxOfPolys(g) })).sort((a, b) => b.vol - a.vol);
+    const total = comps.reduce((a, c) => a + c.vol, 0) || 1;
+    if (comps.length > 1) {
+      const tiny = comps.filter(c => c.vol < 1e-4 * total);
+      let close = null;
+      for (let i = 0; i < Math.min(comps.length, 12); i++) for (let j = i + 1; j < Math.min(comps.length, 12); j++) {
+        const g = [0, 1, 2].map(k => Math.max(0, comps[j].bb.min[k] - comps[i].bb.max[k], comps[i].bb.min[k] - comps[j].bb.max[k]));
+        const d = Math.hypot(g[0], g[1], g[2]);
+        if (d < nearTol * 10 && (!close || d < close.d)) close = { d, g, i, j };
+      }
+      if (close) out.push({ kind: 'gap', text: `The region is made of ${comps.length} separate pieces and two of them are only ${f(close.d)} cm apart (${AX.map((a, k) => close.g[k] > 0 ? a + ' ' + f(close.g[k]) : '').filter(Boolean).join(', ') || 'touching'}): if the bodies were meant to be joined, they do not touch. Move one body so that they overlap (or make the faces coincide exactly).` });
+      else out.push({ kind: 'pieces', text: `The region is made of ${comps.length} separate pieces (volumes ${comps.slice(0, 4).map(c => f(c.vol)).join(', ')}${comps.length > 4 ? ', …' : ''} cm³). Fine for a union of distant bodies; otherwise check the +/− signs.` });
+      if (tiny.length) out.push({ kind: 'tiny', text: `${tiny.length} tiny fragment(s) (volume ${tiny.map(c => f(c.vol)).slice(0, 3).join(', ')} cm³, < 0.01 % of the region): usually a sliver left by almost coincident faces.` });
+    }
+    // --- thin region / degenerate polygons ---
+    const area = FK.polysArea(polys), vol = Math.abs(ctx.vol != null ? ctx.vol : FK.polysVolume(polys));
+    if (area > 0 && vol > 0) {
+      const t = 2 * vol / area;
+      if (t < diag * 1e-3 && comps.length === 1) out.push({ kind: 'thin', text: `The region is extremely thin (about ${f(t)} cm thick for an extent of ${f(Math.sqrt(area / 2))} cm): typically two bodies that overlap by a tiny amount.` });
+    }
+    let degen = 0; const a2 = diag * diag * 1e-12;
+    for (const pl of polys) { let a = 0; for (let i = 1; i < pl.v.length - 1; i++) a += 0.5 * V.len(V.cross(V.sub(pl.v[i], pl.v[0]), V.sub(pl.v[i + 1], pl.v[0]))); if (a < a2) degen++; }
+    if (degen) out.push({ kind: 'degen', text: `${degen} degenerate polygon(s) (zero area) in the region surface: the faces of the bodies are probably almost coincident.` });
+    // --- nearly coincident faces between the bodies of the expression ---
+    if (ctx.wbody) {
+      const vals = [[], [], []];
+      for (const n of FK.exprNames(ast)) {
+        const b = ctx.wbody(n); if (!b) continue;
+        if (b.type === 'RPP') { for (let k = 0; k < 3; k++) { vals[k].push([Math.min(b.p[2 * k], b.p[2 * k + 1]), n], [Math.max(b.p[2 * k], b.p[2 * k + 1]), n]); } }
+        else if (b.type === 'XYP') vals[2].push([b.p[0], n]); else if (b.type === 'XZP') vals[1].push([b.p[0], n]); else if (b.type === 'YZP') vals[0].push([b.p[0], n]);
+      }
+      let shown = 0;
+      for (let k = 0; k < 3 && shown < 3; k++) for (let i = 0; i < vals[k].length && shown < 3; i++) for (let j = i + 1; j < vals[k].length && shown < 3; j++) {
+        const [a, na] = vals[k][i], [b, nb] = vals[k][j], d = Math.abs(a - b);
+        if (na !== nb && d > 1e-12 && d < nearTol) { out.push({ kind: 'nearface', text: `Faces of ${na} and ${nb} on ${AX[k]} are ${f(d)} cm apart (${AX[k].toLowerCase()} = ${f(a)} vs ${f(b)}): nearly coincident but not equal, which creates a sliver. Make them equal if it is the same surface.` }); shown++; }
+      }
+    }
     return out;
   };
 

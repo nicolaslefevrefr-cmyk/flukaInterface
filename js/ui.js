@@ -44,8 +44,19 @@
   $('#btnRight').onclick = () => setDrawer('right', !dR.classList.contains('open'));
   $$('.closeD').forEach(b => b.onclick = () => setDrawer(b.dataset.close, false));
   scrim.onclick = () => { setDrawer('left', false); setDrawer('right', false); };
-  $('#btnInp').onclick = () => { sheet.classList.toggle('open'); updateInp(); };
+  $('#btnInp').onclick = () => { if (S.opt.sheetH) sheet.style.height = S.opt.sheetH + 'px'; sheet.classList.toggle('open'); updateInp(); };
   $('#btnInpClose').onclick = () => sheet.classList.remove('open');
+  { // resizable .inp panel: drag the grip on its top edge (height kept in the settings)
+    const grip = $('#sheetGrip'); let drag = null;
+    const maxH = () => Math.max(190, (sheet.parentElement.getBoundingClientRect().height || window.innerHeight) - 120);
+    const setH = (h) => { h = Math.round(Math.min(Math.max(190, h), maxH())); sheet.style.height = h + 'px'; S.opt.sheetH = h; };
+    if (S.opt.sheetH) sheet.style.height = S.opt.sheetH + 'px';
+    grip.addEventListener('pointerdown', e => { drag = { y: e.clientY, h: sheet.getBoundingClientRect().height }; sheet.classList.add('resizing'); try { grip.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    grip.addEventListener('pointermove', e => { if (drag) setH(drag.h + drag.y - e.clientY); });
+    const end = () => { if (drag) { drag = null; sheet.classList.remove('resizing'); APP.save(); } };
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    grip.addEventListener('dblclick', () => { delete S.opt.sheetH; sheet.style.height = ''; APP.save(); });
+  }
 
   /* ---------- Deferred updates ---------- */
   let flags = {}, scheduled = false, saveT = 0;
@@ -572,7 +583,7 @@
     return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
   }
   function renderLeft() {
-    let h = `<div class="sec"><div class="btns"><button class="btn primary" data-act="addStl">Import STL / OBJ…</button><button class="btn" data-act="importInp">Import INP…</button><button class="btn danger" data-act="newModel">New project…</button></div></div><div class="tree">`;
+    let h = `<div class="tree">`;
     for (const g of GROUPS_DEF) {
       const list = g.items(), open = isOpen(g.k), anyVis = list.some(o => o.visible);
       h += `<div class="tg" data-k="${g.k}"><div class="th" data-g="${g.k}"><button class="chev" data-act="fold" data-k="${g.k}" aria-label="Expand / collapse">${open ? '▾' : '▸'}</button><span class="tt">${g.title}</span><span class="cnt">${list.length}</span>` +
@@ -874,7 +885,8 @@
         return '<div class="msg bad"><b>Region is empty inside the render zone.</b>' + dg.map(d => `<div class="dg">${esc(d.text)}` +
           (d.fix ? `<div><button class="btn sm" data-act="applyFix" data-rid="${r.id}" data-expr="${esc(d.fix.expr)}" title="${esc(d.fix.expr)}">${esc(d.fix.label)}: ${esc(d.fix.expr)}</button></div>` : '') + '</div>').join('') + '</div>';
       }
-      return '<div class="msg ok">Valid expression</div>';
+      const q = (c && c.quality) || [];
+      return '<div class="msg ok">Valid expression</div>' + (q.length ? '<div class="msg warnq"><b>⚠ Quality check</b>' + q.map(x => `<div class="dg">${esc(x.text)}</div>`).join('') + '</div>' : '');
     } catch (e) { return `<div class="msg bad">${esc(e.message)}</div>`; }
   }
   /** Keeps the style controls of the properties panel in step with changes made elsewhere (tree slider, eye…), without re-rendering it. */
