@@ -1073,6 +1073,310 @@
     return FK.formatExpr({ zones: [terms] });
   };
 
+  /* ---------------- Automatic feature detection on a triangle mesh (experimental) ----------------
+   * FK.detectFeatures(pos, opts) → { features:[{id, kind, type, p, cs, label, info, tris}], stats }
+   *   plane    : region growing over adjacent triangles (normal angle + distance to the seed plane) → PLA
+   *   cylinder : smooth clusters of the remaining triangles; axis = least-variance direction of the normals, circle fit in the
+   *              perpendicular plane, inlier triangles within tolerance, angular coverage and height checks → RCC
+   *   sphere   : algebraic least squares on the same clusters, radial-normal check → SPH
+   *   box      : connected component whose triangles are aligned with 3 orthogonal directions and fill their oriented bounding box → RPP
+   * Lengths are in the mesh units (cm in the app). */
+  FK.DETECT_DEFAULTS = {
+    planes: true, cylinders: true, spheres: true, boxes: true,
+    minArea: 1,          // minimum area of a plane patch (cm²)
+    angTol: 2,           // max angle between a triangle normal and the seed plane normal (°)
+    distTol: 0.02,       // max distance of a vertex to the seed plane (cm)
+    smoothAngle: 25,     // curved surfaces: max angle between neighbouring triangle normals (°)
+    fitTol: 0.04,        // max radial deviation of a vertex from the fitted cylinder / sphere (cm)
+    curvMinArea: 1,      // minimum area of a cylinder / sphere patch (cm²)
+    minTris: 8,          // minimum number of triangles of a curved patch
+    minRadius: 0.05, maxRadius: 0, // cm (0 = no upper limit)
+    minHeight: 0.1,      // cylinder minimum length (cm)
+    minArc: 150,         // cylinder minimum angular coverage (°)
+    boxFill: 0.9,        // box: mesh volume / oriented box volume
+    boxAligned: 0.85,    // box: fraction of the surface aligned with the 3 box axes
+    snapDeg: 1,          // snap axes / normals to the global axes when closer than this (°)
+    maxPerType: 60
+  };
+  FK.detectDefaults = function (pos) {
+    const st = FK.meshStats(pos), diag = st.bbox ? boxDiag(st.bbox) : 10, d = Object.assign({}, FK.DETECT_DEFAULTS);
+    const r = (x) => +x.toPrecision(2);
+    d.minArea = r(Math.max(st.area * 0.005, 1e-4)); d.curvMinArea = d.minArea;
+    d.distTol = r(Math.max(diag * 0.001, 1e-5)); d.fitTol = r(Math.max(diag * 0.002, 1e-5));
+    d.minRadius = r(diag * 0.002); d.minHeight = r(diag * 0.005);
+    return d;
+  };
+  FK.detectFeatures = function (pos, opts) {
+    const o = Object.assign({}, FK.DETECT_DEFAULTS, opts || {});
+    const topo = FK.buildTopology(pos), n = topo.nTri, nrm = topo.nrm, areas = topo.areas, vid = topo.vid, vp = topo.vpos, nbr = topo.nbr;
+    const N = (t) => [nrm[t * 3], nrm[t * 3 + 1], nrm[t * 3 + 2]];
+    const P = (v) => [vp[v * 3], vp[v * 3 + 1], vp[v * 3 + 2]];
+    const cosA = Math.cos(o.angTol * Math.PI / 180), cosS = Math.cos(o.smoothAngle * Math.PI / 180);
+    const feats = [], counts = { plane: 0, cylinder: 0, sphere: 0, box: 0 }, patches = [];
+    const owner = new Int32Array(n).fill(-1);     // index of the plane / cylinder / sphere feature that took the triangle
+    const add = (f) => { f.id = feats.length + 1; feats.push(f); return f; };
+    const roundv = (a) => a.map(x => +(+x).toFixed(6) || 0);
+    const axisSnap = (d) => {
+      const c = Math.cos(o.snapDeg * Math.PI / 180);
+      for (let k = 0; k < 3; k++) if (Math.abs(d[k]) >= c) { const s = d[k] < 0 ? -1 : 1, r = [0, 0, 0]; r[k] = s; return r; }
+      return d;
+    };
+    // neighbours of a triangle
+    const nb = (t) => { const r = []; for (let k = 0; k < 3; k++) { const u = nbr[t * 3 + k]; if (u >= 0) r.push(u); } return r; };
+    // connected components
+    const comp = new Int32Array(n).fill(-1); let nComp = 0;
+    for (let s = 0; s < n; s++) {
+      if (comp[s] >= 0) continue;
+      const st = [s]; comp[s] = nComp;
+      while (st.length) { const t = st.pop(); for (const u of nb(t)) if (comp[u] < 0) { comp[u] = nComp; st.push(u); } }
+      nComp++;
+    }
+    const triVerts = (t) => [P(vid[t * 3]), P(vid[t * 3 + 1]), P(vid[t * 3 + 2])];
+    const triCenter = (t) => { const v = triVerts(t); return V.mul(V.add(V.add(v[0], v[1]), v[2]), 1 / 3); };
+
+    /* ---- planes ---- */
+    const order = Array.from({ length: n }, (_, i) => i).filter(t => areas[t] > 0).sort((a, b) => areas[b] - areas[a]);
+    if (o.planes) {
+      const stamp = new Int32Array(n).fill(-1), seeded = new Uint8Array(n);
+      let sid = 0;
+      for (const seed of order) {
+        if (owner[seed] !== -1 || seeded[seed]) continue;
+        const n0 = N(seed), sv = triVerts(seed), d0 = V.dot(n0, sv[0]);
+        const patch = [seed]; stamp[seed] = sid; const st = [seed]; let area = areas[seed];
+        while (st.length) {
+          const t = st.pop();
+          for (const u of nb(t)) {
+            if (stamp[u] === sid || owner[u] !== -1 || areas[u] <= 0) continue;
+            if (V.dot(N(u), n0) < cosA) continue;
+            const uv = triVerts(u);
+            if (Math.abs(V.dot(n0, uv[0]) - d0) > o.distTol || Math.abs(V.dot(n0, uv[1]) - d0) > o.distTol || Math.abs(V.dot(n0, uv[2]) - d0) > o.distTol) continue;
+            stamp[u] = sid; patch.push(u); st.push(u); area += areas[u];
+          }
+        }
+        sid++;
+        if (area < o.minArea) { for (const t of patch) seeded[t] = 1; continue; }
+        for (const t of patch) { owner[t] = -2; seeded[t] = 1; }          // provisional: the patch is decided below
+        patches.push({ tris: patch, area });
+      }
+    }
+    // A planar patch that is smoothly connected to other patches (facets of a tessellated cylinder / sphere) is NOT a real plane:
+    // its triangles go back to the curved-surface pool. Real planes are bounded by sharper edges.
+    const smoothId = new Int32Array(n).fill(-1); let nSm = 0;
+    for (let s0 = 0; s0 < n; s0++) {
+      if (smoothId[s0] >= 0 || areas[s0] <= 0) continue;
+      const st = [s0]; smoothId[s0] = nSm;
+      while (st.length) { const t = st.pop(); for (const u of nb(t)) if (smoothId[u] < 0 && areas[u] > 0 && V.dot(N(t), N(u)) >= cosS) { smoothId[u] = nSm; st.push(u); } }
+      nSm++;
+    }
+    const smArea = new Float64Array(nSm); for (let t = 0; t < n; t++) if (smoothId[t] >= 0) smArea[smoothId[t]] += areas[t];
+    const pending = [];
+    const makePlane = (patch, area) => {
+      {
+        // refine: area weighted normal and centroid
+        let nn = [0, 0, 0], c = [0, 0, 0];
+        for (const t of patch) { nn = V.add(nn, V.mul(N(t), areas[t])); c = V.add(c, V.mul(triCenter(t), areas[t])); }
+        nn = axisSnap(V.norm(nn)); c = V.mul(c, 1 / area);
+        // in-plane rectangle (oriented bounding rectangle along the principal in-plane directions, from the vertices)
+        const ref = Math.abs(nn[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], u = V.norm(V.cross(nn, ref)), w = V.cross(nn, u);
+        let mnU = Infinity, mxU = -Infinity, mnW = Infinity, mxW = -Infinity;
+        for (const t of patch) for (const q of triVerts(t)) { const a = V.dot(V.sub(q, c), u), b = V.dot(V.sub(q, c), w); if (a < mnU) mnU = a; if (a > mxU) mxU = a; if (b < mnW) mnW = b; if (b > mxW) mxW = b; }
+        const rect = [[mnU, mnW], [mxU, mnW], [mxU, mxW], [mnU, mxW]].map(q => V.add(c, V.add(V.mul(u, q[0]), V.mul(w, q[1]))));
+        const fi = feats.length;
+        for (const t of patch) owner[t] = fi;
+        counts.plane++;
+        add({ kind: 'plane', type: 'PLA', p: roundv(nn.concat(c)), cs: null, tris: patch, rect, info: { area, tris: patch.length, normal: nn, point: c },
+          label: `plane · ${area.toFixed(2)} cm²` });
+      }
+    };
+    const accepted = [];
+    for (const pt of patches) {
+      const sm = smoothId[pt.tris[0]];
+      if (pt.area >= 0.9 * smArea[sm]) { accepted.push(pt); for (const t of pt.tris) owner[t] = -3; }
+      else { pending.push(pt); for (const t of pt.tris) owner[t] = -1; }
+    }
+
+    /* ---- curved patches: clusters of smoothly connected triangles that are not in a plane ---- */
+    const curved = (o.cylinders || o.spheres);
+    const eig = (M) => { const r = jacobi3(M); const idx = [0, 1, 2].sort((i, j) => r.vals[i] - r.vals[j]); return { vals: idx.map(i => r.vals[i]), vecs: idx.map(i => r.vecs[i]) }; };
+    const uniqVerts = (tris) => { const s = new Set(); for (const t of tris) { s.add(vid[t * 3]); s.add(vid[t * 3 + 1]); s.add(vid[t * 3 + 2]); } return Array.from(s); };
+    const clusters = (cand) => {
+      const inC = new Set(cand), seen = new Set(), res = [];
+      for (const s of cand) {
+        if (seen.has(s)) continue;
+        const cl = [s]; seen.add(s); const st = [s];
+        while (st.length) { const t = st.pop(); for (const u of nb(t)) if (inC.has(u) && !seen.has(u) && V.dot(N(t), N(u)) >= cosS) { seen.add(u); cl.push(u); st.push(u); } }
+        res.push(cl);
+      }
+      return res;
+    };
+    const kasa2 = (pts) => { // x²+y² = 2Ax + 2By + C
+      let sxx = 0, sxy = 0, sx = 0, syy = 0, sy = 0, n2 = pts.length, bx = 0, by = 0, b1 = 0;
+      for (const [x, y] of pts) { const z = x * x + y * y; sxx += x * x; sxy += x * y; sx += x; syy += y * y; sy += y; bx += x * z; by += y * z; b1 += z; }
+      const A = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, n2]], b = [bx / 2, by / 2, b1];
+      // unknowns (A, B, C') with the first two rows halved: solve [sxx sxy sx; sxy syy sy; sx sy n]·[2A 2B C]ᵀ = [bx by b1]ᵀ
+      const M3 = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, n2]], r3 = [bx, by, b1];
+      const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+      const D = det(M3); if (Math.abs(D) < 1e-18) return null;
+      const col = (k) => M3.map((row, i) => row.map((v, j) => j === k ? r3[i] : v));
+      const sol = [det(col(0)) / D, det(col(1)) / D, det(col(2)) / D];
+      const cx = sol[0] / 2, cy = sol[1] / 2, r2 = sol[2] + cx * cx + cy * cy;
+      return r2 > 0 ? { c: [cx, cy], r: Math.sqrt(r2) } : null;
+    };
+    const fitCylinder = (tris) => {
+      let M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], tot = 0;
+      for (const t of tris) { const a = N(t), w = areas[t]; tot += w; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += w * a[i] * a[j]; }
+      const e = eig(M), tr = e.vals[0] + e.vals[1] + e.vals[2];
+      if (!(tr > 0) || e.vals[0] / tr > 0.02 || e.vals[1] / tr < 0.08) return null;     // normals must be ⟂ to one axis and spread around it
+      const ax = e.vecs[0]; const e1 = V.norm(V.cross(ax, Math.abs(ax[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0])), e2 = V.cross(ax, e1);
+      let inl = tris, fit = null;
+      for (let pass = 0; pass < 3; pass++) {
+        const pts = uniqVerts(inl).map(v => { const p = P(v); return [V.dot(p, e1), V.dot(p, e2)]; });
+        fit = kasa2(pts); if (!fit) return null;
+        const ok = (t) => triVerts(t).every(q => Math.abs(Math.hypot(V.dot(q, e1) - fit.c[0], V.dot(q, e2) - fit.c[1]) - fit.r) <= o.fitTol);
+        const next = tris.filter(ok);
+        if (next.length < o.minTris) return null;
+        if (next.length === inl.length && pass > 0) break;
+        inl = next;
+      }
+      const area = inl.reduce((s, t) => s + areas[t], 0);
+      if (area < o.curvMinArea || area < 0.5 * tot) return null;
+      if (fit.r < o.minRadius || (o.maxRadius > 0 && fit.r > o.maxRadius)) return null;
+      // coverage: 360° minus the largest angular gap between triangle centres
+      const ang = inl.map(t => { const c = triCenter(t); return Math.atan2(V.dot(c, e2) - fit.c[1], V.dot(c, e1) - fit.c[0]); }).sort((a, b) => a - b);
+      let gap = ang[0] + 2 * Math.PI - ang[ang.length - 1]; for (let i = 1; i < ang.length; i++) gap = Math.max(gap, ang[i] - ang[i - 1]);
+      const cover = 360 - gap * 180 / Math.PI;
+      if (cover < o.minArc) return null;
+      let inner = 0;
+      const cen = V.add(V.mul(e1, fit.c[0]), V.mul(e2, fit.c[1]));      // a point of the axis (perpendicular foot from the origin)
+      for (const t of inl) {
+        const c = triCenter(t), rad = V.norm(V.sub(V.sub(c, V.mul(ax, V.dot(c, ax))), cen));
+        inner += V.dot(N(t), rad) * areas[t];
+      }
+      let dir = ax; const big = [0, 1, 2].sort((i, j) => Math.abs(dir[j]) - Math.abs(dir[i]))[0]; if (dir[big] < 0) dir = V.mul(dir, -1);
+      dir = axisSnap(dir);
+      let t0 = Infinity, t1 = -Infinity;
+      for (const t of inl) for (const q of triVerts(t)) { const h0 = V.dot(q, dir); if (h0 < t0) t0 = h0; if (h0 > t1) t1 = h0; }
+      const h = t1 - t0; if (h < o.minHeight) return null;
+      const baseFix = V.add(V.sub(cen, V.mul(dir, V.dot(cen, dir))), V.mul(dir, t0));
+      return { tris: inl, r: fit.r, h, base: baseFix, dir, cover, inner: inner < 0, area };
+    };
+    const fitSphere = (tris) => {
+      const vs = uniqVerts(tris).map(P); if (vs.length < 6) return null;
+      // x²+y²+z² = 2c·p + k  → linear LS in (cx, cy, cz, k)
+      const A = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], b = [0, 0, 0, 0];
+      for (const p of vs) { const row = [p[0], p[1], p[2], 1], z = V.dot(p, p) ; for (let i = 0; i < 4; i++) { for (let j = 0; j < 4; j++) A[i][j] += row[i] * row[j]; b[i] += row[i] * z; } }
+      const m = A.map((r, i) => r.concat([b[i]]));
+      for (let i = 0; i < 4; i++) {
+        let piv = i; for (let r = i + 1; r < 4; r++) if (Math.abs(m[r][i]) > Math.abs(m[piv][i])) piv = r;
+        if (Math.abs(m[piv][i]) < 1e-12) return null; [m[i], m[piv]] = [m[piv], m[i]];
+        for (let r = 0; r < 4; r++) if (r !== i) { const f = m[r][i] / m[i][i]; for (let c = i; c < 5; c++) m[r][c] -= f * m[i][c]; }
+      }
+      const s = [0, 1, 2, 3].map(i => m[i][4] / m[i][i]), c = [s[0] / 2, s[1] / 2, s[2] / 2], r2 = s[3] + V.dot(c, c);
+      if (!(r2 > 0)) return null; const r = Math.sqrt(r2);
+      if (r < o.minRadius || (o.maxRadius > 0 && r > o.maxRadius)) return null;
+      const inl = tris.filter(t => triVerts(t).every(q => Math.abs(V.len(V.sub(q, c)) - r) <= o.fitTol));
+      if (inl.length < o.minTris) return null;
+      const area = inl.reduce((s2, t) => s2 + areas[t], 0), tot = tris.reduce((s2, t) => s2 + areas[t], 0);
+      if (area < o.curvMinArea || area < 0.6 * tot) return null;
+      let rad = 0; for (const t of inl) rad += Math.abs(V.dot(N(t), V.norm(V.sub(triCenter(t), c)))) * areas[t];
+      if (rad / area < 0.95) return null;
+      let outward = 0; for (const t of inl) outward += V.dot(N(t), V.norm(V.sub(triCenter(t), c))) * areas[t];
+      return { tris: inl, c, r, area, inner: outward < 0 };
+    };
+    if (curved) {
+      const cand = []; for (let t = 0; t < n; t++) if (owner[t] === -1 && areas[t] > 0) cand.push(t);
+      const queue = clusters(cand).filter(c => c.length >= o.minTris);
+      let guard = 0;
+      while (queue.length && guard++ < 400) {
+        const cl = queue.shift();
+        let res = null, kind = '';
+        if (o.cylinders && counts.cylinder < o.maxPerType && (res = fitCylinder(cl))) kind = 'cylinder';
+        else if (o.spheres && counts.sphere < o.maxPerType && (res = fitSphere(cl))) kind = 'sphere';
+        if (!res) continue;
+        const fi = feats.length; for (const t of res.tris) owner[t] = fi;
+        counts[kind]++;
+        if (kind === 'cylinder') {
+          const len = res.h;
+          add({ kind, type: 'RCC', p: roundv(res.base.concat(V.mul(res.dir, len), [res.r])), cs: null, tris: res.tris,
+            info: { radius: res.r, height: len, coverage: res.cover, inner: res.inner, area: res.area, tris: res.tris.length, base: res.base, axis: res.dir },
+            label: `cylinder ${res.inner ? '(hole) ' : ''}R ${res.r.toFixed(3)} × ${len.toFixed(3)} cm · ${res.cover.toFixed(0)}°` });
+        } else {
+          add({ kind, type: 'SPH', p: roundv(res.c.concat([res.r])), cs: null, tris: res.tris,
+            info: { radius: res.r, inner: res.inner, area: res.area, tris: res.tris.length, centre: res.c },
+            label: `sphere ${res.inner ? '(cavity) ' : ''}R ${res.r.toFixed(3)} cm` });
+        }
+        const left = cl.filter(t => owner[t] === -1);
+        if (left.length >= o.minTris) for (const c2 of clusters(left)) if (c2.length >= o.minTris && c2.length < cl.length) queue.push(c2);
+      }
+    }
+
+    // planar patches that were only provisional facets but were not taken by a cylinder / sphere become planes again
+    for (const pt of pending) {
+      const free = pt.tris.filter(t => owner[t] === -1);
+      if (free.length >= 0.95 * pt.tris.length) { accepted.push(pt); for (const t of pt.tris) owner[t] = -3; }
+    }
+    // Patches lying in the same infinite plane (same normal, same offset) are one PLA: merge them (also repairs meshes cut by T-junctions)
+    {
+      const groups = [];
+      for (const pt of accepted.sort((a, b) => b.area - a.area)) {
+        let nn = [0, 0, 0], c = [0, 0, 0];
+        for (const t of pt.tris) { nn = V.add(nn, V.mul(N(t), areas[t])); c = V.add(c, V.mul(triCenter(t), areas[t])); }
+        nn = V.norm(nn); c = V.mul(c, 1 / pt.area); const d = V.dot(nn, c);
+        const g = groups.find(g2 => V.dot(g2.n, nn) >= cosA && Math.abs(V.dot(g2.n, c) - g2.d) <= o.distTol);
+        if (g) { g.tris = g.tris.concat(pt.tris); g.area += pt.area; } else groups.push({ n: nn, d, tris: pt.tris.slice(), area: pt.area });
+      }
+      for (const g of groups) { if (counts.plane >= o.maxPerType) break; makePlane(g.tris, g.area); }
+    }
+
+    /* ---- boxes: one per connected component ---- */
+    if (o.boxes) {
+      const byComp = new Map();
+      for (let t = 0; t < n; t++) { if (areas[t] <= 0) continue; let l = byComp.get(comp[t]); if (!l) byComp.set(comp[t], l = []); l.push(t); }
+      for (const [, tris] of byComp) {
+        if (counts.box >= o.maxPerType || tris.length < 12) continue;
+        // dominant directions: area-weighted histogram over planes already found, else over triangle normals
+        const dirs = []; for (const t of tris) { const a = N(t); let f = dirs.find(d => Math.abs(V.dot(d.n, a)) >= cosA); if (f) f.a += areas[t]; else dirs.push({ n: a, a: areas[t] }); }
+        dirs.sort((x, y) => y.a - x.a);
+        const n1 = dirs[0].n, d2 = dirs.find(d => Math.abs(V.dot(d.n, n1)) < Math.sin(o.angTol * 2 * Math.PI / 180) + 1e-9);
+        if (!d2) continue;
+        const u1 = n1, u3 = V.norm(V.cross(n1, d2.n)), u2 = V.cross(u3, u1);
+        const sub = tris, tot = sub.reduce((s, t) => s + areas[t], 0), cs2 = Math.cos(o.angTol * Math.PI / 180);
+        let al = 0; for (const t of sub) { const a = N(t); if ([u1, u2, u3].some(u => Math.abs(V.dot(a, u)) >= cs2)) al += areas[t]; }
+        if (al / tot < o.boxAligned) continue;
+        const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+        for (const v of uniqVerts(sub)) { const p = P(v); [u1, u2, u3].forEach((u, k) => { const d = V.dot(p, u); if (d < mn[k]) mn[k] = d; if (d > mx[k]) mx[k] = d; }); }
+        const ext = [0, 1, 2].map(k => mx[k] - mn[k]); if (ext.some(x => x < 1e-6)) continue;
+        let vol = 0; for (const t of sub) { const v = triVerts(t); vol += V.dot(v[0], V.cross(v[1], v[2])) / 6; }
+        vol = Math.abs(vol); const bv = ext[0] * ext[1] * ext[2];
+        if (vol / bv < o.boxFill || vol / bv > 1.02) continue;
+        // aligned with the global axes?  (then a plain RPP in the world frame, otherwise an RPP in a new coordinate system)
+        const cg = Math.cos(o.snapDeg * Math.PI / 180);
+        const aligned = [u1, u2, u3].every(u => u.some(x => Math.abs(x) >= cg));
+        const fi = feats.length;
+        if (aligned) {
+          const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+          for (const v of uniqVerts(sub)) { const p = P(v); for (let k = 0; k < 3; k++) { if (p[k] < bb.min[k]) bb.min[k] = p[k]; if (p[k] > bb.max[k]) bb.max[k] = p[k]; } }
+          counts.box++;
+          add({ kind: 'box', type: 'RPP', p: roundv([bb.min[0], bb.max[0], bb.min[1], bb.max[1], bb.min[2], bb.max[2]]), cs: null, tris: sub,
+            info: { size: [bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]], fill: vol / bv, aligned: al / tot, tris: sub.length },
+            label: `box ${(bb.max[0] - bb.min[0]).toFixed(2)} × ${(bb.max[1] - bb.min[1]).toFixed(2)} × ${(bb.max[2] - bb.min[2]).toFixed(2)} cm` });
+        } else {
+          // frame with columns u1 u2 u3 (right-handed), origin at 0: local = Rᵀ·p
+          const R = [u1[0], u2[0], u3[0], 0, u1[1], u2[1], u3[1], 0, u1[2], u2[2], u3[2], 0];
+          counts.box++;
+          add({ kind: 'box', type: 'RPP', p: roundv([mn[0], mx[0], mn[1], mx[1], mn[2], mx[2]]), cs: R, tris: sub,
+            info: { size: ext, fill: vol / bv, aligned: al / tot, tris: sub.length, rotated: true },
+            label: `box (rotated) ${ext[0].toFixed(2)} × ${ext[1].toFixed(2)} × ${ext[2].toFixed(2)} cm` });
+        }
+      }
+    }
+    // order: boxes, cylinders, spheres, planes; bigger first
+    const rank = { box: 0, cylinder: 1, sphere: 2, plane: 3 };
+    feats.sort((a, b) => rank[a.kind] - rank[b.kind] || (b.info.area || 0) - (a.info.area || 0));
+    feats.forEach((f, i) => { f.id = i + 1; });
+    return { features: feats, stats: { triangles: n, components: nComp, counts } };
+  };
+
   /* ---------------- Region diagnostics ---------------- */
   /** Zero-volume / degenerate parameters of a (world) body, as a sentence with the values, or null. */
   FK.bodyDegeneracy = function (b) {

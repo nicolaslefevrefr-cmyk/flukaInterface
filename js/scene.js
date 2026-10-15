@@ -20,8 +20,8 @@
   camera.add(headLight);
 
   const gStl = new THREE.Group(), gBody = new THREE.Group(), gRegion = new THREE.Group(),
-    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
-  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gSel, gHover, gCut);
+    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
+  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gSel, gHover, gCut);
   let axes = null;
 
   let needRender = true;
@@ -363,6 +363,39 @@
       }
       return { ast, polys, bbox, vol, diag, W };
     } catch (e) { return { error: e.message }; }
+  };
+
+  /* ---------- Temporary preview of a detected feature (not part of the model until validated) ---------- */
+  APP.setFeaturePreview = function (feat, positions) {
+    for (const c of gFeat.children.slice()) { gFeat.remove(c); disposeObj(c); }
+    needRender = true;
+    if (!feat) return;
+    // 1. the mesh triangles the feature was recognised on
+    const pos = new Float32Array(feat.tris.length * 9);
+    feat.tris.forEach((t, i) => { for (let k = 0; k < 9; k++) pos[i * 9 + k] = positions[t * 9 + k]; });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const m1 = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xff8a00, side: THREE.DoubleSide, transparent: true, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false }));
+    m1.raycast = () => {}; gFeat.add(m1);
+    // 2. the proposed primitive
+    try {
+      let prim = null;
+      if (feat.kind === 'plane') {
+        const r = feat.rect, pp = [];
+        for (const q of [[0, 1, 2], [0, 2, 3]]) for (const k of q) pp.push(r[k][0], r[k][1], r[k][2]);
+        const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pp), 3));
+        const grp = new THREE.Group();
+        const me = new THREE.Mesh(g2, new THREE.MeshBasicMaterial({ color: 0x16a34a, side: THREE.DoubleSide, transparent: true, opacity: 0.25, depthWrite: false }));
+        const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(r.map(q => new THREE.Vector3(q[0], q[1], q[2]))), new THREE.LineBasicMaterial({ color: 0x15803d }));
+        me.raycast = () => {}; ln.raycast = () => {}; grp.add(me, ln); prim = grp;
+      } else {
+        const st = feat.box, W = { min: st.min.map(x => x - 1), max: st.max.map(x => x + 1) };
+        let body = { type: feat.type, p: feat.p };
+        if (feat.cs) body = FK.worldBody(body, feat.cs);
+        const polys = FK.bodyPolys(body, W);
+        if (polys && polys.length) { const o = makeSolidGroup(FK.polysToPositions(polys), '#16a34a', 0.22, 'feat', 0); o.mesh.raycast = () => {}; o.lines.material.color.set(0x15803d); prim = o.group; }
+      }
+      if (prim) gFeat.add(prim);
+    } catch (e) { /* preview of the primitive is best effort */ }
   };
 
   // Wireframe mode: every facet edge (coplanar triangle diagonals are skipped), built lazily

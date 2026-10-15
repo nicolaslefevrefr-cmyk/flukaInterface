@@ -243,3 +243,14 @@ dialog textarea { width: 100%; height: 220px; border: 1px solid var(--line); bor
 textarea.expr:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .exprwrap textarea.expr.bad { background: #fff6f6; }
 .voidprev .msg{font-size:12.5px;word-break:break-word}.voidprev code{font-size:12px}
+
+dialog.featwin { position: fixed; left: 10px; top: 56px; margin: 0; width: min(420px, 94vw); max-height: calc(100vh - 80px); overflow: auto; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.22); }
+dialog.featwin[open] { display: block; }
+.fw-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+#featParams details { margin: 4px 0; } #featParams .fgrid { display: grid; grid-template-columns: 1fr 86px; gap: 4px 8px; align-items: center; font-size: 12.5px; }
+#featParams .fgrid input[type=number] { width: 86px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 6px; }
+#featList { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+#featList .fr { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; cursor: pointer; }
+#featList .fr.sel { border-color: #16a34a; background: rgba(22,163,74,.08); } #featList .fr.done { opacity: .55; }
+#featList .fr .lb { flex: 1; word-break: break-word; } #featList .fr small { display: block; color: var(--muted, #6b7686); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+#featList .fr button { padding: 2px 9px; }

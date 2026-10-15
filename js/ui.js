@@ -243,6 +243,70 @@
       d.addEventListener('close', h); d.showModal();
     });
   }
+  /* ---------- Automatic feature detection (experimental) ---------- */
+  const FEAT = { stl: null, params: null, res: null, sel: null, done: new Set() };
+  const FEAT_UI = [
+    ['Planes', 'planes', [['minArea', 'Min. patch area (cm²)'], ['angTol', 'Normal tolerance (°)'], ['distTol', 'Distance tolerance (cm)']]],
+    ['Cylinders', 'cylinders', [['curvMinArea', 'Min. patch area (cm²)'], ['fitTol', 'Fit tolerance (cm)'], ['minRadius', 'Min. radius (cm)'], ['maxRadius', 'Max. radius (cm, 0 = ∞)'], ['minHeight', 'Min. length (cm)'], ['minArc', 'Min. angular coverage (°)'], ['smoothAngle', 'Smooth-surface angle (°)'], ['minTris', 'Min. triangles']]],
+    ['Spheres', 'spheres', [['fitTol', 'Fit tolerance (cm)'], ['minRadius', 'Min. radius (cm)']]],
+    ['Boxes', 'boxes', [['boxFill', 'Min. fill ratio (volume / box)'], ['boxAligned', 'Min. aligned surface fraction']]],
+    ['General', null, [['snapDeg', 'Snap to global axes (°)'], ['maxPerType', 'Max. features per type']]]
+  ];
+  function featParamsHTML() {
+    const P = FEAT.params, seen = new Set();
+    return FEAT_UI.map(([title, flag, rows]) => `<details class="fold" ${flag === 'planes' || flag === 'cylinders' ? 'open' : ''}><summary>${title}${flag ? ` <label class="chk" style="margin:0 0 0 8px;display:inline-flex"><input type="checkbox" data-fp="${flag}" ${P[flag] ? 'checked' : ''}> on</label>` : ''}</summary><div class="fgrid">` +
+      rows.map(([k, l]) => `<label>${l}</label><input type="number" step="any" data-fp="${k}" value="${P[k]}">`).join('') + '</div></details>').join('');
+  }
+  function featListHTML() {
+    const r = FEAT.res; if (!r) return '';
+    if (!r.features.length) return '<div class="muted">No feature found with these parameters. Lower the area / fit tolerances or the minimum coverage.</div>';
+    const ic = { box: '▣', cylinder: '◍', sphere: '●', plane: '▱' };
+    return r.features.map(f => `<div class="fr${FEAT.sel === f.id ? ' sel' : ''}${FEAT.done.has(f.id) ? ' done' : ''}" data-fid="${f.id}"><span>${ic[f.kind]}</span><span class="lb">${esc(f.label)}<small>${f.type} ${esc(f.p.map(x => +(+x).toFixed(4)).join(' '))}${f.cs ? ' (own frame)' : ''}</small></span>${FEAT.done.has(f.id) ? '<span>✓ added</span>' : `<button class="pill" data-fadd="${f.id}">Add</button>`}</div>`).join('');
+  }
+  function featSelect(id) {
+    FEAT.sel = id; const f = FEAT.res && FEAT.res.features.find(x => x.id === id);
+    APP.setFeaturePreview(f || null, FEAT.stl && FEAT.stl.positions);
+    $('#featList').innerHTML = featListHTML();
+  }
+  function openFeatDlg(stl) {
+    if (!stl.positions || !stl.positions.length) { toast('This mesh has no triangles'); return; }
+    FEAT.stl = stl; FEAT.params = FK.detectDefaults(stl.positions); FEAT.res = null; FEAT.sel = null; FEAT.done = new Set();
+    $('#featSrc').textContent = `Mesh "${stl.name}" · ${stl.stats.count} triangles · lengths in cm`;
+    $('#featParams').innerHTML = featParamsHTML(); $('#featList').innerHTML = ''; $('#featMsg').textContent = '';
+    APP.setFeaturePreview(null);
+    const d = $('#dlgFeat'); if (!d.open) d.show();
+  }
+  (function () {
+    const d = $('#dlgFeat'); if (!d) return;
+    d.addEventListener('close', () => APP.setFeaturePreview(null));
+    d.addEventListener('change', e => { const k = e.target.dataset.fp; if (!k) return; FEAT.params[k] = e.target.type === 'checkbox' ? e.target.checked : (+e.target.value); });
+    $('#featReset').onclick = () => { FEAT.params = FK.detectDefaults(FEAT.stl.positions); $('#featParams').innerHTML = featParamsHTML(); };
+    $('#featRun').onclick = () => {
+      if (!FEAT.stl) return;
+      $('#featMsg').textContent = 'Analysing…'; $('#featList').innerHTML = ''; APP.setFeaturePreview(null);
+      setTimeout(() => {
+        const t0 = Date.now();
+        try {
+          FEAT.res = FK.detectFeatures(FEAT.stl.positions, FEAT.params); FEAT.done = new Set(); FEAT.sel = null;
+          for (const f of FEAT.res.features) f.box = FEAT.stl.stats.bbox;
+          const c = FEAT.res.stats.counts;
+          $('#featMsg').textContent = `${FEAT.res.features.length} found (${c.box} box, ${c.cylinder} cyl., ${c.sphere} sph., ${c.plane} planes) in ${Date.now() - t0} ms`;
+        } catch (e) { console.error(e); $('#featMsg').textContent = 'Detection failed: ' + e.message; }
+        $('#featList').innerHTML = featListHTML();
+      }, 30);
+    };
+    $('#featList').addEventListener('click', e => {
+      const add = e.target.closest('[data-fadd]');
+      if (add) { const f = FEAT.res.features.find(x => x.id === +add.dataset.fadd); if (f && !FEAT.done.has(f.id)) { const b = APP.addFeature(f); FEAT.done.add(f.id); toast(`${b.name} (${b.type}) added to the model`); $('#featList').innerHTML = featListHTML(); } return; }
+      const row = e.target.closest('.fr'); if (row) featSelect(+row.dataset.fid);
+    });
+    $('#featAddAll').onclick = () => {
+      if (!FEAT.res) return; let k = 0;
+      for (const f of FEAT.res.features) if (!FEAT.done.has(f.id)) { APP.addFeature(f); FEAT.done.add(f.id); k++; }
+      toast(k + ' object(s) added'); $('#featList').innerHTML = featListHTML();
+    };
+  })();
+
   /* ---------- Void region (experimental) ---------- */
   function voidArgs() { return [+$('#voidMargin').value || 0, (document.querySelector('input[name=voidMode]:checked') || {}).value || 'compact']; }
   function updateVoidPrev(r) {
@@ -488,7 +552,7 @@
         { label: 'Section view (XZ plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':xz') },
         { label: 'Section view (YZ plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':yz') },
         { label: 'Duplicate', fn: () => APP.duplicateCsys(o) }, { sep: 1 }, del];
-      case 'stl': return [rename, toggle, { label: 'Bounding RPP', fn: () => { if (o.stats && o.stats.bbox) APP.rppFromBox(o.stats.bbox); } }, { sep: 1 }, del];
+      case 'stl': return [rename, toggle, { label: 'Detect features… (experimental)', fn: () => openFeatDlg(o) }, { label: 'Bounding RPP', fn: () => { if (o.stats && o.stats.bbox) APP.rppFromBox(o.stats.bbox); } }, { sep: 1 }, del];
       case 'measure': return [toggle, { label: 'RPP from these 2 points', fn: () => APP.createRpp(o.a, o.b) }, { sep: 1 }, del];
     }
     return [];
@@ -1262,5 +1326,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

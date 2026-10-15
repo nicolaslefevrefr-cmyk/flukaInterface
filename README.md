@@ -64,3 +64,16 @@ Section view: contour points are welded geometrically, so meshes from boolean op
 ## Render modes and cylinder top centre
 
 Bottom-right toolbar: shaded (per-object opacity), wireframe, all opaque, all transparent, and an edges on/off toggle (picking keeps working in every mode). For RCC / TRC the *Axis vector* field has the same techniques as the base centre: pick the centre of a circular edge or of several points (axis = that centre − base centre; the radius can be set too), plus the edge-direction picker.
+
+## Automatic feature detection (experimental)
+
+Mesh ⋮ menu ▸ *Detect features…* opens a floating window (the 3D view stays usable) with the recognition parameters and a *Detect* button. Every proposal is listed; clicking a row shows it **temporarily** in 3D (orange = the mesh triangles it was recognised on, green = the proposed primitive) and nothing enters the model until you press *Add* (or *Add all remaining*).
+
+| Feature | Method | Result |
+|---|---|---|
+| Plane | region growing over adjacent triangles (normal angle ≤ tolerance, vertex distance to the seed plane ≤ tolerance), total area ≥ threshold; patches in the same infinite plane are merged; facets of tessellated cylinders / spheres are not reported as planes | PLA (normal outward, point = centroid) |
+| Cylinder | smooth clusters of the remaining triangles; axis = direction ⟂ to the normals (least-variance eigenvector), circle fit in the perpendicular plane, inlier triangles within the fit tolerance, angular coverage, radius and length limits; holes are labelled *(hole)* | RCC (axis snapped to the global axes within the snap angle) |
+| Sphere | algebraic least squares + radial-normal check | SPH |
+| Box | connected component aligned with 3 orthogonal directions that fills its oriented bounding box | RPP (a rotated box also creates its own coordinate system) |
+
+Defaults are derived from the mesh size and can be reset. Adjacency is by shared vertices, so meshes with T-junctions or duplicated vertices are detected in several pieces (planes in the same plane are merged). Not yet detected: cones (TRC), fillets, partial arcs below the coverage limit.

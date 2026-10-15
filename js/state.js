@@ -444,6 +444,17 @@
     APP.toast(`Void region ${reg.name} created with RPP ${body.name} (hidden; show it from the tree)`);
     return { body, region: reg, plan: pl };
   };
+  /* ---------- Detected features (experimental) ---------- */
+  /** Add a detected feature to the model as a body (world coordinates; a rotated box also gets its own coordinate system). */
+  APP.addFeature = function (f) {
+    APP.snap();
+    let cs = 0;
+    if (f.cs) cs = APP.addCsys(f.cs.slice(), { parent: 0, name: FK.uniqueName('bxcs1', csysNames()) }).id;
+    const b = APP.addBody(f.type, f.p.slice(), { cs, meta: { detected: f.kind } });
+    S.sel = { t: 'body', id: b.id };
+    APP.changed({ tree: true, right: true });
+    return b;
+  };
   APP.regionNameFor = (bodyName) => FK.uniqueName('r_' + bodyName.slice(0, 6), regionNames());
 
   APP.createRpp = function (a, b, label) {
