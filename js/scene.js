@@ -146,8 +146,8 @@
     if (gesture.moved < 6 && gesture.mode !== 'pinch') return;
     if (gesture.mode === 'rotate') {
       // yaw about the world Z axis, pitch about the camera's right axis; no limit on either
-      const qy = new THREE.Quaternion().setFromAxisAngle(Zaxis, -dx * 0.008);
-      const qp = new THREE.Quaternion().setFromAxisAngle(Xaxis, -dy * 0.008);
+      const qy = new THREE.Quaternion().setFromAxisAngle(Zaxis, -dx * 0.008 * (S.opt.invX ? -1 : 1));
+      const qp = new THREE.Quaternion().setFromAxisAngle(Xaxis, -dy * 0.008 * (S.opt.invY ? -1 : 1));
       cam.q = qy.multiply(cam.q).multiply(qp); applyCam();
     }
     else if (gesture.mode === 'pan') { panBy(dx, dy); applyCam(); }
@@ -589,6 +589,20 @@
     const hits = raycaster.intersectObjects(pickMeshes(), false);
     return hits.length ? hits[0] : null;
   };
+  /** All entities under the cursor (one hit per mesh / body / region, nearest first). */
+  APP.raycastAll = function (cx, cy) {
+    const r = canvas.getBoundingClientRect();
+    camera.updateMatrixWorld(true);
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const seen = new Set(), out = [];
+    for (const h of raycaster.intersectObjects(pickMeshes(), false)) {
+      const u = h.object.userData, k = u.kind + ':' + u.id;
+      if (seen.has(k)) continue; seen.add(k); out.push(h);
+    }
+    return out;
+  };
+  APP.ownerOf = (hit) => { const o = ownerOf(hit.object); if (o.kind === 'body') { const b = APP.getBody(o.id); o.type = b ? b.type : ''; } return o; };
   function toScreen(p) {
     const v = new THREE.Vector3(p[0], p[1], p[2]).project(camera);
     const r = canvas.getBoundingClientRect();

@@ -1,4 +1,6 @@
-# Creo → FLUKA Geometry
+# Combinatorial Geometry Tool  (v1.3)
+
+Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
 Pure web tool (HTML/CSS/JS, installable as a PWA): loads an STL or OBJ mesh exported from Creo Parametric, lets you measure, create RPP (2 points) and PLA (from a mesh triangle), cut regions, and writes the FLUKA / Flair `GEOBEGIN … GEOEND` block live (everything in cm).
 
@@ -6,7 +8,7 @@ Pure web tool (HTML/CSS/JS, installable as a PWA): loads an STL or OBJ mesh expo
 
 ## Interface
 - **Top bar**: *File* menu (new / open / save project, import STL / OBJ / INP, export .inp), undo / redo, `.inp` sheet, ⚙ settings (display, title, output format), ▤ properties of the selected item.
-- **Bottom-right of the view**: selection filters (point / edge / face / object), Info and Distance tools, view buttons (fit to what is displayed, Iso, Z, Y, X, ⟂ look normal to a face, ⇄ opposite side). **Top-right**: axis triad — click an axis to look along it (click again for the opposite side).
+- **Top band of the view** (v1.3; groups separated by vertical rules): selection filters (point / edge / face / object), Info and Distance tools, view buttons (fit to what is displayed, Iso, Z, Y, X, ⟂ look normal to a face, ⇄ opposite side). Also in the band: render modes, mouse-rotation inversion (⇄ left/right, ⇅ up/down). **Top-right of the view**: axis triad — click an axis to look along it (click again for the opposite side).
 - **Tool window** (top-left of the view): options and results of the current tool (snap, whole face, pick card, last distance…).
 - **Tree view** (left): Meshes, Coordinate systems, Planes, Bodies, Regions, Measures. Fold/unfold groups; right-click a group header (or use ＋) to create items; right-click an item (or ⋮) to rename, duplicate, delete, show/hide, etc.
 - **Pickers**: next to every coordinate group of a body (RPP min/max corner, sphere centre/radius, cylinder base/axis/radius, PLA normal/point, plane position…) the ⌖ button lets you click a point (or a face, for a PLA normal) in the 3D view; the value is written in the body's own coordinate system. Each coordinate field also has its own small ⌖ to fill a single value (e.g. only ymax). Same for a coordinate system origin.
@@ -81,3 +83,20 @@ Defaults are derived from the mesh size and can be reset. Adjacency is by shared
 ### Guided fit (click triangles)
 
 In the *Detect features* window, *Guided fit* lets you force the recognition on a surface: choose *Auto / Cylinder / Plane / Sphere*, press *Pick triangles*, then click one or several triangles of the mesh (click again to unselect). After every click the primitive is refitted and shown (blue = clicked triangles, orange = the patch it explains, green = the primitive) with a confidence percentage and a report (clicked triangles that fit, patch size, rms deviation, angular coverage). More triangles spread over the surface make the fit more reliable. The cylinder axis is free (any direction, snapped to a global axis only within the snap angle), so tilted cylinders work; one facet is enough because its neighbours are used to find the curvature. Flat selections are refused as cylinders with an explanation. *Add* puts the result in the tree.
+
+## Properties panel (v1.3)
+Four tabs: **General** (name, defined-in coordinate system, information), **View** (colour, opacity, graphic options), **Definition** (geometric definition of bodies / planes; expression editor of regions), **Operations** (duplicate, delete, void region, section of a csys, *Detect features* on a mesh, and the *Scale / margin about the centre* tool, collapsed until you tick its checkbox).
+
+## Overlapping entities pop-up (v1.3)
+When a click has several meshes / bodies / regions under the cursor, a small pop-up lists them nearest first. Hovering an entry highlights it in the 3D view; click an entry (or ↑ / ↓) to choose it, then **Select** (or Enter / double-click) to really pick it, **Cancel** (or Esc / click elsewhere) to abandon the pick. Can be disabled in Settings ▸ Display.
+
+## Feature window, mouse rotation
+The *Detect features* window is a floating window: drag it by its title, or press ⇥ to dock it to the right of the project panel (press again to float). Settings ▸ Display (and the band buttons) invert left/right and up/down mouse rotation.
+
+## Version and updates
+The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `version.json`, `service-worker.js` and the `?v=` of the script links — change them together). Convention: minor (1.x) for new features, major for deep changes; 1.2 was the baseline before this release.
+The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
+
+### Changelog
+- **1.3** — renamed *Combinatorial Geometry Tool*; version display; toolbar moved to a top band; floating / dockable feature window; mouse-rotation inversion; update mechanism; overlapping-entities pop-up; properties tabs and collapsible scale tool.
+- **1.2** — automatic and guided feature detection (baseline).

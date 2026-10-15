@@ -4,6 +4,8 @@
 (function (root) {
   'use strict';
   const FK = {};
+  FK.VERSION = '1.3';
+  FK.APP_NAME = 'Combinatorial Geometry Tool';
 
   /* ---------------- Vecteurs ---------------- */
   const V = {

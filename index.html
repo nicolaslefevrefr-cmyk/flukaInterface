@@ -4,17 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<title>Creo → FLUKA Geometry</title>
+<title>Combinatorial Geometry Tool</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=1.3">
 </head>
 <body>
+<div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Creo → FLUKA</b><span>geometry</span></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.3</i></b><span>Creo → FLUKA</span></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -59,6 +60,10 @@
             <button data-render="opaque" title="All opaque"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 12l8-4.5M12 12L4 7.5M12 12v9" stroke="#fff" stroke-width="1.2" fill="none"/></svg></button>
             <button data-render="ghost" title="All transparent (see-through)"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="currentColor" opacity=".12" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.5 2" stroke-linejoin="round"/></svg></button>
             <button id="btnEdges" title="Show / hide edge lines"><svg viewBox="0 0 24 24"><path d="M4 18L12 5l8 13z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 11.5l8 0" stroke="currentColor" stroke-width="1" opacity=".5"/></svg></button>
+          </div>
+          <div class="grp" id="grpRot" role="group" aria-label="Mouse rotation">
+            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="viewBtns" role="group" aria-label="View">
             <button data-view="fit" title="Fit the view to what is displayed">⤢</button>
@@ -140,7 +145,7 @@
 </dialog>
 <dialog id="dlgFeat" class="featwin">
   <form method="dialog">
-    <div class="fw-h"><b>Detect features <small class="muted">(experimental)</small></b><button type="button" class="ib" value="close" aria-label="Close">✕</button></div>
+    <div class="fw-h"><b>Detect features <small class="muted">(experimental)</small></b><span class="fw-ctl"><button type="button" class="ib" id="featDock" title="Dock beside the project panel / float" aria-label="Dock">⇥</button><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
     <div class="muted" id="featSrc"></div>
     <div class="fw-guided">
       <b>Guided fit</b> <span class="muted">— click triangles of the mesh; more triangles = more confidence</span>
@@ -160,12 +165,12 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js"></script>
-<script src="js/core.js"></script>
-<script src="js/state.js"></script>
-<script src="js/scene.js"></script>
-<script src="js/cut.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/pwa.js"></script>
+<script src="js/lib/three.min.js?v=1.3"></script>
+<script src="js/core.js?v=1.3"></script>
+<script src="js/state.js?v=1.3"></script>
+<script src="js/scene.js?v=1.3"></script>
+<script src="js/cut.js?v=1.3"></script>
+<script src="js/ui.js?v=1.3"></script>
+<script src="js/pwa.js?v=1.3"></script>
 </body>
 </html>

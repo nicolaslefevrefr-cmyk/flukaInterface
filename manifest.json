@@ -1,6 +1,6 @@
 {
-  "name": "Creo → FLUKA Geometry",
-  "short_name": "Creo→FLUKA",
+  "name": "Combinatorial Geometry Tool",
+  "short_name": "CG Tool",
   "description": "Transfer geometry from Creo Parametric (STL / OBJ) to FLUKA / Flair cards (RPP, PLA, regions).",
   "start_url": "./index.html",
   "scope": "./",

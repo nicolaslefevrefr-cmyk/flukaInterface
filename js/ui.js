@@ -81,6 +81,7 @@
     $$('#grpProj button[data-proj]').forEach(b => b.classList.toggle('on', b.dataset.proj === (S.opt.proj || 'persp')));
     $$('#grpRender button[data-render]').forEach(b => b.classList.toggle('on', b.dataset.render === (S.opt.render || 'shaded')));
     $('#btnEdges').classList.toggle('on', S.opt.edges !== false);
+    $('#btnInvX').classList.toggle('on', !!S.opt.invX); $('#btnInvY').classList.toggle('on', !!S.opt.invY);
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
   }
   function clearPick() { S.pick = null; APP.drawHighlight(APP.gSel, null); }
@@ -105,6 +106,8 @@
   $$('#grpProj button[data-proj]').forEach(b => b.onclick = () => { APP.setProjection(b.dataset.proj); syncToolbar(); APP.save(); });
   $$('#grpRender button[data-render]').forEach(b => b.onclick = () => { S.opt.render = b.dataset.render; APP.applyStyles(); syncToolbar(); APP.save(); });
   $('#btnEdges').onclick = () => { S.opt.edges = S.opt.edges === false; APP.applyStyles(); syncToolbar(); APP.save(); };
+  $('#btnInvX').onclick = () => { S.opt.invX = !S.opt.invX; syncToolbar(); APP.save(); };
+  $('#btnInvY').onclick = () => { S.opt.invY = !S.opt.invY; syncToolbar(); APP.save(); };
   $('#btnCut').onclick = () => APP.cutSetOpen(!APP.cut.open);
   APP.hooks.cutToggled = (on) => $('#btnCut').classList.toggle('on', on);
   function lookAtFace(pk) { APP.cam.target.set(pk.centroid[0], pk.centroid[1], pk.centroid[2]); APP.viewAlong(pk.normal); }
@@ -183,6 +186,7 @@
     S.opt[k] = v;
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly'].includes(k)) clearPick();
     if (k === 'margin' || k === 'axes') APP.changed({});
+    if (k === 'invX' || k === 'invY') syncToolbar();
     if (k === 'style') { S.opt.style = +v; $('#inpStyle').value = String(S.opt.style); updateInp(); }
     APP.save();
   }
@@ -302,9 +306,45 @@
     $('#featParams').innerHTML = featParamsHTML(); $('#featList').innerHTML = ''; $('#featMsg').textContent = '';
     APP.setFeaturePreview(null);
     const d = $('#dlgFeat'); if (!d.open) d.show();
+    featPlace();
+  }
+  /* Floating / docked placement of the feature window. Position is kept in S.opt.featWin = {x, y, docked}. */
+  function featPlace() {
+    const d = $('#dlgFeat'); if (!d) return;
+    const w = S.opt.featWin || (S.opt.featWin = { docked: false });
+    $('#featDock').classList.toggle('on', !!w.docked);
+    d.classList.toggle('docked', !!w.docked);
+    const vw = window.innerWidth || 1000, vh = window.innerHeight || 800;
+    if (w.docked) {
+      const dl = $('#drawerLeft'), r = dl.getBoundingClientRect(), main = $('#viewport').getBoundingClientRect();
+      const x = (r.width > 20 ? r.right : (main.left || 0)) + 8;
+      d.style.left = Math.max(0, Math.round(x)) + 'px'; d.style.top = Math.round((main.top || 56) + 50) + 'px';
+    } else if (typeof w.x === 'number') {
+      d.style.left = Math.min(Math.max(0, w.x), Math.max(0, vw - 80)) + 'px'; d.style.top = Math.min(Math.max(0, w.y), Math.max(0, vh - 40)) + 'px';
+    } else { d.style.left = ''; d.style.top = ''; }
   }
   (function () {
     const d = $('#dlgFeat'); if (!d) return;
+    $('#featDock').onclick = () => { const w = S.opt.featWin || (S.opt.featWin = {}); w.docked = !w.docked; featPlace(); APP.save(); };
+    window.addEventListener('resize', () => { if (d.open) featPlace(); });
+    if (window.ResizeObserver) new ResizeObserver(() => { if (d.open && (S.opt.featWin || {}).docked) featPlace(); }).observe($('#drawerLeft'));
+    { // drag the window by its header (undocks it)
+      let drag = null;
+      d.querySelector('.fw-h').addEventListener('pointerdown', e => {
+        if (e.target.closest('button')) return;
+        const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, id: e.pointerId };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      });
+      d.querySelector('.fw-h').addEventListener('pointermove', e => {
+        if (!drag) return;
+        const w = S.opt.featWin || (S.opt.featWin = {}); w.docked = false;
+        w.x = Math.round(Math.min(Math.max(0, e.clientX - drag.dx), window.innerWidth - 80)); w.y = Math.round(Math.min(Math.max(0, e.clientY - drag.dy), window.innerHeight - 40));
+        featPlace();
+      });
+      const end = () => { if (drag) { drag = null; APP.save(); } };
+      d.querySelector('.fw-h').addEventListener('pointerup', end); d.querySelector('.fw-h').addEventListener('pointercancel', end);
+    }
     d.addEventListener('close', () => { FEAT.armed = false; FEAT.seeds = []; FEAT.g = null; document.body.classList.remove('featpick'); APP.setFeaturePreview(null); });
     $('#gPick').onclick = () => guidedArm(!FEAT.armed);
     $('#gClear').onclick = () => { FEAT.seeds = []; guidedRefit(); };
@@ -398,10 +438,14 @@
       { label: 'Copy .inp text', fn: () => copyText(APP.inpText()) }]);
   };
   const dlgSet = $('#dlgSettings');
+  { const vt = document.getElementById('verTag'); if (vt) vt.textContent = 'v' + FK.VERSION; document.title = FK.APP_NAME; }
   $('#btnSettings').onclick = () => {
     const o = S.opt;
     $('#settingsBody').innerHTML = `<details class="fold" open><summary>Display</summary><div>
         <label class="chk"><input type="checkbox" data-opt="axes" ${o.axes ? 'checked' : ''}>Axes at the origin (X red, Y green, Z blue)</label>
+        <label class="chk"><input type="checkbox" data-opt="multiPick" ${o.multiPick !== false ? 'checked' : ''}>Pop-up to choose among overlapping entities under a click</label>
+        <label class="chk"><input type="checkbox" data-opt="invX" ${o.invX ? 'checked' : ''}>Invert left / right mouse rotation</label>
+        <label class="chk"><input type="checkbox" data-opt="invY" ${o.invY ? 'checked' : ''}>Invert up / down mouse rotation</label>
         <div class="row2"><span class="muted" style="flex:1">Render zone margin (%)</span><input type="number" step="1" min="0" style="width:80px" data-opt="margin" value="${o.margin}"></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
         <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
@@ -410,10 +454,19 @@
           <option value="1" ${o.style == 1 ? 'selected' : ''}>Flair style (REGION + line)</option>
           <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
           <option value="3" ${o.style == 3 ? 'selected' : ''}>Fixed columns (Fortran-like, ≤132 col)</option></select></div>
-        <div class="muted" style="font-size:12px;margin-top:6px">Name-based geometry (COMBNAME) is free format: separators are blanks, names ≤ 8 characters, lines ≤ 132 columns. The fixed-column style aligns GEOBEGIN as (A8,2X,6E10.0,A8) and the title as (2I5,10X,A60).</div></div></details>`;
+        <div class="muted" style="font-size:12px;margin-top:6px">Name-based geometry (COMBNAME) is free format: separators are blanks, names ≤ 8 characters, lines ≤ 132 columns. The fixed-column style aligns GEOBEGIN as (A8,2X,6E10.0,A8) and the title as (2I5,10X,A60).</div></div></details>
+      <details class="fold"><summary>About / updates</summary><div>
+        <div><b>${FK.APP_NAME}</b> v${FK.VERSION}</div>
+        ${window.CGT_check ? `<div class="update-row"><button type="button" class="btn sm" data-act="chkUpd">Check for update</button><button type="button" class="btn sm" data-act="forceUpd">Force refresh (clear cache)</button><span class="muted" id="updMsg"></span></div>
+        <div class="muted" style="font-size:12px">The app always loads the newest files when online (network-first) and checks <code>version.json</code> on load and on focus.</div>` : `<div class="muted" style="font-size:12px">Single-file version: there is no automatic update. Re-download the file to get a newer version.</div>`}</div></details>`;
     if (!dlgSet.open) dlgSet.showModal();
   };
   $('#settingsBody').addEventListener('input', e => { const t = e.target; if (t.dataset.k === 'title') { APP.snap('title'); S.model.title = t.value; APP.changed({}); } else if (t.type === 'number') onOptChange(e); });
+  $('#settingsBody').addEventListener('click', async e => {
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'forceUpd') window.CGT_forceRefresh();
+    else if (a.dataset.act === 'chkUpd') { const m = $('#updMsg'); m.textContent = '…'; const r = await window.CGT_check(true); m.textContent = r === 'new' ? 'A newer version is available.' : r === 'same' ? 'Up to date.' : 'Offline.'; }
+  });
   $('#settingsBody').addEventListener('change', e => { if (e.target.dataset.opt) onOptChange(e); else if (e.target.dataset.k === 'exportCs') APP.setExportCsys(+e.target.value); });
 
   /* ---------- Left panel: project tree ---------- */
@@ -802,18 +855,26 @@
   }
 
   function scaleSection() {
-    const sc = S.opt.scale;
-    return `<details class="fold" open><summary>Scale / margin (about the centre)</summary><div>
+    const sc = S.opt.scale, open = !!S.opt.scaleOpen;
+    return `<label class="chk"><input type="checkbox" data-opt="scaleOpen" ${open ? 'checked' : ''}>Scale / margin about the centre</label>
+      <div class="scalebox" ${open ? '' : 'hidden'}>
       <div class="row2"><select data-sc="mode"><option value="margin" ${sc.mode === 'margin' ? 'selected' : ''}>Margin all around (+ grows, − shrinks)</option><option value="pct" ${sc.mode === 'pct' ? 'selected' : ''}>Scale in %</option></select></div>
       <div class="row2"><input type="number" step="any" value="${sc.val}" data-sc="val"><select data-sc="unit" style="max-width:80px" ${sc.mode === 'pct' ? 'disabled' : ''}><option value="mm" ${sc.unit === 'mm' ? 'selected' : ''}>mm</option><option value="cm" ${sc.unit === 'cm' ? 'selected' : ''}>cm</option></select></div>
       <div class="btns"><button class="btn" data-act="scale">Apply</button><button class="btn" data-act="scaleDup">Duplicate + apply</button></div>
-      <div class="muted" style="font-size:11.5px">Planes: the margin shifts the plane outward (along H). 120 % = grow by 20 %.</div></div></details>`;
+      <div class="muted" style="font-size:11.5px">Planes: the margin shifts the plane outward (along H). 120 % = grow by 20 %.</div></div>`;
+  }
+  /** Tabs of the properties panel: all panes stay in the DOM (hidden), so live updates keep working. */
+  function tabbed(p) {
+    const names = { general: 'General', view: 'View', definition: 'Definition', operations: 'Operations' };
+    const avail = Object.keys(names).filter(k => p[k]);
+    const cur = avail.includes(S.rtab) ? S.rtab : avail[0];
+    return `<div class="rtabs" role="tablist">${avail.map(k => `<button class="rtab${k === cur ? ' on' : ''}" role="tab" data-act="rtab" data-tab="${k}">${names[k]}</button>`).join('')}</div>` +
+      avail.map(k => `<div class="rpane" data-pane="${k}" ${k === cur ? '' : 'hidden'}>${p[k]}</div>`).join('');
   }
 
   function bodyProps(b) {
     const info = FK.BODY_TYPES[b.type];
-    let h = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
-      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>`;
+    let h = '';
     if (b.type === 'RAW') h += `<div class="fld full"><label>Card kept as-is</label><textarea class="expr" readonly>${esc((b.raw || []).join('\n'))}</textarea></div>`;
     else if (APP.FIELD_GROUPS[b.type]) {
       APP.FIELD_GROUPS[b.type].forEach((g, gi) => {
@@ -826,26 +887,31 @@
           }).join('')}</div></div>`;
       });
     } else info.fields.forEach((fl, i) => { h += numField(fl, `data-bf="${i}"`, b.p[i]); });
+    const defFields = h; h = '';
     if (b.type !== 'RAW' || S.model.csys.length) {
       h += `<div class="fld full"><label>Defined in coordinate system</label><select data-k="bcs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${b.cs === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-opt="keepPos" ${S.opt.keepPos === true ? 'checked' : ''}>Keep the position when changing frame (recomputes the parameters)</label></div>`;
     }
+    const csHTML = h; h = '';
+    let inpLine = '';
     if (b.type !== 'RAW') {
       const xb = APP.xbody(b), ex = APP.exportCs();
-      h += `<div class="fld full"><div class="muted" style="font-size:12px">In the INP (frame: ${esc(APP.csysLabel(ex))}): <code>${esc(xb.type)} ${esc(xb.p.map(x => +(+x).toFixed(5)).join(' '))}</code></div></div>`;
+      inpLine = `<div class="fld full"><div class="muted" style="font-size:12px">In the INP (frame: ${esc(APP.csysLabel(ex))}): <code>${esc(xb.type)} ${esc(xb.p.map(x => +(+x).toFixed(5)).join(' '))}</code></div></div>`;
     }
-    h += '</div>';
+    let planeBtns = '';
     if (b.type === 'PLA') {
       const src = b.meta && b.meta.src;
-      h += `<div class="btns"><button class="btn sm" data-act="flipPlane">Flip direction (H → −H)</button><button class="btn sm" data-act="replane">Recompute from a face…</button></div>`;
-      if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; h += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
+      planeBtns = `<div class="btns"><button class="btn sm" data-act="flipPlane">Flip direction (H → −H)</button><button class="btn sm" data-act="replane">Recompute from a face…</button></div>`;
+      if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; planeBtns += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
     }
-    if (b.type !== 'RAW') h += commonStyle(b);
-    h += '</div>';
-    if (b.type !== 'RAW') h += scaleSection();
-    h += `<div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>`;
-    return h;
+    const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
+      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${csHTML}</div></div>
+      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+    const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
+    const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
+      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+    return tabbed({ general, view, definition, operations });
   }
   function csysWorldHTML(c) {
     const w = APP.csysWorld(c.id), e = FK.M.toEuler(w);
@@ -857,26 +923,31 @@
     const parents = [`<option value="0">Global (0,0,0)</option>`].concat(S.model.csys.filter(x => x.id !== c.id && !APP.isDescendant(x.id, c.id)).map(x => `<option value="${x.id}" ${c.parent === x.id ? 'selected' : ''}>${esc(x.name)}</option>`)).join('');
     const kids = APP.csysChildren(c.id), nb = S.model.bodies.filter(b => b.cs === c.id).length;
     const grid3 = (label, kind, v) => `<div class="fld full"><label>${label}</label><div class="g3">${[0, 1, 2].map(i => cf(kind, i, v[i])).join('')}</div></div>`;
-    let h = `<div class="sec"><h4><span>Coordinate system</span></h4><div class="fields">
+    const general = `<div class="sec"><h4><span>Coordinate system</span></h4><div class="fields">
       <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(c.name)}"></div>
       <div class="fld full"><label>Defined relative to</label><select data-k="cparent">${parents}</select></div>
       <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="cfrozen" ${c.frozen ? 'checked' : ''}>Freeze: does not follow its parent (keeps its world pose)</label></div>
       </div>
-      <div class="muted" style="font-size:12px;margin:2px 0 6px">Unless frozen, this system moves with its parent. ${kids.length ? kids.length + ' child system(s) (' + kids.filter(k => k.frozen).length + ' frozen). ' : ''}${nb ? nb + ' body(ies) defined in this system.' : ''}</div>
-      <details class="fold" open><summary>Position and orientation (relative to the parent)</summary><div>
+      <div class="muted" style="font-size:12px;margin:2px 0 6px">Unless frozen, this system moves with its parent. ${kids.length ? kids.length + ' child system(s) (' + kids.filter(k => k.frozen).length + ' frozen). ' : ''}${nb ? nb + ' body(ies) defined in this system.' : ''}</div></div>`;
+    const definition = `<div class="sec"><h4><span>Position and orientation</span></h4>
+      <div class="muted" style="font-size:12px">Relative to the parent system.</div><div>
         <div class="fld full grp"><div class="gh"><label>Position X, Y, Z (cm)</label><button class="pk${S.fill && S.fill.kind === 'csys' && S.fill.id === c.id && S.fill.only === undefined ? ' on' : ''}" data-act="pickCsysPos" title="Pick the whole origin in the 3D view" aria-label="Pick the origin">⌖</button></div><div class="g3">${[0, 1, 2].map(i => `<div class="fld"><div class="fl"><label>${'XYZ'[i]}</label><button class="pk sm${S.fill && S.fill.kind === 'csys' && S.fill.id === c.id && S.fill.only === i ? ' on' : ''}" data-act="pickCsysPos" data-i="${i}" title="Pick this coordinate only">⌖</button></div>${cf('pos', i, [m[3], m[7], m[11]][i])}</div>`).join('')}</div></div>
         ${grid3('Angles α, β, γ (°) — R = Rz(γ)·Ry(β)·Rx(α)', 'eul', e)}
         ${grid3('X axis vector', 'xa', [m[0], m[4], m[8]])}
         ${grid3('Approx. Y axis vector (Z = X × Y)', 'ya', [m[1], m[5], m[9]])}
-      </div></details>
+      </div>
       <details class="fold"><summary>3×4 matrix (rotation | translation)</summary><div>
         <div class="g4">${[0, 1, 2].map(r => [0, 1, 2, 3].map(q => cf('cm', r * 4 + q, m[r * 4 + q])).join('')).join('')}</div>
         <div class="muted" style="font-size:12px">p_parent = R·p + t. Must be a proper rotation (orthonormal, determinant +1).</div></div></details>
       <details class="fold"><summary>World values</summary><div id="csysWorld">${csysWorldHTML(c)}</div></details>
-      <div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(c.color)}"><label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${c.visible ? 'checked' : ''}>Visible</label></div></div>
-      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button><button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>
-      <div class="muted" style="font-size:12px;margin-top:6px">Deleting re-attaches the children to the parent and keeps the bodies where they are.</div>`;
-    return h;
+</div>`;
+    const view = `<div class="sec"><h4><span>View</span></h4><div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(c.color)}"><label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${c.visible ? 'checked' : ''}>Visible</label></div></div>`;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4>
+      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button><button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button></div>
+      <div class="btns"><button class="btn sm" data-act="csysCut" data-pl="xy">Section XY</button><button class="btn sm" data-act="csysCut" data-pl="xz">Section XZ</button><button class="btn sm" data-act="csysCut" data-pl="yz">Section YZ</button></div>
+      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Deleting re-attaches the children to the parent and keeps the bodies where they are.</div></div>`;
+    return tabbed({ general, view, definition, operations });
   }
   let csysSrc = null;
   function updateCsysFields(force) {
@@ -915,33 +986,42 @@
   }
   function regionProps(r) {
     const opts = S.model.bodies.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.type === 'RAW' ? b.rawType : b.type)})</option>`).join('');
-    return `<div class="sec"><h4><span>Region</span></h4><div class="fields">
+    const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
-      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>
+      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div></div></div>
+      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+    const definition = `<div class="sec"><h4><span>Definition</span></h4><div class="fields">
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>
-      ${commonStyle(r)}</div>
-      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>`;
+      <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
+    const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4>
+      <div class="btns"><button class="btn" data-act="voidRegion" title="Experimental: creates an RPP around this region and a region = RPP minus this one">Create void region… <small>(experimental)</small></button></div>
+      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+    return tabbed({ general, view, definition, operations });
   }
   function stlProps(s) {
     const unitOpts = ['mm', 'cm', 'm', 'in'].map(u => `<option ${s.unit === u ? 'selected' : ''}>${u}</option>`).join('');
-    return `<div class="sec"><h4><span>Mesh file</span></h4><div class="fields">
-      <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(s.name)}"></div>
+    const general = `<div class="sec"><h4><span>Mesh file</span></h4><div class="fields">
+      <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(s.name)}"></div></div></div>
+      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+    const definition = `<div class="sec"><h4><span>Placement</span></h4><div class="fields">
       <div class="fld"><label>File unit</label><select data-k="unit">${unitOpts}</select></div>
       <div class="fld"><label>&nbsp;</label><label class="chk" style="margin:0"><input type="checkbox" data-k="flip" ${s.flip ? 'checked' : ''}>Flip normals</label></div>
-      ${numField('Offset X (cm)', 'data-off="0"', s.offset[0])}${numField('Offset Y (cm)', 'data-off="1"', s.offset[1])}${numField('Offset Z (cm)', 'data-off="2"', s.offset[2])}
-      <div class="fld"><label>&nbsp;</label><label class="chk" style="margin:0"><input type="checkbox" data-k="edges" ${s.edges ? 'checked' : ''}>Sharp edges</label></div></div>
-      ${commonStyle(s)}</div>
-      <div class="muted" style="font-size:12px;margin-bottom:8px">Everything is converted to cm (FLUKA unit) on import. Mesh normals point out of the material.</div>
-      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>
-      <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn danger" data-act="del">Remove</button></div>`;
+      ${numField('Offset X (cm)', 'data-off="0"', s.offset[0])}${numField('Offset Y (cm)', 'data-off="1"', s.offset[1])}${numField('Offset Z (cm)', 'data-off="2"', s.offset[2])}</div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Everything is converted to cm (FLUKA unit) on import. Mesh normals point out of the material.</div></div>`;
+    const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(s)}
+      <div class="row2"><label class="chk" style="margin:0"><input type="checkbox" data-k="edges" ${s.edges ? 'checked' : ''}>Sharp edges</label></div></div>`;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4>
+      <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button></div>
+      <div class="btns"><button class="btn danger" data-act="del">Remove</button></div></div>`;
+    return tabbed({ general, view, definition, operations });
   }
   function measureProps(m) {
-    return `<div class="sec"><h4><span>Measure</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>
-      <div class="btns"><button class="btn" data-act="rppMeasure">RPP from these 2 points</button><button class="btn danger" data-act="del">Delete</button></div>`;
+    const general = `<div class="sec"><h4><span>Measure</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="rppMeasure">RPP from these 2 points</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+    return tabbed({ general, operations });
   }
   function renderRight() {
     let h = '';
@@ -1000,6 +1080,7 @@
   function onField(e) {
     const t = e.target;
     const it = APP.selItem();
+    if (t.dataset.opt === 'scaleOpen') { S.opt.scaleOpen = t.checked; const bx = $('#rightBody .scalebox'); if (bx) bx.hidden = !t.checked; APP.save(); return; }
     if (t.dataset.opt) return onOptChange(e);
     if (t.dataset.sc) {
       const sc = S.opt.scale, k = t.dataset.sc;
@@ -1067,6 +1148,10 @@
       case 'fillDone': finishCirclePts(); break;
       case 'fillUndo': if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } break;
       case 'pickCsysPos': if (it && S.sel.t === 'csys') startFill({ kind: 'csys', id: it.id, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
+      case 'rtab': S.rtab = a.dataset.tab; $$('#rightBody .rtab').forEach(x => x.classList.toggle('on', x.dataset.tab === S.rtab)); $$('#rightBody .rpane').forEach(x => { x.hidden = x.dataset.pane !== S.rtab; }); break;
+      case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;
+      case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
+      case 'csysCut': if (it && S.sel.t === 'csys') APP.cutUseSrc('cs:' + it.id + ':' + a.dataset.pl); break;
       case 'csysExport': if (it && S.sel.t === 'csys') { APP.setExportCsys(APP.exportCs() === it.id ? 0 : it.id); renderRight(); } break;
       case 'csysActivate': if (it && S.sel.t === 'csys') { APP.setActiveCsys(it.id); renderRight(); } break;
       case 'pickCsysPoint': if (pk) { const c = APP.createCsysWorld(FK.M.fromPosEuler(pk.p, [0, 0, 0])); if (c) toast('Coordinate system ' + c.name + ' created (axes parallel to world)'); } break;
@@ -1227,8 +1312,13 @@
       if (h && h.object && h.object.userData && h.object.userData.kind === 'stl' && h.object.userData.id === FEAT.stl.id && h.faceIndex != null) guidedToggle(h.faceIndex);
       return;
     }
+    closePickPop();
     if (S.tool === 'select' && !S.info && !S.fill) return;
-    const hit = APP.raycast(x, y);
+    const all = S.opt.multiPick !== false ? APP.raycastAll(x, y) : null;
+    if (all && all.length > 1) { openPickPop(all, x, y, h => processHit(h, x, y)); return; }
+    processHit(all ? all[0] : APP.raycast(x, y), x, y);
+  };
+  function processHit(hit, x, y) {
     if (S.fill) { if (hit) { try { fillFromHit(hit, x, y); } catch (err) { console.error(err); toast('Pick error: ' + err.message); } } return; }
     if (!hit) { if (S.tool === 'select' && S.pick) { clearPick(); renderRight(); updateStatus(); } return; }
     try {
@@ -1277,7 +1367,49 @@
         }
       }
     } catch (err) { console.error(err); toast('Selection error: ' + err.message); }
-  };
+  }
+
+  /* ---------- Pop-up listing the overlapping entities under a click (nearest first) ---------- */
+  let pickPop = null;
+  function closePickPop() {
+    if (!pickPop) return;
+    pickPop.el.remove(); document.removeEventListener('pointerdown', pickPop.outside, true); document.removeEventListener('keydown', pickPop.key, true);
+    pickPop = null; APP.clearHover();
+  }
+  function hoverHit(h) {
+    const pk = APP.makePick(h, S.filter === 'object' || S.tool !== 'select' ? 'object' : 'face', 0, 0);
+    APP.drawHighlight(APP.gHover, pk, true);
+  }
+  function openPickPop(hits, x, y, onSelect) {
+    closePickPop();
+    const KIND = { stl: 'Mesh', body: 'Body', region: 'Region' };
+    const el = document.createElement('div'); el.id = 'pickPop'; el.setAttribute('role', 'dialog');
+    el.innerHTML = `<div class="pp-h">${hits.length} overlapping entities <small>nearest first</small></div><div class="pp-l">${hits.map((h, i) => {
+      const o = APP.ownerOf(h);
+      return `<div class="pp-i" data-i="${i}"><span class="pp-n">${i + 1}</span><span class="pp-t">${esc(o.name)}</span><span class="pp-k">${KIND[o.kind] || o.kind}${o.type ? ' · ' + esc(o.type) : ''}</span></div>`;
+    }).join('')}</div><div class="pp-b"><button type="button" class="pill" data-pp="cancel">Cancel</button><button type="button" class="pill primary" data-pp="select">Select</button></div>`;
+    document.body.appendChild(el);
+    const W = window.innerWidth, H = window.innerHeight, r = el.getBoundingClientRect();
+    el.style.left = Math.max(4, Math.min(x + 10, W - r.width - 4)) + 'px'; el.style.top = Math.max(4, Math.min(y + 10, H - r.height - 4)) + 'px';
+    let cur = 0;
+    const mark = () => { $$('#pickPop .pp-i').forEach((n, i) => n.classList.toggle('on', i === cur)); };
+    const doSelect = () => { const h = hits[cur]; closePickPop(); onSelect(h); };
+    el.addEventListener('pointerover', e => { const n = e.target.closest('.pp-i'); if (n) hoverHit(hits[+n.dataset.i]); });
+    el.addEventListener('pointerleave', () => hoverHit(hits[cur]));
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-pp]'), n = e.target.closest('.pp-i');
+      if (b) { if (b.dataset.pp === 'select') doSelect(); else closePickPop(); }
+      else if (n) { cur = +n.dataset.i; mark(); hoverHit(hits[cur]); }
+    });
+    el.addEventListener('dblclick', e => { const n = e.target.closest('.pp-i'); if (n) { cur = +n.dataset.i; doSelect(); } });
+    pickPop = {
+      el,
+      outside: e => { if (!el.contains(e.target)) closePickPop(); },
+      key: e => { if (e.key === 'Escape') { e.stopPropagation(); closePickPop(); } else if (e.key === 'Enter') { e.preventDefault(); doSelect(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = (cur + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length; mark(); hoverHit(hits[cur]); } }
+    };
+    document.addEventListener('pointerdown', pickPop.outside, true); document.addEventListener('keydown', pickPop.key, true);
+    mark(); hoverHit(hits[0]);
+  }
 
   /* ---------- INP block: display, copy, import ---------- */
   const inpText = $('#inpText');
