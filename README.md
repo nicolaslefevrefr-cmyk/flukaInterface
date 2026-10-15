@@ -60,3 +60,7 @@ Objects can be defined in any coordinate system (*Defined in coordinate system*)
 Changing the *Defined in coordinate system* of an object now keeps its parameters and moves the object with the new frame (a translated frame translates the object). Tick *Keep the position when changing frame* to recompute the parameters instead.
 
 Section view: contour points are welded geometrically, so meshes from boolean operations (regions, void regions) no longer leave open contours at some offsets.
+
+## Render modes and cylinder top centre
+
+Bottom-right toolbar: shaded (per-object opacity), wireframe, all opaque, all transparent, and an edges on/off toggle (picking keeps working in every mode). For RCC / TRC the *Axis vector* field has the same techniques as the base centre: pick the centre of a circular edge or of several points (axis = that centre − base centre; the radius can be set too), plus the edge-direction picker.

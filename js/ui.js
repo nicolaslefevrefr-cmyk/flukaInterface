@@ -79,6 +79,8 @@
   function syncToolbar() {
     $$('#grpFilter button').forEach(b => b.classList.toggle('on', S.tool === 'select' && !!S.info && b.dataset.filter === S.filter));
     $$('#grpProj button[data-proj]').forEach(b => b.classList.toggle('on', b.dataset.proj === (S.opt.proj || 'persp')));
+    $$('#grpRender button[data-render]').forEach(b => b.classList.toggle('on', b.dataset.render === (S.opt.render || 'shaded')));
+    $('#btnEdges').classList.toggle('on', S.opt.edges !== false);
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
   }
   function clearPick() { S.pick = null; APP.drawHighlight(APP.gSel, null); }
@@ -101,6 +103,8 @@
     else setTool(t);
   });
   $$('#grpProj button[data-proj]').forEach(b => b.onclick = () => { APP.setProjection(b.dataset.proj); syncToolbar(); APP.save(); });
+  $$('#grpRender button[data-render]').forEach(b => b.onclick = () => { S.opt.render = b.dataset.render; APP.applyStyles(); syncToolbar(); APP.save(); });
+  $('#btnEdges').onclick = () => { S.opt.edges = S.opt.edges === false; APP.applyStyles(); syncToolbar(); APP.save(); };
   $('#btnCut').onclick = () => APP.cutSetOpen(!APP.cut.open);
   APP.hooks.cutToggled = (on) => $('#btnCut').classList.toggle('on', on);
   function lookAtFace(pk) { APP.cam.target.set(pk.centroid[0], pk.centroid[1], pk.centroid[2]); APP.viewAlong(pk.normal); }

@@ -365,34 +365,56 @@
     } catch (e) { return { error: e.message }; }
   };
 
+  // Wireframe mode: every facet edge (coplanar triangle diagonals are skipped), built lazily
+  function wireOf(group, mesh, on, colorHex) {
+    let w = group.userData.wire;
+    if (!on) { if (w) w.visible = false; return; }
+    if (!w) {
+      const n = mesh.geometry.attributes.position.count / 3;
+      if (n > 150000) return;
+      w = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 1), new THREE.LineBasicMaterial({ color: colorHex }));
+      w.raycast = () => {}; group.add(w); group.userData.wire = w;
+    }
+    w.visible = true; w.material.color.set(colorHex);
+  }
   APP.applyStyles = function () {
-    const sel = S.sel;
+    const sel = S.sel, rm = S.opt.render || 'shaded', edgesOn = S.opt.edges !== false || rm === 'wire';
+    // global render mode: shaded (per-item opacities) · wire (edges only) · opaque (all solids at 1) · ghost (all solids very transparent)
+    const effOp = (op, plane, isSel) => {
+      if (rm === 'wire') return 0;
+      if (plane) return Math.min(1, op + (isSel ? 0.15 : 0));
+      if (rm === 'opaque') return 1;
+      if (rm === 'ghost') return Math.min(op, 0.12);
+      return Math.min(1, op + (isSel ? 0.15 : 0));
+    };
+    const style = (c, item, plane, isSel, col) => {
+      const o = effOp(item.opacity, plane, isSel), m = c.mesh.material;
+      c.group.visible = !!item.visible;
+      c.mesh.visible = item.opacity > 0.004;
+      m.color.set(item.color); m.opacity = o;
+      const solid = o >= 0.995 && !plane; m.transparent = !solid; m.depthWrite = solid;
+      c.lines.visible = edgesOn && rm !== 'wire';
+      c.lines.material.color.set(isSel ? 0xff6a00 : darker(item.color, 0.55).getHex());
+      wireOf(c.group, c.mesh, rm === 'wire' && !plane, isSel ? 0xff6a00 : darker(item.color, 0.55).getHex());
+    };
     for (const b of S.model.bodies) {
       const c = bodyC.get(b.id); if (!c || !c.group) continue;
-      const isSel = sel && sel.t === 'body' && sel.id === b.id;
-      c.group.visible = !!b.visible;
-      c.mesh.visible = b.opacity > 0.004;
-      c.mesh.material.color.set(b.color);
-      c.mesh.material.opacity = Math.min(1, b.opacity + (isSel ? 0.15 : 0));
-      c.lines.material.color.set(isSel ? 0xff6a00 : darker(b.color, 0.55).getHex());
+      style(c, b, FK.isPlaneType(b.type), sel && sel.t === 'body' && sel.id === b.id);
     }
     for (const r of S.model.regions) {
       const c = regC.get(r.id); if (!c || !c.group) continue;
-      const isSel = sel && sel.t === 'region' && sel.id === r.id;
-      c.group.visible = !!r.visible;
-      c.mesh.visible = r.opacity > 0.004;
-      c.mesh.material.color.set(r.color);
-      c.mesh.material.opacity = Math.min(1, r.opacity + (isSel ? 0.15 : 0));
-      c.lines.material.color.set(isSel ? 0xff6a00 : darker(r.color, 0.55).getHex());
+      style(c, r, false, sel && sel.t === 'region' && sel.id === r.id);
     }
     for (const s of S.stls) {
       if (!s.group) continue;
       const isSel = sel && sel.t === 'stl' && sel.id === s.id;
       s.group.visible = !!s.visible;
-      const m = s.mesh.material, tr = s.opacity < 0.995;
-      m.color.set(s.color); m.opacity = s.opacity; m.transparent = tr; m.depthWrite = !tr;
+      const m = s.mesh.material, o = rm === 'wire' ? 0 : rm === 'opaque' ? 1 : rm === 'ghost' ? Math.min(s.opacity, 0.12) : s.opacity, tr = o < 0.995;
+      m.color.set(s.color); m.opacity = o; m.transparent = tr; m.depthWrite = !tr;
       m.emissive.setHex(isSel ? 0x1c3566 : 0x000000); m.needsUpdate = true;
       s.mesh.visible = s.opacity > 0.004;
+      for (const ch of s.group.children) if (ch !== s.mesh && ch !== s.group.userData.wire) ch.visible = edgesOn && rm !== 'wire';
+      wireOf(s.group, s.mesh, rm === 'wire', isSel ? 0xff6a00 : 0x39434f);
     }
     if (axes) axes.visible = !!S.opt.axes;
     needRender = true;

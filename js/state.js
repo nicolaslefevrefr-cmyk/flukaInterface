@@ -258,8 +258,10 @@
       { id: 'cPts', icon: '∴', title: 'Centre of the circle through several picked points (3 or more)', kind: 'circlePts', idx, comps, axisIdx, radIdx }];
     const dirA = (idx) => [{ id: 'dEdge', icon: '↗', title: 'Direction of a picked edge (normalized, current length kept)', kind: 'dirEdge', idx }];
     const radA = (idx) => [{ id: 'rEdge', icon: '◠', title: 'Radius of a picked arc edge (length of a straight edge)', kind: 'radiusEdge', idx }];
-    FG.RCC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.RCC[1].alts = dirA([3, 4, 5]); FG.RCC[2].alts = radA(6);
-    FG.TRC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.TRC[1].alts = dirA([3, 4, 5]); FG.TRC[2].alts = radA(6); FG.TRC[3].alts = radA(7);
+    // axis vector = (centre of the picked circle / rim) − base centre, i.e. the "second point" can use the same techniques as the first
+    const top = (radIdx) => circ([3, 4, 5], [0, 1, 2], null, radIdx).map(a => Object.assign(a, { vecBase: [0, 1, 2], title: a.title.replace('Centre of', 'Top centre = centre of') }));
+    FG.RCC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.RCC[1].alts = dirA([3, 4, 5]).concat(top(6)); FG.RCC[2].alts = radA(6);
+    FG.TRC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.TRC[1].alts = dirA([3, 4, 5]).concat(top(7)); FG.TRC[2].alts = radA(6); FG.TRC[3].alts = radA(7);
     FG.XCC[0].alts = circ([0, 1], [1, 2], null, 2); FG.XCC[1].alts = radA(2);
     FG.YCC[0].alts = circ([0, 1], [2, 0], null, 2); FG.YCC[1].alts = radA(2);
     FG.ZCC[0].alts = circ([0, 1], [0, 1], null, 2); FG.ZCC[1].alts = radA(2);
@@ -269,7 +271,8 @@
   /** Circle centre (and optionally axis / radius) written into a body; `circle` is in world space. Returns a short description. */
   APP.applyCirclePick = function (b, spec, circle, extras, only) {
     const r6 = (x) => +(+x).toFixed(6), cs = b.cs || 0, pl = APP.toLocal(circle.c, cs), notes = [];
-    spec.idx.forEach((k, i) => { if (only === undefined || only === i) b.p[k] = r6(pl[spec.comps[i]]); });
+    spec.idx.forEach((k, i) => { if (only === undefined || only === i) b.p[k] = r6(spec.vecBase ? pl[spec.comps[i]] - b.p[spec.vecBase[i]] : pl[spec.comps[i]]); });
+    if (spec.vecBase) notes.push('axis = centre − base');
     if (extras && only === undefined) {
       if (spec.axisIdx) {
         const n = V.norm(APP.dirToLocal(circle.n, cs)), old = spec.axisIdx.map(k => b.p[k]), L = V.len(old) || 1, sg = V.dot(old, n) < 0 ? -1 : 1;
