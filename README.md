@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.5)
+# Combinatorial Geometry Tool  (v1.6)
 
 Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.6** — *Export to the INP file* checkbox on bodies / planes / regions (⊘ in the tree when excluded) and a "not used" info sign for bodies no region uses; warnings shortened to ⚠ / ⓘ icons with factual tooltips; Operations buttons stacked, Delete at the bottom; "Creo → FLUKA" label removed.
 - **1.5** — region quality check (separate / nearly touching pieces, thin regions, degenerate polygons, nearly coincident faces); resizable `.inp` panel; *Import STL / INP* and *New project* buttons removed from the tree (STL import: Meshes ＋ menu; INP import and New project: File menu).
 - **1.4** — resolution slider (top band): global facet count of cylinders / cones / spheres; *Combine with another region…* (A − B, A ∩ B, A ∪ B written with the bodies of both regions only).
 - **1.3** — renamed *Combinatorial Geometry Tool*; version display; toolbar moved to a top band; floating / dockable feature window; mouse-rotation inversion; update mechanism; overlapping-entities pop-up; properties tabs and collapsible scale tool.

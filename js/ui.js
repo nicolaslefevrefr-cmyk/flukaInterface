@@ -499,8 +499,8 @@
         <div class="row2"><span class="muted" style="flex:1">Render zone margin (%)</span><input type="number" step="1" min="0" style="width:80px" data-opt="margin" value="${o.margin}"></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
         <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
-        <div class="fld" style="margin-top:6px"><label>Export coordinate system (all INP coordinates and directions are written in it)</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="fld" style="margin-top:6px"><label>Output format</label><select data-opt="style">
+        <div class="fld" style="margin-top:6px"><label title="All INP coordinates and directions are written in this frame">Export coordinate system ⓘ</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="fld" style="margin-top:6px"><label title="Name-based geometry (COMBNAME): free format, names ≤ 8 characters, lines ≤ 132 columns. Fixed columns: GEOBEGIN (A8,2X,6E10.0,A8), title (2I5,10X,A60).">Output format ⓘ</label><select data-opt="style">
           <option value="1" ${o.style == 1 ? 'selected' : ''}>Flair style (REGION + line)</option>
           <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
           <option value="3" ${o.style == 3 ? 'selected' : ''}>Fixed columns (Fortran-like, ≤132 col)</option></select></div>
@@ -524,7 +524,7 @@
     const sel = S.sel && S.sel.t === t && S.sel.id === o.id;
     return `<div class="item${sel ? ' sel' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
       <div class="top"><button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>
-      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span><span class="ty">${esc(o.type)}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div>
+      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span><span class="ty">${o.noExport ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div>
       ${o.opacity !== undefined ? `<div class="op"><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-act="op" aria-label="Opacity"><small>${Math.round(o.opacity * 100)}%</small></div>` : ''}</div>`;
   }
   const treeState = () => S.opt.tree || (S.opt.tree = {});
@@ -858,7 +858,7 @@
       const bb = c.bbox;
       return kv([['Volume', `${f(c.vol, 4)} cm³`], ['Surface area', `${f(c.area, 4)} cm²`],
         ...(bb ? [['Box min', xyz(bb.min, 3)], ['Box max', xyz(bb.max, 3)], ['Dimensions', xyz(V.sub(bb.max, bb.min), 3)]] : [])]) +
-        '<div class="muted" style="font-size:11.5px;margin-top:4px">Volume computed inside the render zone; spheres / cylinders are faceted (approximate display).</div>';
+        '<div class="muted" style="font-size:11.5px;margin-top:4px" title="Volume computed inside the render zone; spheres / cylinders are faceted (approximate display).">ⓘ approximate volume</div>';
     }
     if (t === 'stl') {
       const st = it.stats; if (!st || !st.bbox) return '';
@@ -871,6 +871,8 @@
     }
     return '';
   }
+  /** First sentence of a diagnostic (the advice that follows goes in a tooltip). */
+  const brief = (t) => String(t).split(/\.\s+(?=[A-Z+\-(])/)[0].replace(/\.$/, '');
   function regionMsg(r) {
     try {
       const ast = FK.parseExpr(r.expr || '+x');
@@ -881,12 +883,12 @@
       if (c && c.err) return `<div class="msg bad">${esc(c.err)}</div>`;
       if (c && c.polys && (!c.polys.length || (c.vol !== null && c.vol !== undefined && c.vol < 1e-9))) {
         const dg = c.diag || [];
-        if (!dg.length) return '<div class="msg bad">Region is empty inside the render zone (no single cause found: check that the bodies overlap, with the +/− signs and the | unions).</div>';
-        return '<div class="msg bad"><b>Region is empty inside the render zone.</b>' + dg.map(d => `<div class="dg">${esc(d.text)}` +
+        if (!dg.length) return '<div class="msg bad">Empty region (no single cause found).</div>';
+        return '<div class="msg bad"><b>Empty region.</b>' + dg.map(d => `<div class="dg">${esc(brief(d.text))}${d.text !== brief(d.text) ? ` <span class="wicon info" tabindex="0" title="${esc(d.text)}">ⓘ</span>` : ''}` +
           (d.fix ? `<div><button class="btn sm" data-act="applyFix" data-rid="${r.id}" data-expr="${esc(d.fix.expr)}" title="${esc(d.fix.expr)}">${esc(d.fix.label)}: ${esc(d.fix.expr)}</button></div>` : '') + '</div>').join('') + '</div>';
       }
       const q = (c && c.quality) || [];
-      return '<div class="msg ok">Valid expression</div>' + (q.length ? '<div class="msg warnq"><b>⚠ Quality check</b>' + q.map(x => `<div class="dg">${esc(x.text)}</div>`).join('') + '</div>' : '');
+      return '<div class="msg ok">Valid expression' + (q.length ? ` <span class="wicon" tabindex="0" title="${esc(q.map(x => x.text).join('\n'))}">⚠${q.length > 1 ? q.length : ''}</span>` : '') + '</div>';
     } catch (e) { return `<div class="msg bad">${esc(e.message)}</div>`; }
   }
   /** Keeps the style controls of the properties panel in step with changes made elsewhere (tree slider, eye…), without re-rendering it. */
@@ -924,6 +926,11 @@
       avail.map(k => `<div class="rpane" data-pane="${k}" ${k === cur ? '' : 'hidden'}>${p[k]}</div>`).join('');
   }
 
+  /** "Export to the INP" checkbox (+ an info sign when nothing uses the body). */
+  function exportRow(it, kind) {
+    const unused = kind === 'body' && !APP.bodyUsed(it);
+    return `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="exportInp" ${it.noExport ? '' : 'checked'}>Export to the INP file</label>${unused ? ` <span class="wicon info" tabindex="0" title="Not used by any region">ⓘ not used</span>` : ''}</div>`;
+  }
   function bodyProps(b) {
     const info = FK.BODY_TYPES[b.type];
     let h = '';
@@ -957,12 +964,13 @@
       if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; planeBtns += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
     }
     const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
-      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${csHTML}</div></div>
+      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${csHTML}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+      <div class="btns"><button class="btn" data-act="dup">Duplicate</button></div>
+      <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
   function csysWorldHTML(c) {
@@ -995,10 +1003,11 @@
 </div>`;
     const view = `<div class="sec"><h4><span>View</span></h4><div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(c.color)}"><label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${c.visible ? 'checked' : ''}>Visible</label></div></div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
-      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button><button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button></div>
-      <div class="btns"><button class="btn sm" data-act="csysCut" data-pl="xy">Section XY</button><button class="btn sm" data-act="csysCut" data-pl="xz">Section XZ</button><button class="btn sm" data-act="csysCut" data-pl="yz">Section YZ</button></div>
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>
-      <div class="muted" style="font-size:12px;margin-top:6px">Deleting re-attaches the children to the parent and keeps the bodies where they are.</div></div>`;
+      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button>
+      <button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button>
+      <button class="btn" data-act="csysCut" data-pl="xy">Section XY</button><button class="btn" data-act="csysCut" data-pl="xz">Section XZ</button><button class="btn" data-act="csysCut" data-pl="yz">Section YZ</button>
+      <button class="btn" data-act="dup">Duplicate</button></div>
+      <div class="btns opsdel"><button class="btn danger" data-act="del" title="The children are re-attached to the parent; the bodies keep their place">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
   let csysSrc = null;
@@ -1040,7 +1049,7 @@
     const opts = S.model.bodies.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.type === 'RAW' ? b.rawType : b.type)})</option>`).join('');
     const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
-      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div></div></div>
+      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Definition</span></h4><div class="fields">
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
@@ -1049,9 +1058,10 @@
       <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
-      <div class="btns"><button class="btn" data-act="boolRegion" title="Experimental: new region = this region minus / intersected with / united with another one, written only with their bodies">Combine with another region… <small>(experimental)</small></button></div>
-      <div class="btns"><button class="btn" data-act="voidRegion" title="Experimental: creates an RPP around this region and a region = RPP minus this one">Create void region… <small>(experimental)</small></button></div>
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+      <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
+      <button class="btn" data-act="voidRegion" title="RPP around this region + region = RPP minus this one">Create void region… <small>(experimental)</small></button>
+      <button class="btn" data-act="dup">Duplicate</button></div>
+      <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
   function stlProps(s) {
@@ -1068,12 +1078,12 @@
       <div class="row2"><label class="chk" style="margin:0"><input type="checkbox" data-k="edges" ${s.edges ? 'checked' : ''}>Sharp edges</label></div></div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button></div>
-      <div class="btns"><button class="btn danger" data-act="del">Remove</button></div></div>`;
+      <div class="btns opsdel"><button class="btn danger" data-act="del">Remove</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
   function measureProps(m) {
     const general = `<div class="sec"><h4><span>Measure</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
-    const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="rppMeasure">RPP from these 2 points</button><button class="btn danger" data-act="del">Delete</button></div></div>`;
+    const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="rppMeasure">RPP from these 2 points</button></div><div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, operations });
   }
   function renderRight() {
@@ -1170,6 +1180,7 @@
       case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
       case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
+      case 'exportInp': if (e.type === 'change') { APP.snap(); if (t.checked) delete it.noExport; else it.noExport = true; APP.changed({ tree: true }); } break;
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
       case 'expr': APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
       case 'color': if (e.type === 'input') { APP.snap(key + 'col'); it.color = t.value; APP.changed({ tree: true, csys: type === 'csys' }); } break;

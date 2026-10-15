@@ -459,7 +459,7 @@
   APP.reportQuality = function (reg) {
     const ev = APP.evalRegionNow(reg);
     if (ev.error || !ev.quality || !ev.quality.length) return ev;
-    APP.toast(`⚠ Region ${reg.name}: ${ev.quality[0].text}` + (ev.quality.length > 1 ? ` (+${ev.quality.length - 1} more, see its properties)` : ''));
+    APP.toast(`⚠ ${reg.name}: ${ev.quality[0].text}` + (ev.quality.length > 1 ? ` (+${ev.quality.length - 1})` : ''));
     return ev;
   };
   APP.createBoolRegion = function (a, b, op, mode) {
@@ -691,13 +691,15 @@
   };
 
   /* ---------- INP text ---------- */
+  /** Is the body referenced by at least one region expression? */
+  APP.bodyUsed = (b) => S.model.regions.some(r => { try { return FK.exprNames(FK.parseExpr(r.expr || '+x')).has(b.name); } catch (e) { return (r.expr || '').includes(b.name); } });
   APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (FLUKA limit)`);
-    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${c.diag[0].text}`); }
-    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" quality: ${q.text}`); }
+    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
+    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
     return w;
   };
 })();

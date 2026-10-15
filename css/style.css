@@ -311,3 +311,11 @@ dialog.featwin { z-index: 40; }
 #sheetGrip:hover::after { background: var(--accent); }
 .msg.warnq { color: #9a5b00; background: #fff7e6; border: 1px solid #f3d9a4; border-radius: 8px; padding: 5px 8px; }
 .msg.warnq .dg { margin-top: 3px; }
+/* v1.5.1 : stacked operations, warning icons */
+.rpane[data-pane="operations"] > .sec > .btns { flex-direction: column; align-items: stretch; gap: 6px; margin: 6px 0; }
+.rpane[data-pane="operations"] > .sec > .btns .btn { width: 100%; text-align: left; padding: 8px 12px; font-size: 13px; }
+.rpane[data-pane="operations"] > .sec > .btns.opsdel { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.rpane[data-pane="operations"] > .sec > .btns.opsdel .btn { text-align: center; }
+.wicon { display: inline-block; cursor: help; color: #b36b00; font-weight: 700; font-size: 12px; margin-left: 4px; user-select: none; }
+.wicon.info { color: var(--muted); font-weight: 500; }
+.noexp { opacity: .6; }

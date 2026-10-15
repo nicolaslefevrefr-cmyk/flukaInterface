@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.5">
+<link rel="stylesheet" href="css/style.css?v=1.6">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.5</i></b><span>Creo → FLUKA</span></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.6</i></b></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -146,7 +146,7 @@
 <dialog id="dlgVoid">
   <form method="dialog">
     <h3>Void region around a region <small class="muted">(experimental)</small></h3>
-    <p class="muted">Creates an RPP around the region's bounding box (+ margin) and a new region <code>+RPP −(region)</code>, i.e. the exact negative of the region inside that box.</p>
+    <p class="muted">New region <code>+RPP −(region)</code>, RPP = bounding box + margin.</p>
     <label class="row">Margin (mm) <input type="number" id="voidMargin" value="10" min="0" step="1" style="width:90px"></label>
     <label class="row"><input type="radio" name="voidMode" value="compact" checked> Compact: <code>+box −( … )</code></label>
     <label class="row"><input type="radio" name="voidMode" value="expanded"> Expanded (De Morgan, no leading <code>−( )</code>)</label>
@@ -157,7 +157,7 @@
 <dialog id="dlgBool">
   <form method="dialog">
     <h3>Combine two regions <small class="muted">(experimental)</small></h3>
-    <p class="muted">FLUKA cannot subtract a region from another one, so the <i>formulas</i> are combined: the new region is written only with the bodies of the two regions, which stay untouched.</p>
+    <p class="muted">New region written with the bodies of both regions (originals unchanged).</p>
     <div class="fld"><label>First region (A)</label><div id="boolA" class="boolA"></div></div>
     <div class="fld" style="margin-top:6px"><label>Operation</label>
       <label class="row"><input type="radio" name="boolOp" value="sub" checked> A − B &nbsp;<span class="muted">(A without B: <code>+A −B</code>)</span></label>
@@ -192,12 +192,12 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.5"></script>
-<script src="js/core.js?v=1.5"></script>
-<script src="js/state.js?v=1.5"></script>
-<script src="js/scene.js?v=1.5"></script>
-<script src="js/cut.js?v=1.5"></script>
-<script src="js/ui.js?v=1.5"></script>
-<script src="js/pwa.js?v=1.5"></script>
+<script src="js/lib/three.min.js?v=1.6"></script>
+<script src="js/core.js?v=1.6"></script>
+<script src="js/state.js?v=1.6"></script>
+<script src="js/scene.js?v=1.6"></script>
+<script src="js/cut.js?v=1.6"></script>
+<script src="js/ui.js?v=1.6"></script>
+<script src="js/pwa.js?v=1.6"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.5';
+  FK.VERSION = '1.6';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1690,19 +1690,19 @@
         const d = Math.hypot(g[0], g[1], g[2]);
         if (d < nearTol * 10 && (!close || d < close.d)) close = { d, g, i, j };
       }
-      if (close) out.push({ kind: 'gap', text: `The region is made of ${comps.length} separate pieces and two of them are only ${f(close.d)} cm apart (${AX.map((a, k) => close.g[k] > 0 ? a + ' ' + f(close.g[k]) : '').filter(Boolean).join(', ') || 'touching'}): if the bodies were meant to be joined, they do not touch. Move one body so that they overlap (or make the faces coincide exactly).` });
-      else out.push({ kind: 'pieces', text: `The region is made of ${comps.length} separate pieces (volumes ${comps.slice(0, 4).map(c => f(c.vol)).join(', ')}${comps.length > 4 ? ', …' : ''} cm³). Fine for a union of distant bodies; otherwise check the +/− signs.` });
-      if (tiny.length) out.push({ kind: 'tiny', text: `${tiny.length} tiny fragment(s) (volume ${tiny.map(c => f(c.vol)).slice(0, 3).join(', ')} cm³, < 0.01 % of the region): usually a sliver left by almost coincident faces.` });
+      if (close) out.push({ kind: 'gap', text: `${comps.length} separate pieces, two of them ${f(close.d)} cm apart (${AX.map((a, k) => close.g[k] > 0 ? a + ' ' + f(close.g[k]) : '').filter(Boolean).join(', ') || 'touching'})` });
+      else out.push({ kind: 'pieces', text: `${comps.length} separate pieces (V = ${comps.slice(0, 4).map(c => f(c.vol)).join(', ')}${comps.length > 4 ? ', …' : ''} cm³)` });
+      if (tiny.length) out.push({ kind: 'tiny', text: `${tiny.length} tiny fragment(s), V = ${tiny.map(c => f(c.vol)).slice(0, 3).join(', ')} cm³` });
     }
     // --- thin region / degenerate polygons ---
     const area = FK.polysArea(polys), vol = Math.abs(ctx.vol != null ? ctx.vol : FK.polysVolume(polys));
     if (area > 0 && vol > 0) {
       const t = 2 * vol / area;
-      if (t < diag * 1e-3 && comps.length === 1) out.push({ kind: 'thin', text: `The region is extremely thin (about ${f(t)} cm thick for an extent of ${f(Math.sqrt(area / 2))} cm): typically two bodies that overlap by a tiny amount.` });
+      if (t < diag * 1e-3 && comps.length === 1) out.push({ kind: 'thin', text: `Very thin: ≈ ${f(t)} cm for an extent of ${f(Math.sqrt(area / 2))} cm` });
     }
     let degen = 0; const a2 = diag * diag * 1e-12;
     for (const pl of polys) { let a = 0; for (let i = 1; i < pl.v.length - 1; i++) a += 0.5 * V.len(V.cross(V.sub(pl.v[i], pl.v[0]), V.sub(pl.v[i + 1], pl.v[0]))); if (a < a2) degen++; }
-    if (degen) out.push({ kind: 'degen', text: `${degen} degenerate polygon(s) (zero area) in the region surface: the faces of the bodies are probably almost coincident.` });
+    if (degen) out.push({ kind: 'degen', text: `${degen} zero-area polygon(s)` });
     // --- nearly coincident faces between the bodies of the expression ---
     if (ctx.wbody) {
       const vals = [[], [], []];
@@ -1714,7 +1714,7 @@
       let shown = 0;
       for (let k = 0; k < 3 && shown < 3; k++) for (let i = 0; i < vals[k].length && shown < 3; i++) for (let j = i + 1; j < vals[k].length && shown < 3; j++) {
         const [a, na] = vals[k][i], [b, nb] = vals[k][j], d = Math.abs(a - b);
-        if (na !== nb && d > 1e-12 && d < nearTol) { out.push({ kind: 'nearface', text: `Faces of ${na} and ${nb} on ${AX[k]} are ${f(d)} cm apart (${AX[k].toLowerCase()} = ${f(a)} vs ${f(b)}): nearly coincident but not equal, which creates a sliver. Make them equal if it is the same surface.` }); shown++; }
+        if (na !== nb && d > 1e-12 && d < nearTol) { out.push({ kind: 'nearface', text: `${na} / ${nb} faces on ${AX[k]}: ${f(d)} cm apart (${f(a)} vs ${f(b)})` }); shown++; }
       }
     }
     return out;
@@ -1805,7 +1805,7 @@
       if (!r.expr.trim()) { w.push(`Region "${r.name}": empty expression`); continue; }
       try {
         const names = FK.exprNames(FK.parseExpr(r.expr));
-        for (const n of names) if (!bn.has(n)) w.push(`Region "${r.name}": unknown body "${n}"`);
+        for (const n of names) if (!bn.has(n)) w.push(`Region "${r.name}": unknown body "${n}"`); else if (!r.noExport && model.bodies.some(b => b.name === n && b.noExport)) w.push(`Region "${r.name}": body "${n}" is not exported`);
       } catch (e) { w.push(`Region "${r.name}": ${e.message}`); }
     }
     return w;
@@ -1884,12 +1884,14 @@
     else { out.push('GEOBEGIN'.padEnd(70) + 'COMBNAME'); out.push('    0    0          ' + title.slice(0, 60)); }
     const split = FK.splitObox(model, opts);
     for (const b of model.bodies) {
+      if (b.noExport) continue;
       const sp = split.get(b.name);
       if (sp) { out.push(FK.exportBodyText(sp.rpp, b.name, style, opts)); sp.planes.forEach(pl => out.push(FK.exportBodyText(pl.body, pl.name, style, opts))); }
       else out.push(bodyLine(b, style, opts));
     }
     out.push('END');
     for (const r of model.regions) {
+      if (r.noExport) continue;
       let expr = r.expr || '';
       try {
         const ast = FK.parseExpr(expr);
