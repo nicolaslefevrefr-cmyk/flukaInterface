@@ -325,6 +325,10 @@
         const polys = FK.evalExpr(ast, ctx);
         c.polys = polys;
         c.vol = FK.polysVolume(polys); c.area = FK.polysArea(polys); c.bbox = FK.polysBBox(polys);
+        c.diag = null;
+        if (!polys.length || c.vol < 1e-9) {
+          try { c.diag = FK.diagnoseRegion(ast, { W, world: ctx.world, body: ctx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.diag = null; }
+        }
         if (polys.length) {
           const o = makeSolidGroup(FK.polysToPositions(polys), r.color, r.opacity, 'region', r.id);
           c.group = o.group; c.mesh = o.mesh; c.lines = o.lines; gRegion.add(c.group);
@@ -333,6 +337,32 @@
     }
     for (const [id, c] of regC) if (!seenR.has(id)) { if (c.group) disposeObj(c.group); regC.delete(id); }
     APP.applyStyles();
+  };
+
+  // Evaluate a region on demand (even hidden): { ast, polys, bbox, vol, diag, W } or { error }
+  APP.evalRegionNow = function (r) {
+    let ast;
+    try { ast = FK.parseExpr(r.expr); } catch (e) { return { error: e.message }; }
+    const stlBoxes = S.stls.filter(s => s.stats && s.stats.bbox).map(s => s.stats.bbox);
+    const wbodies = new Map(S.model.bodies.map(b => [b.id, APP.wbody(b)]));
+    const W = FK.computeWorldBox(stlBoxes, Array.from(wbodies.values()), S.opt.margin);
+    const byName = new Map();
+    for (const b of S.model.bodies) if (!byName.has(b.name)) byName.set(b.name, b);
+    const cache = new Map();
+    const polysOf = (b) => {
+      if (!cache.has(b.id)) { let p = null; try { p = FK.bodyPolys(wbodies.get(b.id), W); } catch (e) { p = null; } cache.set(b.id, p); }
+      return cache.get(b.id);
+    };
+    const ctx = { body: (n) => { const b = byName.get(n); return b ? polysOf(b) : null; }, world: () => FK.boxPolys(W) };
+    try {
+      const polys = FK.evalExpr(ast, ctx);
+      const vol = FK.polysVolume(polys), bbox = polys.length ? FK.polysBBox(polys) : null;
+      let diag = null;
+      if (!polys.length || vol < 1e-9) {
+        try { diag = FK.diagnoseRegion(ast, { W, world: ctx.world, body: ctx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { diag = null; }
+      }
+      return { ast, polys, bbox, vol, diag, W };
+    } catch (e) { return { error: e.message }; }
   };
 
   APP.applyStyles = function () {
@@ -530,7 +560,7 @@
     return V.dist(p, V.add(a, V.mul(ab, t)));
   }
 
-  APP.makePick = function (hit, filter, cx, cy) {
+  APP.makePick = function (hit, filter, cx, cy, opts) {
     const mesh = hit.object, topo = topoOf(mesh), tri = hit.faceIndex, tv = FK.triVerts(topo, tri), owner = ownerOf(mesh);
     const base = { ownerKind: owner.kind, ownerId: owner.id, ownerName: owner.name, mesh, tri };
     const hp = [hit.point.x, hit.point.y, hit.point.z];
@@ -546,12 +576,17 @@
       if (best < 0) return Object.assign({ kind: 'edge', none: true }, base);
       const a = tv[best], b = tv[(best + 1) % 3];
       let chain = null;
+      const va = topo.vid[tri * 3 + best], vb = topo.vid[tri * 3 + (best + 1) % 3];
       if (S.opt.edgeSharpOnly) {
-        const va = topo.vid[tri * 3 + best], vb = topo.vid[tri * 3 + (best + 1) % 3];
         const ch = FK.edgeChain(topo, va, vb, S.opt.sharp);
         if (ch.segments > 1) chain = ch;
       }
-      return Object.assign({ kind: 'edge', a, b, length: V.dist(a, b), chain }, base);
+      const pk = Object.assign({ kind: 'edge', a, b, length: V.dist(a, b), chain }, base);
+      if (opts && opts.loop) {          // circular rim: follow the sharp edges around, then fit a circle
+        pk.loop = FK.edgeLoop(topo, va, vb, S.opt.sharp);
+        pk.circle = pk.loop.segments >= 3 ? FK.fitCircle3D(pk.loop.pts) : null;
+      }
+      return pk;
     }
     if (filter === 'face') {
       const tris = S.opt.coplanar ? FK.coplanarPatch(topo, tri, S.opt.coTol) : [tri];
@@ -571,7 +606,10 @@
       if (pk.kind === 'point') grp.add(markers([pk.p], col, hover ? 10 : 13));
       else if (pk.kind === 'edge' && !pk.none) {
         const a = pk.chain ? pk.chain.a : pk.a, b = pk.chain ? pk.chain.b : pk.b;
-        grp.add(polyline([a, b], col), markers([a, b], col, 9));
+        if (pk.loop && pk.loop.segments > 1) {
+          grp.add(polyline(pk.loop.pts, col));
+          if (pk.circle) grp.add(markers([pk.circle.c], col, 12));
+        } else grp.add(polyline([a, b], col), markers([a, b], col, 9));
       } else if (pk.kind === 'face') {
         const topo = topoOf(pk.mesh), pos = topo.pos, tris = pk.tris.length > 100000 ? pk.tris.slice(0, 100000) : pk.tris;
         const arr = new Float32Array(tris.length * 9);

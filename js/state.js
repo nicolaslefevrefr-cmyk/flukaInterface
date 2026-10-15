@@ -9,7 +9,7 @@
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
-    opt: { snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSharpOnly: true, planeSide: '+', cutTarget: 'auto',
+    opt: { snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSharpOnly: true, circleAll: false,
       margin: 10, style: 1, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
   };
   APP.nid = () => S.nextId++;
@@ -88,6 +88,22 @@
   APP.isDescendant = function (id, anc) { let n = 0; while (id && n++ < 64) { if (id === anc) return true; const c = APP.getCsys(id); if (!c) return false; id = c.parent; } return false; };
   APP.csysChildren = (id) => S.model.csys.filter(c => (c.parent || 0) === id);
   APP.wbody = (b) => b.cs ? FK.worldBody(b, APP.csysWorld(b.cs)) : b;
+  /** Export csys (one only, 0 = global): the INP is written in this frame. */
+  APP.exportCs = () => { const id = S.model.exportCs || 0; return id && APP.getCsys(id) ? id : 0; };
+  /** Body expressed in the export frame (what is written in the INP). */
+  APP.xbody = function (b) {
+    const ex = APP.exportCs();
+    if (!ex) return APP.wbody(b);
+    if (b.type === 'RAW') return b;
+    return FK.worldBody(b, M.mul(M.inv(APP.csysWorld(ex)), APP.csysWorld(b.cs || 0)));
+  };
+  APP.setExportCsys = function (id) {
+    id = id || 0; if (id && !APP.getCsys(id)) id = 0;
+    if ((S.model.exportCs || 0) === id) return;
+    APP.snap(); S.model.exportCs = id;
+    APP.changed({ tree: true, right: true });
+    APP.toast(id ? 'The INP is now written in coordinate system ' + APP.csysLabel(id) : 'The INP is now written in the global frame');
+  };
   APP.toLocal = (p, cs) => { cs = cs === undefined ? S.model.active : cs; return cs ? M.apply(M.inv(APP.csysWorld(cs)), p) : p.slice(); };
   APP.toWorld = (p, cs) => { cs = cs === undefined ? S.model.active : cs; return cs ? M.apply(APP.csysWorld(cs), p) : p.slice(); };
   APP.dirToLocal = (v, cs) => { cs = cs === undefined ? S.model.active : cs; return cs ? M.applyVec(M.inv(APP.csysWorld(cs)), v) : v.slice(); };
@@ -206,6 +222,7 @@
     }
     S.model.csys = S.model.csys.filter(x => x.id !== id);
     if (S.model.active === id) S.model.active = par;
+    if (S.model.exportCs === id) S.model.exportCs = par;
     S.sel = null;
     APP.changed({ tree: true, right: true });
   };
@@ -233,11 +250,46 @@
     YCC: [{ l: 'Axis position (Z, X)', idx: [0, 1], pick: { kind: 'point', idx: [0, 1], comps: [2, 0] } }, { l: 'Radius', idx: [2], pick: { kind: 'radius', idx: 2, center: [0, 1], comps: [2, 0] } }],
     ZCC: [{ l: 'Axis position (X, Y)', idx: [0, 1], pick: { kind: 'point', idx: [0, 1], comps: [0, 1] } }, { l: 'Radius', idx: [2], pick: { kind: 'radius', idx: 2, center: [0, 1], comps: [0, 1] } }]
   };
-  /** data: { p: world point } or { normal: world normal }. The value written is expressed in the body's own coordinate system. */
+  /* Alternative pickers shown next to the main ⌖ of a group: circle centre from an edge / from several points, edge direction, radius from an edge. */
+  (function () {
+    const FG = APP.FIELD_GROUPS;
+    const circ = (idx, comps, axisIdx, radIdx) => [
+      { id: 'cEdge', icon: '◎', title: 'Centre of a circular edge: click the rim', kind: 'circleEdge', idx, comps, axisIdx, radIdx },
+      { id: 'cPts', icon: '∴', title: 'Centre of the circle through several picked points (3 or more)', kind: 'circlePts', idx, comps, axisIdx, radIdx }];
+    const dirA = (idx) => [{ id: 'dEdge', icon: '↗', title: 'Direction of a picked edge (normalized, current length kept)', kind: 'dirEdge', idx }];
+    const radA = (idx) => [{ id: 'rEdge', icon: '◠', title: 'Radius of a picked arc edge (length of a straight edge)', kind: 'radiusEdge', idx }];
+    FG.RCC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.RCC[1].alts = dirA([3, 4, 5]); FG.RCC[2].alts = radA(6);
+    FG.TRC[0].alts = circ([0, 1, 2], [0, 1, 2], [3, 4, 5], 6); FG.TRC[1].alts = dirA([3, 4, 5]); FG.TRC[2].alts = radA(6); FG.TRC[3].alts = radA(7);
+    FG.XCC[0].alts = circ([0, 1], [1, 2], null, 2); FG.XCC[1].alts = radA(2);
+    FG.YCC[0].alts = circ([0, 1], [2, 0], null, 2); FG.YCC[1].alts = radA(2);
+    FG.ZCC[0].alts = circ([0, 1], [0, 1], null, 2); FG.ZCC[1].alts = radA(2);
+  })();
+  /** Negate a vector group (axis vector H → −H). */
+  APP.flipFieldVec = function (b, idx) { APP.snap(); idx.forEach(k => { b.p[k] = +(-b.p[k]).toFixed(6) || 0; }); if (b.meta && b.meta.src) delete b.meta.src; };
+  /** Circle centre (and optionally axis / radius) written into a body; `circle` is in world space. Returns a short description. */
+  APP.applyCirclePick = function (b, spec, circle, extras, only) {
+    const r6 = (x) => +(+x).toFixed(6), cs = b.cs || 0, pl = APP.toLocal(circle.c, cs), notes = [];
+    spec.idx.forEach((k, i) => { if (only === undefined || only === i) b.p[k] = r6(pl[spec.comps[i]]); });
+    if (extras && only === undefined) {
+      if (spec.axisIdx) {
+        const n = V.norm(APP.dirToLocal(circle.n, cs)), old = spec.axisIdx.map(k => b.p[k]), L = V.len(old) || 1, sg = V.dot(old, n) < 0 ? -1 : 1;
+        spec.axisIdx.forEach((k, i) => { b.p[k] = r6(n[i] * L * sg); }); notes.push('axis along the circle normal');
+      }
+      if (spec.radIdx !== undefined && spec.radIdx !== null) { b.p[spec.radIdx] = r6(circle.r); notes.push('radius = ' + r6(circle.r) + ' cm'); }
+    }
+    if (b.meta && b.meta.src) delete b.meta.src;
+    return notes;
+  };
+  /** data: { p: world point } or { normal: world normal } or { dir: world direction } or { v: number }. The value written is expressed in the body's own coordinate system. */
   APP.applyFieldPick = function (b, spec, data, only) {
     const r = (x) => +(+x).toFixed(6), cs = b.cs || 0;
     const each = (fn) => spec.idx.forEach((k, i) => { if (only === undefined || only === i) fn(k, i); }); // `only`: fill a single coordinate
-    if (spec.kind === 'normal') {
+    if (spec.kind === 'dir') {
+      // direction of an edge: normalized, then scaled to the current length (1 cm if the vector was null); orientation follows the old vector
+      const d = V.norm(APP.dirToLocal(data.dir, cs)), old = spec.idx.map(k => b.p[k]), L = V.len(old) || 1, sg = V.dot(old, d) < 0 ? -1 : 1;
+      each((k, i) => { b.p[k] = r(d[i] * L * sg); });
+    } else if (spec.kind === 'value') b.p[spec.idx] = r(data.v);
+    else if (spec.kind === 'normal') {
       const n = V.norm(APP.dirToLocal(data.normal, cs));
       each((k, i) => { b.p[k] = r(n[i]); });
     } else {
@@ -361,6 +413,34 @@
     S.model.regions.push(r);
     return r;
   };
+  /* ---------- Void region around a region (experimental) ---------- */
+  // Plan: bounding box of the evaluated region + margin, names, and the complement expression.
+  APP.voidPlan = function (r, margin, mode) {
+    const ev = APP.evalRegionNow(r);
+    if (ev.error) return { error: 'Cannot evaluate "' + r.name + '": ' + ev.error };
+    if (!ev.bbox || ev.vol < 1e-9) return { error: 'Region "' + r.name + '" is empty inside the render zone, so there is nothing to surround.', diag: ev.diag };
+    margin = Math.max(0, +margin || 0);
+    const r3 = (x) => +x.toFixed(4);
+    const mn = ev.bbox.min.map(x => r3(x - margin)), mx = ev.bbox.max.map(x => r3(x + margin));
+    const p = [mn[0], mx[0], mn[1], mx[1], mn[2], mx[2]];
+    const boxName = FK.uniqueName('vb_' + r.name, bodyNames());
+    const regName = FK.uniqueName('v_' + r.name, regionNames());
+    let expr;
+    try { expr = FK.complementExpr(r.expr, boxName, mode || 'compact'); } catch (e) { return { error: e.message }; }
+    return { p, boxName, regName, expr, bbox: ev.bbox, margin, mode: mode || 'compact', vol: ev.vol };
+  };
+  APP.createVoidRegion = function (r, margin, mode) {
+    const pl = APP.voidPlan(r, margin, mode);
+    if (pl.error) return pl;
+    APP.snap();
+    const body = APP.addBody('RPP', pl.p, { name: pl.boxName, cs: 0, visible: false, color: '#9aa0a6', meta: { voidOf: r.name } });
+    const reg = APP.addRegion(pl.regName, pl.expr, { visible: false, nvois: r.nvois });
+    reg.meta = { voidOf: r.name };
+    S.sel = { t: 'region', id: reg.id };
+    APP.changed({ tree: true, right: true });
+    APP.toast(`Void region ${reg.name} created with RPP ${body.name} (hidden; show it from the tree)`);
+    return { body, region: reg, plan: pl };
+  };
   APP.regionNameFor = (bodyName) => FK.uniqueName('r_' + bodyName.slice(0, 6), regionNames());
 
   APP.createRpp = function (a, b, label) {
@@ -375,26 +455,6 @@
   APP.rppFromBox = function (box) { return APP.createRpp(box.min, box.max); };
 
   /* ---------- Planes and cuts ---------- */
-  APP.resolveCutTarget = function () {
-    const ct = S.opt.cutTarget;
-    if (ct === 'none') return null;
-    if (ct !== 'auto') return APP.getRegion(+ct) || null;
-    if (S.sel && S.sel.t === 'region') return APP.getRegion(S.sel.id) || null;
-    if (S.sel && S.sel.t === 'body') {
-      const b = APP.getBody(S.sel.id);
-      if (b && !FK.isPlaneType(b.type)) {
-        for (const r of S.model.regions) {
-          try { if (FK.exprNames(FK.parseExpr(r.expr)).has(b.name)) return r; } catch (e) { /* ignorer */ }
-        }
-      }
-    }
-    if (S.model.regions.length === 1) return S.model.regions[0];
-    return null;
-  };
-  APP.applyCut = function (region, signed) {
-    // visibility is never changed here: a hidden region stays hidden
-    region.expr = FK.addTermToExpr(region.expr, signed);
-  };
   APP.planeFromPick = function (pk, cs) {
     const v = pk.seedVerts;
     const inv = FK.M.inv(APP.csysWorld(cs === undefined ? S.model.active : cs));
@@ -406,12 +466,8 @@
     APP.snap();
     const pl = APP.planeFromPick(pk);
     const b = APP.addBody('PLA', pl.p, { meta: pl.meta });
-    const target = APP.resolveCutTarget();
-    let msg = `PLA ${b.name} created`;
-    if (target) {
-      APP.applyCut(target, (S.opt.planeSide === '-' ? '-' : '+') + b.name);
-      msg += ` · applied to ${target.name} (${S.opt.planeSide === '-' ? '−' : '+'}${b.name})`;
-    } else msg += ' (no target region: add +' + b.name + ' to a region)';
+    // the plane is only created: it is never added to a region automatically
+    const msg = `PLA ${b.name} created (add +${b.name} or -${b.name} to a region yourself)`;
     S.sel = { t: 'body', id: b.id };
     APP.changed({ tree: true, right: true });
     APP.toast(msg);
@@ -542,13 +598,14 @@
     const imp = res.model;
     if (!imp.bodies.length && !imp.regions.length) { APP.toast('No body or region found in this text'); return res; }
     APP.snap();
-    if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [] }; S.sel = null; }
+    if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], exportCs: S.model.exportCs || 0 }; S.sel = null; }
     const used = bodyNames(), map = new Map();
     for (const b of imp.bodies) {
       let nm = b.name;
       if (used.has(nm)) nm = FK.uniqueName(nm, used);
       map.set(b.name, nm); used.add(nm);
-      b.name = nm; b.id = APP.nid(); b.cs = S.model.active || 0; S.model.bodies.push(b);
+      b.name = nm; b.id = APP.nid(); b.cs = APP.exportCs(); // INP coordinates are in the export frame
+      S.model.bodies.push(b);
     }
     const rused = regionNames();
     for (const r of imp.regions) {
@@ -591,10 +648,12 @@
   };
 
   /* ---------- INP text ---------- */
-  APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.wbody });
+  APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody });
   APP.warnings = () => {
-    const w = FK.validate(S.model, APP.wbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (FLUKA limit)`);
+    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${c.diag[0].text}`); }
     return w;
   };
 })();

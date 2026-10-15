@@ -120,6 +120,17 @@
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="confirmOk">OK</button></div>
   </form>
 </dialog>
+<dialog id="dlgVoid">
+  <form method="dialog">
+    <h3>Void region around a region <small class="muted">(experimental)</small></h3>
+    <p class="muted">Creates an RPP around the region's bounding box (+ margin) and a new region <code>+RPP −(region)</code>, i.e. the exact negative of the region inside that box.</p>
+    <label class="row">Margin (mm) <input type="number" id="voidMargin" value="10" min="0" step="1" style="width:90px"></label>
+    <label class="row"><input type="radio" name="voidMode" value="compact" checked> Compact: <code>+box −( … )</code></label>
+    <label class="row"><input type="radio" name="voidMode" value="expanded"> Expanded (De Morgan, no leading <code>−( )</code>)</label>
+    <div id="voidPrev" class="voidprev"></div>
+    <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="voidOk">Create</button></div>
+  </form>
+</dialog>
 <input type="file" id="fileStl" accept=".stl,.STL,.obj,.OBJ" multiple hidden>
 <input type="file" id="fileInp" accept=".inp,.txt" hidden>
 <input type="file" id="fileProj" accept=".json" hidden>

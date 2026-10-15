@@ -58,7 +58,7 @@
       APP.sync();
       if (fl.tree || fl.right || fl.csys) APP.rebuildCsys();
       if (fl.measures) APP.rebuildMeasures();
-      if (fl.tree) { renderLeft(); renderToolOpts(); }
+      if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
       if (fl.right) renderRight(); else { updateLive(); if (fl.csys) updateCsysFields(); }
       updateInp(); updateStatus(); updateDropHint();
       if (APP.cutUpdate) APP.cutUpdate();
@@ -125,7 +125,13 @@
     if (S.model.csys.length) {
       h += `<label>Active coordinate system <select data-act="activeCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${S.model.active === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`;
     }
-    if (S.fill) h += chk('snap', 'Snap to vertices');
+    if (S.fill) {
+      const sp = fillSpec();
+      if (sp && sp.kind === 'circlePts') h += chk('snap', 'Snap to vertices') + `<label class="muted">${(S.fillPts || []).length} point(s) picked</label><span class="btns"><button class="btn sm primary" data-act="fillDone">Done</button><button class="btn sm" data-act="fillUndo">Undo last</button></span>`;
+      else if (sp && EDGE_KINDS.includes(sp.kind)) h += '<label class="muted">Sharp edges only (rims are followed automatically)</label>';
+      else h += chk('snap', 'Snap to vertices');
+      if (sp && (sp.kind === 'circleEdge' || sp.kind === 'circlePts') && (sp.axisIdx || (sp.radIdx !== undefined && sp.radIdx !== null))) h += chk('circleAll', 'Also set ' + (sp.axisIdx ? 'the axis (circle normal) and ' : '') + 'the radius');
+    }
     else if (S.tool === 'select') {
       if (S.filter === 'point') h += chk('snap', 'Snap to vertices');
       else if (S.filter === 'edge') h += chk('edgeSharpOnly', 'Sharp edges only') + num('sharp', 'angle ≥', '°');
@@ -135,10 +141,7 @@
     else if (S.tool === 'rpp') h += chk('snap', 'Snap to vertices');
     else if (S.tool === 'csys3') h += chk('snap', 'Snap to vertices') + '<label class="muted">Created as a child of the active system</label>';
     else if (S.tool === 'plane' || S.tool === 'replane') {
-      const regs = S.model.regions.map(r => `<option value="${r.id}" ${String(o.cutTarget) === String(r.id) ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
-      h += chk('coplanar', 'Highlight the whole face') +
-        `<label>Target <select data-opt="cutTarget"><option value="auto" ${o.cutTarget === 'auto' ? 'selected' : ''}>Auto (selection)</option><option value="none" ${o.cutTarget === 'none' ? 'selected' : ''}>None</option>${regs}</select></label>` +
-        `<label>Keep <select data-opt="planeSide"><option value="+" ${o.planeSide === '+' ? 'selected' : ''}>material side (+PLA)</option><option value="-" ${o.planeSide === '-' ? 'selected' : ''}>opposite side (−PLA)</option></select></label>`;
+      h += chk('coplanar', 'Highlight the whole face') + '<label class="muted">The plane is only created; add it to a region yourself</label>';
     } else if (S.tool === 'viewface') h += chk('coplanar', 'Highlight the whole face');
     return h;
   }
@@ -188,7 +191,7 @@
     if (!pk) return '';
     switch (pk.kind) {
       case 'point': return `${pk.snapped ? 'Vertex' : 'Point'} (${xyz(pk.p, 3)}) cm`;
-      case 'edge': return pk.none ? 'No sharp edge here (see the "sharp edges" option)' : `Edge: ${f(pk.chain ? pk.chain.length : pk.length, 4)} cm${pk.chain ? ' (' + pk.chain.segments + ' segments)' : ''}`;
+      case 'edge': return pk.none ? 'No sharp edge here (see the "sharp edges" option)' : pk.circle ? `Circular rim: R = ${f(pk.circle.r, 4)} cm, centre (${xyz(pk.circle.c, 3)}), ${pk.loop.segments} segments` : `Edge: ${f(pk.chain ? pk.chain.length : pk.length, 4)} cm${pk.chain ? ' (' + pk.chain.segments + ' segments)' : ''}`;
       case 'face': return `Face: ${f(pk.area, 4)} cm² · ${pk.count} triangle${pk.count > 1 ? 's' : ''} · n = (${xyz(pk.normal, 3)})`;
       case 'object': { const st = APP.objectStats(pk); return `Object ${esc(pk.ownerName)}${st.volume !== undefined && st.volume !== null ? ' · V = ' + f(st.volume, 3) + ' cm³' : ''}`; }
     }
@@ -198,7 +201,11 @@
     let t = '';
     if (S.fill) {
       const sp = fillSpec(), one = S.fill.only !== undefined ? ' (single coordinate)' : '';
-      t = sp && sp.kind === 'normal' ? 'Pick: click a face to take its outward normal · <a href="#" data-act="cancelFill">Cancel (Esc)</a>'
+      if (sp && sp.kind === 'circlePts') t = `Click points on the circle (${(S.fillPts || []).length} picked, at least 3) · <a href="#" data-act="fillDone">Done (Enter)</a> · <a href="#" data-act="fillUndo">Undo last</a> · <a href="#" data-act="cancelFill">Cancel (Esc)</a>`;
+      else if (sp && sp.kind === 'circleEdge') t = 'Click a circular edge (rim): its circle gives the centre · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
+      else if (sp && sp.kind === 'dirEdge') t = 'Click an edge: its normalized direction gives the vector · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
+      else if (sp && sp.kind === 'radiusEdge') t = 'Click an arc edge (radius of its circle) or a straight edge (its length) · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
+      else t = sp && sp.kind === 'normal' ? 'Pick: click a face to take its outward normal · <a href="#" data-act="cancelFill">Cancel (Esc)</a>'
         : 'Pick: click a point in the view' + (sp && sp.kind === 'radius' ? ' on the surface' : '') + one + ' · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
     } else if (S.tool === 'select') {
       t = !S.info ? '' : S.pick ? esc(pkSummary(S.pick)) + ' <a href="#" data-act="openRight">Details ▸</a>'
@@ -213,6 +220,7 @@
     $('#status').innerHTML = t ? `<span>${t}</span>` : '';
   }
   $('#status').addEventListener('click', e => { if (e.target.closest('[data-act=cancelTool]')) { e.preventDefault(); setTool('select'); } });
+  $('#status').addEventListener('click', e => { const a = e.target.closest('[data-act=fillDone],[data-act=fillUndo]'); if (!a) return; e.preventDefault(); if (a.dataset.act === 'fillDone') finishCirclePts(); else if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } });
   $('#status').addEventListener('click', e => { if (e.target.closest('[data-act=cancelFill]')) { e.preventDefault(); cancelFill(); } });
   $('#status').addEventListener('click', e => { if (e.target.closest('[data-act=openRight]')) { e.preventDefault(); setDrawer('right', true); } });
 
@@ -231,6 +239,35 @@
       d.addEventListener('close', h); d.showModal();
     });
   }
+  /* ---------- Void region (experimental) ---------- */
+  function voidArgs() { return [+$('#voidMargin').value || 0, (document.querySelector('input[name=voidMode]:checked') || {}).value || 'compact']; }
+  function updateVoidPrev(r) {
+    const pl = APP.voidPlan(r, ...voidArgs()), box = $('#voidPrev'), ok = $('#voidOk');
+    if (pl.error) {
+      box.innerHTML = '<div class="msg bad">' + esc(pl.error) + (pl.diag ? '<br>' + pl.diag.map(d => esc(d.text)).join('<br>') : '') + '</div>';
+      ok.disabled = true; return;
+    }
+    ok.disabled = false;
+    const f = (a) => a.map(x => +x.toFixed(3)).join(', ');
+    box.innerHTML = '<div class="msg"><b>Bounding box</b> (' + f(pl.bbox.min) + ') → (' + f(pl.bbox.max) + ')<br>' +
+      '<b>RPP ' + esc(pl.boxName) + '</b> ' + f(pl.p) + '<br><b>Region ' + esc(pl.regName) + '</b><br><code>' + esc(pl.expr) + '</code></div>';
+  }
+  function openVoidDlg(r) {
+    const d = $('#dlgVoid'); d.dataset.rid = r.id; d.returnValue = '';
+    updateVoidPrev(r);
+    if (!d.open) d.showModal();
+  }
+  (function () {
+    const d = $('#dlgVoid'); if (!d) return;
+    const refresh = () => { const r = APP.getRegion(+d.dataset.rid); if (r) updateVoidPrev(r); };
+    d.addEventListener('input', refresh); d.addEventListener('change', refresh);
+    d.addEventListener('close', () => {
+      if (d.returnValue !== 'ok') return;
+      const r = APP.getRegion(+d.dataset.rid); if (!r) return;
+      const res = APP.createVoidRegion(r, ...voidArgs());
+      if (res.error) toast(res.error);
+    });
+  })();
   async function newProject() {
     if (await askConfirm('Start a new project? Meshes, bodies, regions, coordinate systems and measures are removed (the model part can be undone with Ctrl+Z; meshes cannot).', 'Clear everything')) { APP.newModel(true); toast('New project'); }
   }
@@ -265,6 +302,7 @@
         <div class="row2"><span class="muted" style="flex:1">Render zone margin (%)</span><input type="number" step="1" min="0" style="width:80px" data-opt="margin" value="${o.margin}"></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
         <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
+        <div class="fld" style="margin-top:6px"><label>Export coordinate system (all INP coordinates and directions are written in it)</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div class="fld" style="margin-top:6px"><label>Output format</label><select data-opt="style">
           <option value="1" ${o.style == 1 ? 'selected' : ''}>Flair style (REGION + line)</option>
           <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
@@ -273,7 +311,7 @@
     if (!dlgSet.open) dlgSet.showModal();
   };
   $('#settingsBody').addEventListener('input', e => { const t = e.target; if (t.dataset.k === 'title') { APP.snap('title'); S.model.title = t.value; APP.changed({}); } else if (t.type === 'number') onOptChange(e); });
-  $('#settingsBody').addEventListener('change', e => { if (e.target.dataset.opt) onOptChange(e); });
+  $('#settingsBody').addEventListener('change', e => { if (e.target.dataset.opt) onOptChange(e); else if (e.target.dataset.k === 'exportCs') APP.setExportCsys(+e.target.value); });
 
   /* ---------- Left panel: project tree ---------- */
   function itemHTML(t, o) {
@@ -303,7 +341,7 @@
         ${kids ? `<button class="chev" data-act="fold" data-k="cs${c.id}">${open ? '▾' : '▸'}</button>` : '<span class="chev"></span>'}
         <button class="vis${c.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${c.visible ? ICON.eye : ICON.eyeOff}</button>
         <button class="rad${isA ? ' on' : ''}" data-act="activate" data-cid="${c.id}" title="Set as active coordinate system" aria-label="Active">${isA ? '●' : '○'}</button>
-        <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="ty">${c.frozen ? '🔒 ' : ''}${c.parent ? '↳ ' + esc(APP.csysLabel(c.parent)) : ''}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div></div>` +
+        <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="ty">${APP.exportCs() === c.id ? '⇥ export ' : ''}${c.frozen ? '🔒 ' : ''}${c.parent ? '↳ ' + esc(APP.csysLabel(c.parent)) : ''}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div></div>` +
         (kids && open ? csysTree(list, c.id, depth + 1) : '');
     }).join('');
   }
@@ -436,8 +474,10 @@
         if (o.type === 'PLA') m.push({ label: 'Re-pick from a mesh face…', fn: () => { S.reassign = o.id; setTool('replane'); } });
         return m.concat([{ sep: 1 }, del]);
       }
-      case 'region': return [rename, toggle, { label: 'Duplicate', fn: () => { const c = APP.duplicateRegion(o); S.sel = { t: 'region', id: c.id }; APP.changed({ tree: true, right: true }); } }, { sep: 1 }, del];
+      case 'region': return [rename, toggle, { label: 'Duplicate', fn: () => { const c = APP.duplicateRegion(o); S.sel = { t: 'region', id: c.id }; APP.changed({ tree: true, right: true }); } },
+        { label: 'Create void region around this one… (experimental)', fn: () => openVoidDlg(o) }, { sep: 1 }, del];
       case 'csys': return [rename, toggle, { label: 'Set as active', fn: () => APP.setActiveCsys(o.id) },
+        { label: APP.exportCs() === o.id ? 'Stop using as export coordinate system' : 'Use as export coordinate system (INP)', fn: () => APP.setExportCsys(APP.exportCs() === o.id ? 0 : o.id) },
         { label: 'New child coordinate system', fn: () => { const c = APP.createCsysWorld(APP.csysWorld(o.id), { parent: o.id }); if (c) selectItem('csys', c.id); } },
         { label: o.frozen ? 'Unfreeze (follow parent)' : 'Freeze (keep world pose)', fn: () => APP.setCsysFrozen(o, !o.frozen) },
         { label: 'Section view (XY plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':xy') },
@@ -489,6 +529,7 @@
     const item = t.closest('.item'); const o = findItem(item.dataset.t, +item.dataset.id); if (!o) return;
     o.opacity = (+t.value) / 100;
     item.querySelector('small').textContent = t.value + '%';
+    if (S.sel && S.sel.t === item.dataset.t && S.sel.id === +item.dataset.id) syncRightStyle();
     APP.applyStyles(); clearTimeout(saveT); saveT = setTimeout(APP.save, 400);
   });
   /* ---- group rename ---- */
@@ -631,9 +672,22 @@
       if (missing.length) return `<div class="msg bad">Unknown body: ${esc(missing.join(', '))}</div>`;
       const c = APP.regionCache.get(r.id);
       if (c && c.err) return `<div class="msg bad">${esc(c.err)}</div>`;
-      if (c && c.polys && !c.polys.length) return '<div class="msg bad">Region is empty inside the render zone</div>';
+      if (c && c.polys && (!c.polys.length || (c.vol !== null && c.vol !== undefined && c.vol < 1e-9))) {
+        const dg = c.diag || [];
+        if (!dg.length) return '<div class="msg bad">Region is empty inside the render zone (no single cause found: check that the bodies overlap, with the +/− signs and the | unions).</div>';
+        return '<div class="msg bad"><b>Region is empty inside the render zone.</b>' + dg.map(d => `<div class="dg">${esc(d.text)}` +
+          (d.fix ? `<div><button class="btn sm" data-act="applyFix" data-rid="${r.id}" data-expr="${esc(d.fix.expr)}" title="${esc(d.fix.expr)}">${esc(d.fix.label)}: ${esc(d.fix.expr)}</button></div>` : '') + '</div>').join('') + '</div>';
+      }
       return '<div class="msg ok">Valid expression</div>';
     } catch (e) { return `<div class="msg bad">${esc(e.message)}</div>`; }
+  }
+  /** Keeps the style controls of the properties panel in step with changes made elsewhere (tree slider, eye…), without re-rendering it. */
+  function syncRightStyle() {
+    const it = APP.selItem(); if (!it || !S.sel) return;
+    const set = (k, fn) => { const el = $('#rightBody [data-k="' + k + '"]'); if (el && document.activeElement !== el) fn(el); };
+    if (it.opacity !== undefined) set('opacity', el => { el.value = Math.round(it.opacity * 100); });
+    set('visible', el => { el.checked = !!it.visible; });
+    if (it.color) set('color', el => { el.value = it.color; });
   }
   function updateLive() {
     const li = $('#liveInfo'); if (li) li.innerHTML = liveInfoHTML();
@@ -661,7 +715,7 @@
     else if (APP.FIELD_GROUPS[b.type]) {
       APP.FIELD_GROUPS[b.type].forEach((g, gi) => {
         const on = S.fill && S.fill.kind === 'body' && S.fill.id === b.id && S.fill.g === gi && S.fill.only === undefined;
-        h += `<div class="fld full grp"><div class="gh"><label>${g.l}</label>${g.pick ? `<button class="pk${on ? ' on' : ''}" data-act="pickField" data-g="${gi}" title="Pick the whole group in the 3D view" aria-label="Pick in the 3D view">⌖</button>` : ''}</div>
+        h += `<div class="fld full grp"><div class="gh"><label>${g.l}</label><span class="pks">${g.pick ? `<button class="pk${on && S.fill.alt === undefined ? ' on' : ''}" data-act="pickField" data-g="${gi}" title="Pick the whole group in the 3D view" aria-label="Pick in the 3D view">⌖</button>` : ''}${(g.alts || []).map((al, ai) => `<button class="pk${S.fill && S.fill.kind === 'body' && S.fill.id === b.id && S.fill.g === gi && S.fill.alt === ai ? ' on' : ''}" data-act="pickField" data-g="${gi}" data-alt="${ai}" title="${esc(al.title)}" aria-label="${esc(al.title)}">${al.icon}</button>`).join('')}${g.pick && g.pick.kind === 'vec' ? `<button class="pk" data-act="flipVec" data-g="${gi}" title="Reverse the vector (H → −H)" aria-label="Reverse the vector">⇄</button>` : ''}</span></div>
           <div class="gN" style="grid-template-columns:repeat(${Math.min(g.idx.length, 3)},1fr)">${g.idx.map((i, ii) => {
             const canOne = g.pick && g.pick.kind !== 'radius' && g.idx.length > 1;
             const onOne = S.fill && S.fill.kind === 'body' && S.fill.id === b.id && S.fill.g === gi && S.fill.only === ii;
@@ -671,7 +725,11 @@
     } else info.fields.forEach((fl, i) => { h += numField(fl, `data-bf="${i}"`, b.p[i]); });
     if (b.type !== 'RAW' || S.model.csys.length) {
       h += `<div class="fld full"><label>Defined in coordinate system</label><select data-k="bcs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${b.cs === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-opt="keepPos" ${S.opt.keepPos !== false ? 'checked' : ''}>Keep the position when changing frame (recomputes the parameters)</label></div>`;
+        <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-opt="keepPos" ${S.opt.keepPos === true ? 'checked' : ''}>Keep the position when changing frame (recomputes the parameters)</label></div>`;
+    }
+    if (b.type !== 'RAW') {
+      const xb = APP.xbody(b), ex = APP.exportCs();
+      h += `<div class="fld full"><div class="muted" style="font-size:12px">In the INP (frame: ${esc(APP.csysLabel(ex))}): <code>${esc(xb.type)} ${esc(xb.p.map(x => +(+x).toFixed(5)).join(' '))}</code></div></div>`;
     }
     h += '</div>';
     if (b.type === 'PLA') {
@@ -713,7 +771,7 @@
         <div class="muted" style="font-size:12px">p_parent = R·p + t. Must be a proper rotation (orthonormal, determinant +1).</div></div></details>
       <details class="fold"><summary>World values</summary><div id="csysWorld">${csysWorldHTML(c)}</div></details>
       <div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(c.color)}"><label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${c.visible ? 'checked' : ''}>Visible</label></div></div>
-      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>
+      <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button><button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>
       <div class="muted" style="font-size:12px;margin-top:6px">Deleting re-attaches the children to the parent and keeps the bodies where they are.</div>`;
     return h;
   }
@@ -757,10 +815,10 @@
     return `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
       <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>
-      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea></div></div>
+      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
-      <div class="btns"><button class="btn sm" data-act="termAdd">+ add</button><button class="btn sm" data-act="termSub">− subtract</button><button class="btn sm" data-act="termDel">remove</button></div>
+      <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>
       ${commonStyle(r)}</div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>
       <div class="btns"><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="del">Delete</button></div>`;
@@ -790,7 +848,49 @@
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
     updateLive();
+    if (it && S.sel && S.sel.t === 'region') initExprEditor();
     renderToolWin();
+  }
+
+  /* ---------- Region expression editor: insertion at the caret, always-visible caret ---------- */
+  function exprEls() { return { ta: $('#exprArea'), mir: $('#exprMirror') }; }
+  /** Mirror of the textarea showing a blinking caret while the textarea is not focused (e.g. when a body is being chosen in the list). */
+  function updateExprMirror() {
+    const { ta, mir } = exprEls(); if (!ta || !mir) return;
+    const focused = document.activeElement === ta, st = S.exprSel || { s: ta.value.length, e: ta.value.length };
+    const s0 = Math.min(st.s, ta.value.length), e0 = Math.min(st.e, ta.value.length);
+    const sel = e0 > s0 ? `<span class="fs">${esc(ta.value.slice(s0, e0))}</span>` : '<span class="fc"></span>';
+    mir.innerHTML = focused ? '' : esc(ta.value.slice(0, s0)) + sel + esc(ta.value.slice(e0)) + '\u200b';
+    mir.scrollTop = ta.scrollTop;
+  }
+  function initExprEditor() {
+    const { ta } = exprEls(); if (!ta) return;
+    const keep = () => { S.exprSel = { s: ta.selectionStart, e: ta.selectionEnd }; };
+    const st = S.exprSel && S.exprSel.id === S.sel.id ? S.exprSel : { id: S.sel.id, s: ta.value.length, e: ta.value.length };
+    S.exprSel = st; try { ta.setSelectionRange(st.s, st.e); } catch (e) { /* ignore */ }
+    for (const ev of ['select', 'keyup', 'click', 'input', 'mouseup']) ta.addEventListener(ev, () => { keep(); S.exprSel.id = S.sel && S.sel.id; updateExprMirror(); });
+    ta.addEventListener('focus', updateExprMirror); ta.addEventListener('blur', () => { keep(); S.exprSel.id = S.sel && S.sel.id; updateExprMirror(); });
+    ta.addEventListener('scroll', updateExprMirror);
+    // the insertion buttons must not take the focus away from the expression (keeps the real caret visible)
+    const bar = $('#rightBody .exprbtns'); if (bar) bar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+    updateExprMirror();
+  }
+  /** kind: 'term' (text = "+name" / "-name"), 'union', 'paren'. Inserted only at the caret (or replacing the selection). */
+  function insertInExpr(kind, text) {
+    const { ta } = exprEls(); const it = APP.selItem(); if (!ta || !it) return;
+    const v = ta.value, st = S.exprSel || { s: v.length, e: v.length };
+    const s0 = Math.min(st.s, v.length), e0 = Math.min(Math.max(st.e, st.s), v.length), before = v.slice(0, s0), mid = v.slice(s0, e0), after = v.slice(e0);
+    const pre = before && !/[\s(]$/.test(before) ? ' ' : '', needPost = after ? !/^[\s)]/.test(after) : false;
+    let ins, caret;
+    if (kind === 'term') { ins = pre + text + (needPost ? ' ' : ''); caret = s0 + ins.length; }
+    else if (kind === 'union') { ins = pre + '|' + (after && /^\s/.test(after) ? '' : ' '); caret = s0 + ins.length; }
+    else if (mid) { ins = pre + '(' + mid + ')' + (needPost ? ' ' : ''); caret = s0 + pre.length + 1 + mid.length; }       // wrap the selection, caret before ')'
+    else { ins = pre + '()' + (needPost ? ' ' : ''); caret = s0 + pre.length + 1; }                                      // caret between the parentheses
+    APP.snap('expr' + it.id);
+    ta.value = before + ins + after; it.expr = ta.value;
+    S.exprSel = { id: it.id, s: caret, e: caret };
+    ta.focus(); ta.setSelectionRange(caret, caret);
+    APP.changed({}); updateExprMirror();
   }
 
   /* ---------- Property editing ---------- */
@@ -830,7 +930,7 @@
         else if (type === 'stl') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         else if (type === 'csys') { if (!APP.renameCsys(it, t.value)) t.value = it.name; }
         break;
-      case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos !== false); break;
+      case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
       case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
@@ -859,8 +959,12 @@
       case 'activeCs': break;
       case 'copyPick': if (pk) copyText(pkText(pk)); break;
       case 'pickPlane': if (pk && pk.kind === 'face') { APP.createPlaneFromPick(pk); } break;
-      case 'pickField': if (it && S.sel.t === 'body') startFill({ kind: 'body', id: it.id, g: +a.dataset.g, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
+      case 'pickField': if (it && S.sel.t === 'body') startFill({ kind: 'body', id: it.id, g: +a.dataset.g, only: a.dataset.i === undefined ? undefined : +a.dataset.i, alt: a.dataset.alt === undefined ? undefined : +a.dataset.alt }); break;
+      case 'flipVec': if (it && S.sel.t === 'body') { const g = APP.FIELD_GROUPS[it.type][+a.dataset.g]; APP.flipFieldVec(it, g.idx); APP.changed({ tree: true, right: true }); } break;
+      case 'fillDone': finishCirclePts(); break;
+      case 'fillUndo': if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } break;
       case 'pickCsysPos': if (it && S.sel.t === 'csys') startFill({ kind: 'csys', id: it.id, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
+      case 'csysExport': if (it && S.sel.t === 'csys') { APP.setExportCsys(APP.exportCs() === it.id ? 0 : it.id); renderRight(); } break;
       case 'csysActivate': if (it && S.sel.t === 'csys') { APP.setActiveCsys(it.id); renderRight(); } break;
       case 'pickCsysPoint': if (pk) { const c = APP.createCsysWorld(FK.M.fromPosEuler(pk.p, [0, 0, 0])); if (c) toast('Coordinate system ' + c.name + ' created (axes parallel to world)'); } break;
       case 'pickCsysFace': if (pk && pk.kind === 'face') { const c = APP.createCsysWorld(APP.csysFromNormal(pk.centroid, pk.normal)); if (c) toast('Coordinate system ' + c.name + ' created: Z = face normal'); } break;
@@ -879,16 +983,19 @@
         if (it && S.sel.t === 'body') APP.scaleBody(it, sc.mode, sc.val, sc.unit, act === 'scaleDup');
         break;
       }
+      case 'applyFix': { const r = APP.getRegion(+a.dataset.rid); if (r) { APP.snap(); r.expr = a.dataset.expr; APP.changed({ tree: true, right: true }); } break; }
       case 'flipPlane': if (it && FK.flipPlane(it)) { APP.snap(); if (it.meta) delete it.meta.src; APP.changed({ right: true }); } break;
       case 'replane': if (it) { S.reassign = it.id; setTool('replane'); if (narrow()) setDrawer('right', false); } break;
-      case 'termAdd': case 'termSub': case 'termDel': {
+      case 'termAdd': case 'termSub': case 'termUnion': case 'termParen': {
+        if (!it || S.sel.t !== 'region') break;
+        const n = $('#termBody').value;
+        if ((act === 'termAdd' || act === 'termSub') && !n) { toast('Choose a body in the list first'); break; }
+        insertInExpr(act === 'termAdd' ? 'term' : act === 'termSub' ? 'term' : act === 'termUnion' ? 'union' : 'paren', (act === 'termSub' ? '-' : '+') + n);
+        break;
+      }
+      case 'termDel': {
         const n = $('#termBody').value; if (!n || !it) break;
-        try {
-          APP.snap();
-          if (act === 'termDel') it.expr = FK.removeTermFromExpr(it.expr, n);
-          else it.expr = FK.addTermToExpr(it.expr, (act === 'termAdd' ? '+' : '-') + n);
-          $('#exprArea').value = it.expr; APP.changed({});
-        } catch (err) { toast(err.message); }
+        try { APP.snap(); it.expr = FK.removeTermFromExpr(it.expr, n); $('#exprArea').value = it.expr; APP.changed({}); updateExprMirror(); } catch (err) { toast(err.message); }
         break;
       }
     }
@@ -907,9 +1014,34 @@
     if (!S.fill) return null;
     if (S.fill.kind === 'csys') return { kind: 'point' };
     const b = APP.getBody(S.fill.id), g = b && APP.FIELD_GROUPS[b.type] && APP.FIELD_GROUPS[b.type][S.fill.g];
-    return g ? g.pick : null;
+    return g ? (g.alts && S.fill.alt !== undefined ? g.alts[S.fill.alt] : g.pick) : null;
+  }
+  const EDGE_KINDS = ['circleEdge', 'dirEdge', 'radiusEdge'];
+  /** Edge pick used by the field pickers: sharp edges only, with the loop / circle fit of the rim. */
+  function edgePickForFill(hit, x, y) {
+    const sv = S.opt.edgeSharpOnly; S.opt.edgeSharpOnly = true;
+    try { return APP.makePick(hit, 'edge', x, y, { loop: true }); } finally { S.opt.edgeSharpOnly = sv; }
+  }
+  function finishCirclePts() {
+    const fl = S.fill, sp = fillSpec(); if (!fl || !sp || sp.kind !== 'circlePts') return;
+    const pts = S.fillPts || [];
+    if (pts.length < 3) { toast('Pick at least 3 points on the circle (' + pts.length + ' so far)'); return; }
+    const c = FK.fitCircle3D(pts);
+    if (!c) { toast('The points are collinear: cannot define a circle. Pick points that are not on a line.'); return; }
+    applyCircle(fl, sp, c, `${pts.length} points`);
+    S.fillPts = []; APP.setPending(null);
+    S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus();
+    if (narrow()) setDrawer('right', true);
+  }
+  function applyCircle(fl, sp, c, src) {
+    const b = APP.getBody(fl.id); if (!b) return;
+    APP.snap();
+    const notes = APP.applyCirclePick(b, sp, c, !!S.opt.circleAll);
+    const dev = c.rms > 1e-3 * c.r ? ` ⚠ the ${src} are not on one circle: rms deviation ${f(c.rms, 4)} cm, max ${f(c.maxDev, 4)} cm` : '';
+    toast(`${b.name}: centre (${xyz(c.c, 4)}), R = ${f(c.r, 5)} cm from ${src}${notes.length ? ' · ' + notes.join(', ') : ''}${dev}`);
   }
   function startFill(fl) {
+    S.fillPts = []; APP.setPending(null);
     S.fill = fl; S.winOpen = true; S.pending = null; S.cs3 = []; APP.setPending(null);
     if (S.tool !== 'select') { S.tool = 'select'; syncToolbar(); }
     clearPick(); APP.clearHover(); hoverText = '';
@@ -918,10 +1050,34 @@
   }
   function cancelFill() {
     if (!S.fill) return;
-    S.fill = null; renderToolOpts(); renderRight(); updateStatus();
+    S.fill = null; S.fillPts = []; APP.setPending(null); renderToolOpts(); renderRight(); updateStatus();
   }
   function fillFromHit(hit, x, y) {
     const sp = fillSpec(); if (!sp) { cancelFill(); return; }
+    if (sp.kind === 'circlePts') {
+      const q = APP.pointFromHit(hit, x, y); S.fillPts = (S.fillPts || []).concat([q.p]);
+      APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); return;
+    }
+    if (EDGE_KINDS.includes(sp.kind)) {
+      const e = edgePickForFill(hit, x, y), fl = S.fill, b = APP.getBody(fl.id);
+      if (e.none || !b) { toast('No sharp edge here: click closer to an edge'); return; }
+      if (sp.kind === 'circleEdge') {
+        if (!e.circle) { toast('This edge is not part of a circular rim (' + (e.loop ? e.loop.segments : 1) + ' segment(s) followed): click an arc / circle edge, or use the "∴" picker with several points'); return; }
+        applyCircle(fl, sp, e.circle, `a rim of ${e.loop.segments} segments`);
+      } else if (sp.kind === 'dirEdge') {
+        const a = e.chain ? e.chain.a : e.a, c2 = e.chain ? e.chain.b : e.b;
+        APP.snap(); APP.applyFieldPick(b, { kind: 'dir', idx: sp.idx }, { dir: V.sub(c2, a) });
+        toast(`${b.name}: direction taken from the edge (${xyz(V.norm(V.sub(c2, a)), 4)}), length kept (${f(V.len(sp.idx.map(k => b.p[k])), 4)} cm). Use ⇄ to reverse it.`);
+      } else {
+        const arc = e.circle && e.loop && e.loop.segments >= 3 && e.circle.rms <= 0.02 * e.circle.r;
+        const val = arc ? e.circle.r : (e.chain ? e.chain.length : e.length);
+        APP.snap(); APP.applyFieldPick(b, { kind: 'value', idx: sp.idx }, { v: val });
+        toast(`${b.name}: radius = ${f(val, 5)} cm (${arc ? 'circle fitted on ' + e.loop.segments + ' segments' : 'length of the straight edge'})`);
+      }
+      S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus();
+      if (narrow()) setDrawer('right', true);
+      return;
+    }
     const pk = sp.kind === 'normal' ? APP.makePick(hit, 'face', x, y) : APP.pointFromHit(hit, x, y);
     const fl = S.fill;
     if (fl.kind === 'csys') {
@@ -940,7 +1096,7 @@
     if (!S.fill && narrow()) setDrawer('right', true);
   }
   function pickForTool(hit, x, y) {
-    if (S.fill) { const sp = fillSpec(); return sp && sp.kind === 'normal' ? APP.makePick(hit, 'face', x, y) : APP.pointFromHit(hit, x, y); }
+    if (S.fill) { const sp = fillSpec(); return sp && sp.kind === 'normal' ? APP.makePick(hit, 'face', x, y) : sp && EDGE_KINDS.includes(sp.kind) ? edgePickForFill(hit, x, y) : APP.pointFromHit(hit, x, y); }
     if (S.tool === 'select') return S.info ? APP.makePick(hit, S.filter, x, y) : null;
     if (S.tool === 'measure' || S.tool === 'rpp' || S.tool === 'csys3') return APP.pointFromHit(hit, x, y);
     return APP.makePick(hit, 'face', x, y);
@@ -1080,7 +1236,8 @@
       else if (k === 'y') { e.preventDefault(); APP.redo(); }
     }
     if (e.key === 'Escape') { if (!ctxEl.hidden) { hideMenu(); return; } if (dlg.open) return; if (S.fill) { cancelFill(); return; } if (S.tool !== 'select') setTool('select'); else if (S.pick) { clearPick(); renderRight(); updateStatus(); } else if (S.info) { setTool('select'); } }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.sel && !dlg.open) { e.preventDefault(); APP.deleteSel(); }
+    if (e.key === 'Enter' && !typing && S.fill) { e.preventDefault(); finishCirclePts(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.sel && !dlg.open && !S.fill) { e.preventDefault(); APP.deleteSel(); }
   });
 
   /* ---------- PWA install ---------- */

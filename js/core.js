@@ -310,6 +310,85 @@
     return { a, b, segments: path.length - 1, length: V.dist(a, b) };
   };
 
+  /**
+   * Follows the sharp edges through (a, b) as long as the path stays unambiguous (one continuation) and turns by at most
+   * maxTurnDeg per step: a circular rim of a tessellated cylinder comes back as a closed loop of points.
+   * Returns { pts: [[x,y,z]…], closed, segments }.
+   */
+  FK.edgeLoop = function (topo, va, vb, sharpDeg, maxTurnDeg) {
+    const cosA = Math.cos((sharpDeg === undefined ? 20 : sharpDeg) * Math.PI / 180), cosT = Math.cos((maxTurnDeg || 50) * Math.PI / 180);
+    const path = [va, vb], seen = new Set(path);
+    let closed = false;
+    const ext = (push, first) => {
+      let prev = first[0], end = first[1];
+      for (let guard = 0; guard < 200000; guard++) {
+        const nb = sharpNeighbors(topo, end, cosA).filter(x => x !== prev);
+        if (nb.length !== 1) return;
+        const c = nb[0];
+        if (seen.has(c)) { if (c === path[0] && path.length > 2 && !closed) closed = true; return; }
+        const d1 = V.norm(V.sub(vpt(topo, end), vpt(topo, prev))), d2 = V.norm(V.sub(vpt(topo, c), vpt(topo, end)));
+        if (V.dot(d1, d2) < cosT) return;
+        seen.add(c); push(c); prev = end; end = c;
+      }
+    };
+    ext(c => path.push(c), [va, vb]);
+    if (!closed) ext(c => path.unshift(c), [vb, va]);
+    const pts = path.map(v => vpt(topo, v));
+    if (closed) pts.push(pts[0].slice());
+    return { pts, closed, segments: pts.length - 1 };
+  };
+
+  /** Eigen-decomposition of a symmetric 3×3 matrix (Jacobi). Returns { vals, vecs } (vecs[i] = unit eigenvector of vals[i]). */
+  function jacobi3(A) {
+    const a = A.map(r => r.slice()), v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    for (let sweep = 0; sweep < 60; sweep++) {
+      const off = Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]);
+      if (off < 1e-30) break;
+      for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+        if (Math.abs(a[p][q]) < 1e-300) continue;
+        const th = (a[q][q] - a[p][p]) / (2 * a[p][q]), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), sn = t * c;
+        for (let k = 0; k < 3; k++) { const akp = a[k][p], akq = a[k][q]; a[k][p] = c * akp - sn * akq; a[k][q] = sn * akp + c * akq; }
+        for (let k = 0; k < 3; k++) { const apk = a[p][k], aqk = a[q][k]; a[p][k] = c * apk - sn * aqk; a[q][k] = sn * apk + c * aqk; }
+        for (let k = 0; k < 3; k++) { const vkp = v[k][p], vkq = v[k][q]; v[k][p] = c * vkp - sn * vkq; v[k][q] = sn * vkp + c * vkq; }
+      }
+    }
+    return { vals: [a[0][0], a[1][1], a[2][2]], vecs: [0, 1, 2].map(j => [v[0][j], v[1][j], v[2][j]]) };
+  }
+  /**
+   * Least-squares circle through ≥ 3 points in 3D: plane fit (smallest principal axis) then algebraic circle fit in the plane.
+   * Returns { c, n, r, rms, maxDev, planeDev, count } or null when the points are (nearly) collinear.
+   */
+  FK.fitCircle3D = function (pts) {
+    let P = pts.slice();
+    if (P.length > 1 && V.dist(P[0], P[P.length - 1]) < 1e-12) P.pop();       // closed loop: drop the duplicated end point
+    const n = P.length; if (n < 3) return null;
+    const cen = V.mul(P.reduce((s, p) => V.add(s, p), [0, 0, 0]), 1 / n);
+    const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const p of P) { const d = V.sub(p, cen); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i][j] += d[i] * d[j]; }
+    const { vals, vecs } = jacobi3(C), idx = [0, 1, 2].sort((i, j) => vals[i] - vals[j]);
+    if (vals[idx[1]] < 1e-18 * Math.max(1, vals[idx[2]]) || vals[idx[1]] < 1e-12 * vals[idx[2]]) return null;      // collinear
+    const nrm = vecs[idx[0]], u = vecs[idx[2]], w = V.cross(nrm, u);
+    const xy = P.map(p => { const d = V.sub(p, cen); return [V.dot(d, u), V.dot(d, w)]; });
+    // Kåsa fit: x² + y² + D x + E y + F = 0
+    let sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, sz = 0, sxz = 0, syz = 0;
+    for (const [x, y] of xy) { const z = x * x + y * y; sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y; sz += z; sxz += x * z; syz += y * z; }
+    const m = [[sxx, sxy, sx, -sxz], [sxy, syy, sy, -syz], [sx, sy, n, -sz]];
+    for (let i = 0; i < 3; i++) {                                                // Gauss elimination with pivoting
+      let piv = i; for (let k = i + 1; k < 3; k++) if (Math.abs(m[k][i]) > Math.abs(m[piv][i])) piv = k;
+      if (Math.abs(m[piv][i]) < 1e-300) return null;
+      [m[i], m[piv]] = [m[piv], m[i]];
+      for (let k = i + 1; k < 3; k++) { const f = m[k][i] / m[i][i]; for (let j = i; j < 4; j++) m[k][j] -= f * m[i][j]; }
+    }
+    const sol = [0, 0, 0];
+    for (let i = 2; i >= 0; i--) { let t = m[i][3]; for (let j = i + 1; j < 3; j++) t -= m[i][j] * sol[j]; sol[i] = t / m[i][i]; }
+    const a = -sol[0] / 2, b = -sol[1] / 2, r2 = a * a + b * b - sol[2];
+    if (!(r2 > 0) || !isFinite(r2)) return null;
+    const r = Math.sqrt(r2), c = V.add(cen, V.add(V.mul(u, a), V.mul(w, b)));
+    let ss = 0, maxDev = 0, planeDev = 0;
+    P.forEach((p, i) => { const dv = Math.hypot(xy[i][0] - a, xy[i][1] - b) - r; ss += dv * dv; maxDev = Math.max(maxDev, Math.abs(dv)); planeDev = Math.max(planeDev, Math.abs(V.dot(V.sub(p, cen), nrm))); });
+    return { c, n: nrm, r, rms: Math.sqrt(ss / n), maxDev, planeDev, count: n };
+  };
+
   /* ---------------- CSG (BSP) ---------------- */
   const EPS = 1e-6;
   class Plane {
@@ -971,6 +1050,125 @@
       result = (result === null) ? z : CSG.union(result, z);
     }
     return result || [];
+  };
+
+  /**
+   * Exact complement of a region inside a bounding body: "void = box − region".
+   * mode 'compact'  : +box -( <whole expression> )                       (a union becomes one negated parenthesis)
+   * mode 'expanded' : De Morgan, one factor per zone:  +box +(-t1 | -t2) …  (a zone  t1 t2  becomes  not t1 or not t2)
+   * Returns the expression string.
+   */
+  FK.complementExpr = function (expr, boxName, mode) {
+    const ast = typeof expr === 'string' ? FK.parseExpr(expr) : expr;
+    const clone = (o) => JSON.parse(JSON.stringify(o));
+    const flip = (t) => { const c = clone(t); c.sign = -c.sign; return c; };
+    const terms = [{ sign: 1, name: boxName }];
+    if (mode === 'expanded') {
+      for (const zone of ast.zones) {
+        if (zone.length === 1) terms.push(flip(zone[0]));                       // not (single term)
+        else terms.push({ sign: 1, sub: { zones: zone.map(t => [flip(t)]) } }); // not (t1 t2 …) = (not t1 | not t2 | …)
+      }
+    } else if (ast.zones.length === 1 && ast.zones[0].length === 1) terms.push(flip(ast.zones[0][0]));
+    else terms.push({ sign: -1, sub: clone(ast) });
+    return FK.formatExpr({ zones: [terms] });
+  };
+
+  /* ---------------- Region diagnostics ---------------- */
+  /** Zero-volume / degenerate parameters of a (world) body, as a sentence with the values, or null. */
+  FK.bodyDegeneracy = function (b) {
+    const p = b.p, f = (x) => FK.fmt(x, 6), t = b.type;
+    if (t === 'RPP') {
+      const A = [['X', p[0], p[1]], ['Y', p[2], p[3]], ['Z', p[4], p[5]]].filter(a => Math.abs(a[2] - a[1]) < 1e-12);
+      if (A.length) return `zero thickness along ${A.map(a => a[0]).join(', ')}: ${A.map(a => a[0].toLowerCase() + 'min = ' + a[0].toLowerCase() + 'max = ' + f(a[1])).join(', ')}`;
+    } else if (t === 'SPH') { if (!(p[3] > 0)) return `radius = ${f(p[3])} (must be > 0)`; }
+    else if (t === 'RCC' || t === 'TRC') {
+      const H = Math.hypot(p[3], p[4], p[5]);
+      if (H < 1e-12) return `axis vector H = (${f(p[3])}, ${f(p[4])}, ${f(p[5])}) has zero length`;
+      if (t === 'RCC' && !(p[6] > 0)) return `radius = ${f(p[6])} (must be > 0)`;
+      if (t === 'TRC' && !(p[6] > 0) && !(p[7] > 0)) return `both radii are ${f(p[6])} and ${f(p[7])} (one must be > 0)`;
+    } else if (t === 'PLA') { if (Math.hypot(p[0], p[1], p[2]) < 1e-12) return 'normal vector H has zero length'; }
+    return null;
+  };
+  /**
+   * Explains, with numbers, why a region is empty. ctx: { body(name)->polys|null, wbody(name)->world body|null, W: render zone,
+   * world() }. Returns [{ level, zone, text, fix?: { label, expr } }] ; empty list when nothing is wrong.
+   */
+  FK.diagnoseRegion = function (ast, ctx) {
+    const out = [], f = (x) => FK.fmt(x, 5), AX = ['x', 'y', 'z'];
+    const tol = Math.max(boxDiag(ctx.W) * 1e-7, 1e-9);
+    const rng = (bb) => AX.map((a, i) => `${a} ∈ [${f(bb.min[i])}, ${f(bb.max[i])}]`).join(', ');
+    const multi = ast.zones.length > 1;
+    const clone = (o) => JSON.parse(JSON.stringify(o));
+    const operand = (t) => {
+      if (t.name) { const polys = ctx.body(t.name); return polys == null ? null : { label: t.name, term: t, polys, wb: ctx.wbody ? ctx.wbody(t.name) : null }; }
+      return { label: '(' + FK.formatExpr(t.sub) + ')', term: t, polys: FK.evalExpr(t.sub, ctx), wb: null };
+    };
+    ast.zones.forEach((zone, zi) => {
+      const pre = multi ? `Zone ${zi + 1}: ` : '';
+      const push = (level, text, fix) => out.push({ level, zone: zi, text: pre + text, fix });
+      const pos = [], neg = [];
+      for (const t of zone) { const o = operand(t); if (!o) return; (t.sign > 0 ? pos : neg).push(o); }
+      let acc = null, accOps = [];
+      const bbOf = (op) => (op.wb && !FK.isInfiniteType(op.wb.type) && FK.bodyBBox(op.wb)) || bboxOfPolys(op.polys);
+      for (const op of pos.concat(neg)) {
+        const dg = op.wb && FK.bodyDegeneracy(op.wb);
+        if (dg) { push('error', `${op.term.sign > 0 ? '+' : '-'}${op.label} has no volume: ${dg}.`); return; }
+      }
+      for (const op of pos) {
+        if (!op.polys.length) {
+          const dg = op.wb && FK.bodyDegeneracy(op.wb);
+          const bb = op.wb && FK.bodyBBox(op.wb);
+          if (dg) push('error', `+${op.label} has no volume: ${dg}.`);
+          else if (bb) push('error', `+${op.label} lies outside the render zone: body ${rng(bb)}, render zone ${rng(ctx.W)}.`);
+          else push('error', `+${op.label} is empty inside the render zone.`);
+          return;
+        }
+        if (acc === null) { acc = op.polys; accOps = [op]; continue; }
+        const r = CSG.intersect(acc, op.polys);
+        if (!r.length) {
+          const A = accOps.length === 1 ? '+' + accOps[0].label : '(' + accOps.map(o => '+' + o.label).join(' ') + ')', B = '+' + op.label;
+          const bbA = accOps.length === 1 ? bbOf(accOps[0]) : bboxOfPolys(acc), bbB = bbOf(op);
+          const ov = [0, 1, 2].map(i => Math.min(bbA.max[i], bbB.max[i]) - Math.max(bbA.min[i], bbB.min[i]));
+          const gaps = [0, 1, 2].filter(i => ov[i] < -tol).sort((a, b) => ov[a] - ov[b]);
+          const touch = [0, 1, 2].filter(i => Math.abs(ov[i]) <= tol);
+          let fix = null;
+          if (accOps.length === 1 && op.term.name && accOps[0].term.name) {
+            const ast2 = clone(ast);
+            const keep = (t) => zone.filter(x => x === t || (x !== op.term && x !== accOps[0].term));
+            ast2.zones.splice(zi, 1, keep(accOps[0].term).map(clone), keep(op.term).map(clone));
+            fix = { label: 'If you meant both bodies together (union)', expr: FK.formatExpr(ast2) };
+          }
+          if (gaps.length) {
+            push('error', `${A} and ${B} do not intersect: they are separated by a gap of ${f(-ov[gaps[0]])} cm along ${AX[gaps[0]].toUpperCase()} (${A}: ${AX[gaps[0]]} ∈ [${f(bbA.min[gaps[0]])}, ${f(bbA.max[gaps[0]])}], ${B}: ${AX[gaps[0]]} ∈ [${f(bbB.min[gaps[0]])}, ${f(bbB.max[gaps[0]])}]).` +
+              (gaps.length > 1 ? ' Other gaps: ' + gaps.slice(1).map(i => `${f(-ov[i])} cm along ${AX[i].toUpperCase()}`).join(', ') + '.' : '') +
+              ` Writing bodies one after another ("+a +b") means their INTERSECTION, which needs a common volume. Move one body by at least ${f(-ov[gaps[0]])} cm, or use a union.`, fix);
+          } else if (touch.length) {
+            const i = touch[0], v = Math.max(bbA.min[i], bbB.min[i]);
+            push('error', `${A} and ${B} only touch: they share the plane ${AX[i].toUpperCase()} = ${f(v)} (overlap along ${AX[i].toUpperCase()} = ${f(ov[i])} cm, ${A}: ${AX[i]} ∈ [${f(bbA.min[i])}, ${f(bbA.max[i])}], ${B}: ${AX[i]} ∈ [${f(bbB.min[i])}, ${f(bbB.max[i])}]), so their intersection has zero thickness and no volume. ` +
+              `For bodies placed end to end, write the region as a union ("+a | +b"), no overlap is needed.`, fix);
+          } else {
+            push('error', `${A} and ${B} have overlapping bounding boxes (overlap ${AX.map((a, i) => a.toUpperCase() + ' ' + f(ov[i])).join(', ')} cm) but the solids themselves do not intersect (curved or rotated shapes). ${A}: ${rng(bbA)}; ${B}: ${rng(bbB)}. Check the radii, axes and positions.`, fix);
+          }
+          return;
+        }
+        acc = r; accOps.push(op);
+      }
+      if (acc === null) acc = ctx.world();
+      for (const op of neg) {
+        const r = CSG.subtract(acc, op.polys);
+        if (!r.length) {
+          const bbA = accOps.length === 1 ? bbOf(accOps[0]) : bboxOfPolys(acc), bbN = bbOf(op);
+          const A = accOps.length ? (accOps.length === 1 ? '+' + accOps[0].label : '(' + accOps.map(o => '+' + o.label).join(' ') + ')') : 'the render zone';
+          const mg = [0, 1, 2].map(i => Math.min(bbA.min[i] - bbN.min[i], bbN.max[i] - bbA.max[i]));
+          const ast2 = clone(ast); ast2.zones[zi] = zone.filter(t => t !== op.term).map(clone);
+          const fix = ast2.zones[zi].length ? { label: `Without -${op.label}`, expr: FK.formatExpr(ast2) } : null;
+          push('error', `-${op.label} removes everything that is left of ${A}: ${A} ${rng(bbA)} is inside -${op.label} ${rng(bbN)} (margins ${AX.map((a, i) => a.toUpperCase() + ' ' + f(mg[i])).join(', ')} cm). Shrink -${op.label} or drop it.`, fix);
+          return;
+        }
+        acc = r;
+      }
+    });
+    return out;
   };
 
   /* ---------------- Transformations de corps ---------------- */

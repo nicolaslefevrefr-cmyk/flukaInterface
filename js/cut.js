@@ -79,21 +79,27 @@
   function sliceOne(pos, f) {
     const o = f.o, n = f.n, u = f.u, v = f.v;
     const nt = Math.floor(pos.length / 9), d = new Float64Array(3);
-    const ptId = new Map(), pts = [], adj = new Map(), segs = [];
-    const vk = (i) => pos[i] + ',' + pos[i + 1] + ',' + pos[i + 2];
-    const crossing = (ia, ib, da, db) => {
-      let ka = vk(ia), kb = vk(ib), a = ia, b = ib, xa = da, xb = db;
-      if (ka > kb) { const t = ka; ka = kb; kb = t; a = ib; b = ia; xa = db; xb = da; }
-      const key = ka + '|' + kb;
-      let id = ptId.get(key);
-      if (id === undefined) {
-        const t = xa / (xa - xb);
-        const P = [pos[a] + (pos[b] - pos[a]) * t, pos[a + 1] + (pos[b + 1] - pos[a + 1]) * t, pos[a + 2] + (pos[b + 2] - pos[a + 2]) * t];
-        const r = [P[0] - o[0], P[1] - o[1], P[2] - o[2]];
-        id = pts.length; pts.push([r[0] * u[0] + r[1] * u[1] + r[2] * u[2], r[0] * v[0] + r[1] * v[1] + r[2] * v[2]]);
-        ptId.set(key, id);
+    const pts = [], adj = new Map(), segs = [];
+    // Crossing points are WELDED geometrically (spatial hash), not through shared mesh edges: meshes produced by
+    // boolean operations (regions, voids) contain T-junctions, so neighbouring triangles do not share vertex keys.
+    let ext = 0;
+    for (let i = 0; i < pos.length; i += 3) { const a = Math.abs(pos[i]), b = Math.abs(pos[i + 1]), c = Math.abs(pos[i + 2]); if (a > ext) ext = a; if (b > ext) ext = b; if (c > ext) ext = c; }
+    const eps = Math.max(ext, 1) * 1e-7, cell = eps * 8, grid = new Map();
+    const weld = (x, y) => {
+      const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+        const l = grid.get((cx + i) + ',' + (cy + j)); if (!l) continue;
+        for (const id of l) if (Math.abs(pts[id][0] - x) <= eps * 4 && Math.abs(pts[id][1] - y) <= eps * 4) return id;
       }
+      const id = pts.length; pts.push([x, y]);
+      const k = cx + ',' + cy; let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(id);
       return id;
+    };
+    const crossing = (a, b, xa, xb) => {
+      const t = xa / (xa - xb);
+      const P = [pos[a] + (pos[b] - pos[a]) * t, pos[a + 1] + (pos[b + 1] - pos[a + 1]) * t, pos[a + 2] + (pos[b + 2] - pos[a + 2]) * t];
+      const r = [P[0] - o[0], P[1] - o[1], P[2] - o[2]];
+      return weld(r[0] * u[0] + r[1] * u[1] + r[2] * u[2], r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
     };
     for (let t = 0; t < nt; t++) {
       const i0 = t * 9;

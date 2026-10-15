@@ -33,4 +33,30 @@ Name-based geometry (`GEOBEGIN … COMBNAME`) is free format (blank / `,` `/` `;
 
 Each tree category (meshes, coordinate systems, planes, bodies, regions, measures) can hold groups: use the category "＋" menu → *New group*, or an item's ⋮ menu → *New group with this item…*. Drag an item onto a group row to move it; drop it on the category header to take it out. The eye of a group shows / hides all its members, the arrow folds it, right-click (or ⋮) renames or deletes it (members are kept). Groups are saved with the project but have no effect on the FLUKA output.
 
-Creating bodies or planes never creates a region any more, and applying a PLA cut to a hidden region leaves it hidden.
+Creating bodies or planes never creates a region or edits one: a new plane is only created, you add it to a region yourself.
+
+## Cylinder pickers and region diagnostics
+
+- Next to the ⌖ of the cylinder fields (RCC, TRC, XCC, YCC, ZCC): **◎** centre of a circular edge (click the rim: the sharp edges are followed around and a circle is fitted), **∴** centre of the circle through several picked points (3 or more, then *Done* / Enter), **↗** direction of a picked edge (normalized, the current length is kept, orientation follows the previous vector; **⇄** reverses it), **◠** radius from an arc edge (circle fit) or from a straight edge (its length). The tool-window option "Also set the axis and radius" fills the axis (circle normal) and radius from the same circle.
+- A region that is empty inside the render zone now explains why, with values: gap between two bodies along an axis, shared contact plane (bodies end to end), bounding boxes, a `-body` that swallows everything, zero-volume bodies. Writing bodies one after another (`+a +b`) is the intersection; for bodies placed end to end use a union (`+a | +b`). A button applies the corrected expression.
+
+## Region expression editor
+
+The buttons under the expression insert **only at the caret** (or replace the selection): `+ add` / `− subtract` insert `+body` / `-body`, `| union` inserts the union symbol, `( )` inserts a pair of parentheses with the caret in the middle (a selection is wrapped instead). The buttons never take the focus from the text, and when you pick a body in the list a blinking caret stays drawn at the insertion point. The opacity / visibility / colour controls of the properties panel follow the tree in real time.
+
+## Void region around a region (experimental)
+
+Region ⋮ menu ▸ *Create void region around this one…*. The region is evaluated (even if hidden), its bounding box is enlarged by a margin (default 10 mm) and a hidden RPP `vb_<name>` is created in the global coordinate system. A new hidden region `v_<name>` (FLUKA names are ≤ 8 characters) is defined as the exact negative of the original inside that box:
+
+- *Compact*: `+vb_reg1 -( +rcc1 | +rcc2 | … )`
+- *Expanded* (De Morgan, no leading `-( )`): `+vb_reg1 +(-rcc1) +(-rcc2) +(-a | -b) …`
+
+The bounding box comes from the tessellated geometry (cylinders slightly under-estimated), the margin absorbs this. Empty regions give an explanatory error. The whole creation is one undo step.
+
+## Export coordinate system
+
+Objects can be defined in any coordinate system (*Defined in coordinate system*). The INP is written in **one** export system (csys ⋮ menu ▸ *Use as export coordinate system*, the csys properties button, or Settings ▸ INP block): every body parameter, plane normal/point and cylinder axis is converted from its defining system to the export system (global by default). The body properties show the exact INP line parameters. A rotated RPP that is not aligned with the export frame is still written as bounding RPP + PLA planes. Imported INP text is interpreted in the export system. The 3D view always shows world space.
+
+Changing the *Defined in coordinate system* of an object now keeps its parameters and moves the object with the new frame (a translated frame translates the object). Tick *Keep the position when changing frame* to recompute the parameters instead.
+
+Section view: contour points are welded geometrically, so meshes from boolean operations (regions, void regions) no longer leave open contours at some offsets.
