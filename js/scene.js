@@ -146,7 +146,7 @@
     if (gesture.moved < 6 && gesture.mode !== 'pinch') return;
     if (gesture.mode === 'rotate') {
       // yaw about the world Z axis, pitch about the camera's right axis; no limit on either
-      const qy = new THREE.Quaternion().setFromAxisAngle(Zaxis, dx * 0.008);
+      const qy = new THREE.Quaternion().setFromAxisAngle(Zaxis, -dx * 0.008);
       const qp = new THREE.Quaternion().setFromAxisAngle(Xaxis, -dy * 0.008);
       cam.q = qy.multiply(cam.q).multiply(qp); applyCam();
     }
