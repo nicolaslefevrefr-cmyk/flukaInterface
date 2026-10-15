@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.6';
+  FK.VERSION = '1.7';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1780,6 +1780,7 @@
   /* ---------------- INP block generation ---------------- */
   FK.validate = function (model, resolve) {
     const w = [];
+    if ((model.title || '').length > 60) w.push(`Title longer than 60 characters: cut to 60 on export (A60)`);
     const bn = new Set(), rn = new Set();
     const check = (name, kind) => {
       if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) w.push(`${kind} "${name}": invalid name (letters, digits, _ ; must start with a letter)`);
@@ -1872,6 +1873,52 @@
     return lines.map((l, i) => (i ? indent : '') + l);
   }
 
+  /* ---- FLUKA fixed-format cards: (A8, 2X, 6E10.0, A8), max 78 columns used (80 allowed); '*' in column 1 = comment ---- */
+  /** A WHAT value as a right-aligned 10-column field: always with a decimal point (10 → "10.0"), exponents like 1.234E+05, never wider than 10. */
+  FK.fmtWhat = function (v) {
+    if (v === null || v === undefined || v === '') return ' '.repeat(10);
+    if (typeof v === 'string' && !isFinite(+v)) throw new Error('WHAT value is not numeric: ' + v);
+    v = +v; if (!isFinite(v)) throw new Error('WHAT value is not finite');
+    if (v === 0) return '0.0'.padStart(10);
+    const err = (t) => Math.abs((+t - v) / v);
+    let plain = null, expo = null;
+    for (let d = 9; d >= 0; d--) {                       // plain decimal, as many decimals as fit, trailing zeros trimmed (one kept)
+      let t = v.toFixed(d); if (t.includes('.')) t = t.replace(/0+$/, '').replace(/\.$/, '.0'); else t += '.0';
+      if (t.length === 11 && t.endsWith('.0')) t = t.slice(0, -1);   // "123456789." is a valid real
+      if (t.length <= 10 && +t !== 0) { plain = t; break; }
+    }
+    for (let d = 8; d >= 0; d--) {                       // exponent form 1.234E+05
+      const [m, e] = v.toExponential(d).split('e');
+      const n = parseInt(e, 10), t = (m.includes('.') ? m : m + '.0') + 'E' + (n < 0 ? '-' : '+') + String(Math.abs(n)).padStart(2, '0');
+      if (t.length <= 10) { expo = t; break; }
+    }
+    let s = plain && (!expo || err(plain) <= err(expo) * 1.0000001) ? plain : expo;
+    if (s === null || s === undefined) throw new Error('WHAT value too wide: ' + v);
+    return s.padStart(10);
+  };
+  /** One card: keyword (A8), 2 blanks, up to 6 WHATs (E10.0, right-aligned), SDUM (A8 in columns 71-78). Trailing blanks removed. */
+  FK.fixedCard = function (keyword, whats, sdum) {
+    keyword = String(keyword || '').toUpperCase();
+    if (keyword.length > 8) throw new Error('Keyword longer than 8 characters: ' + keyword);
+    whats = whats || [];
+    if (whats.length > 6) throw new Error('At most 6 WHAT fields');
+    sdum = String(sdum || '');
+    if (sdum.length > 8) throw new Error('SDUM longer than 8 characters: ' + sdum);
+    let line = keyword.padEnd(8) + '  ';
+    for (let i = 0; i < 6; i++) line += FK.fmtWhat(whats[i]);
+    line += sdum.padEnd(8);
+    return line.replace(/\s+$/, '');
+  };
+  /** GEOBEGIN card (SDUM = COMBNAME) + title line (2I5, 10X, A60). Optional comment lines ('*' in column 1) before them. */
+  FK.geoHeader = function (title, opts) {
+    opts = opts || {};
+    const out = [];
+    if (opts.comment) for (const c of String(opts.comment).split('\n')) out.push('*' + (c ? ' ' + c : ''));
+    out.push(FK.fixedCard('GEOBEGIN', [], 'COMBNAME'));
+    out.push('    0    0          ' + String(title || 'Geometry').replace(/\s+$/, '').slice(0, 60));
+    return out;
+  };
+
   /** style 1: "REGION name n" + expression line (Flair type); style 2: compact aligned;
    * style 3: fixed Fortran-like columns (GEOBEGIN card (A8,2X,6E10.0,A8), title (2I5,10X,A60), bodies A3/A8/19-col numbers,
    * regions A8 + I5 + expression), every line <= 132 columns. */
@@ -1880,8 +1927,7 @@
     const style = opts.style === 3 ? 3 : opts.style === 2 ? 2 : 1;
     const out = [];
     const title = (model.title || 'Geometry').replace(/\s+$/, '');
-    if (style === 1) { out.push('GEOBEGIN COMBNAME'); out.push('\t' + title); }
-    else { out.push('GEOBEGIN'.padEnd(70) + 'COMBNAME'); out.push('    0    0          ' + title.slice(0, 60)); }
+    for (const l of FK.geoHeader(title, opts)) out.push(l);
     const split = FK.splitObox(model, opts);
     for (const b of model.bodies) {
       if (b.noExport) continue;
@@ -1914,7 +1960,7 @@
     }
     out.push('END');
     for (const t of (model.tail || [])) out.push(t);
-    out.push('GEOEND');
+    out.push(FK.fixedCard('GEOEND'));
     return out.join('\n') + '\n';
   };
 

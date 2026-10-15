@@ -693,7 +693,7 @@
   /* ---------- INP text ---------- */
   /** Is the body referenced by at least one region expression? */
   APP.bodyUsed = (b) => S.model.regions.some(r => { try { return FK.exprNames(FK.parseExpr(r.expr || '+x')).has(b.name); } catch (e) { return (r.expr || '').includes(b.name); } });
-  APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody });
+  APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);

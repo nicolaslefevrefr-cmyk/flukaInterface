@@ -207,6 +207,7 @@
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly'].includes(k)) clearPick();
     if (k === 'margin' || k === 'axes') APP.changed({});
     if (k === 'invX' || k === 'invY') syncToolbar();
+    if (k === 'inpComment') updateInp();
     if (k === 'style') { S.opt.style = +v; $('#inpStyle').value = String(S.opt.style); updateInp(); }
     APP.save();
   }
@@ -504,7 +505,7 @@
           <option value="1" ${o.style == 1 ? 'selected' : ''}>Flair style (REGION + line)</option>
           <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
           <option value="3" ${o.style == 3 ? 'selected' : ''}>Fixed columns (Fortran-like, ≤132 col)</option></select></div>
-        <div class="muted" style="font-size:12px;margin-top:6px">Name-based geometry (COMBNAME) is free format: separators are blanks, names ≤ 8 characters, lines ≤ 132 columns. The fixed-column style aligns GEOBEGIN as (A8,2X,6E10.0,A8) and the title as (2I5,10X,A60).</div></div></details>
+        <label class="chk" title="Adds a comment line (* in column 1) before GEOBEGIN"><input type="checkbox" data-opt="inpComment" ${o.inpComment ? 'checked' : ''}>Comment header in the INP</label></div></details>
       <details class="fold"><summary>About / updates</summary><div>
         <div><b>${FK.APP_NAME}</b> v${FK.VERSION}</div>
         ${window.CGT_check ? `<div class="update-row"><button type="button" class="btn sm" data-act="chkUpd">Check for update</button><button type="button" class="btn sm" data-act="forceUpd">Force refresh (clear cache)</button><span class="muted" id="updMsg"></span></div>

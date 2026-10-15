@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.6)
+# Combinatorial Geometry Tool  (v1.7)
 
 Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.7** — INP header audited against the FLUKA fixed-card rules: the GEOBEGIN card is now a true `(A8,2X,6E10.0,A8)` card in all three output styles (the Flair style used to write a free-format `GEOBEGIN COMBNAME` and a tab-separated title), the title line is `(2I5,10X,A60)` (cut to 60 characters, with a warning), `FK.fixedCard` / `FK.fmtWhat` implement the card rules (decimal point, right-aligned `E10.0`, ≤ 80 columns), optional `*` comment header.
 - **1.6** — *Export to the INP file* checkbox on bodies / planes / regions (⊘ in the tree when excluded) and a "not used" info sign for bodies no region uses; warnings shortened to ⚠ / ⓘ icons with factual tooltips; Operations buttons stacked, Delete at the bottom; "Creo → FLUKA" label removed.
 - **1.5** — region quality check (separate / nearly touching pieces, thin regions, degenerate polygons, nearly coincident faces); resizable `.inp` panel; *Import STL / INP* and *New project* buttons removed from the tree (STL import: Meshes ＋ menu; INP import and New project: File menu).
 - **1.4** — resolution slider (top band): global facet count of cylinders / cones / spheres; *Combine with another region…* (A − B, A ∩ B, A ∪ B written with the bodies of both regions only).
@@ -115,3 +116,6 @@ Every non-empty region is checked after evaluation; warnings appear under *Valid
 
 ## `.inp` panel
 Drag the grip on the top edge of the panel to resize it (double-click the grip to reset); the height is remembered.
+
+## FLUKA fixed-format cards (v1.7)
+A FLUKA card is `(A8, 2X, 6E10.0, A8)`: keyword in columns 1–8 (upper case), two blanks, up to six WHATs of 10 columns each (always written with a decimal point, e.g. `10.0`, exponents as `1.234E+05`, right-aligned), SDUM in columns 71–78; a line with `*` in column 1 is a comment. `FK.fixedCard(keyword, whats, sdum)` writes such a card (throws on a keyword / SDUM longer than 8 characters or more than 6 WHATs); `FK.fmtWhat(v)` formats one WHAT. The geometry block uses it for `GEOBEGIN … COMBNAME` (SDUM in columns 71–78) and `GEOEND`; the line after GEOBEGIN is the title `(2I5,10X,A60)`. Bodies and regions inside a `COMBNAME` (name-based) geometry are free format by FLUKA's design, so the E10.0 rule does not apply to them; the legacy numbered fixed geometry format is not produced. *Settings ▸ INP block ▸ Comment header* adds `* Combinatorial Geometry Tool vX.Y` before GEOBEGIN.
