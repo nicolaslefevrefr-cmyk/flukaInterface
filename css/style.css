@@ -319,3 +319,18 @@ dialog.featwin { z-index: 40; }
 .wicon { display: inline-block; cursor: help; color: #b36b00; font-weight: 700; font-size: 12px; margin-left: 4px; user-select: none; }
 .wicon.info { color: var(--muted); font-weight: 500; }
 .noexp { opacity: .6; }
+
+/* CAD <-> FLUKA comparison window */
+dialog.devwin { width: min(400px, 94vw); z-index: 41; }
+.devregs { max-height: 120px; overflow: auto; border: 1px solid var(--line, #ccd); border-radius: 6px; padding: 4px 6px; }
+.devregs label { display: flex; gap: 6px; align-items: center; font-size: 12.5px; }
+.devres { font-size: 12.5px; margin-top: 8px; }
+.devres table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.devres th, .devres td { text-align: right; padding: 2px 4px; border-bottom: 1px solid rgba(128,128,128,.2); }
+.devres th:first-child, .devres td:first-child { text-align: left; }
+.devleg { height: 10px; margin-top: 8px; border-radius: 4px; display: none; }
+.devlegl { display: none; justify-content: space-between; font-size: 11px; }
+.chkwin { width: min(460px, 94vw); }
+.devres ul { list-style: none; margin: 2px 0 8px; padding: 0; }
+.devres li { padding: 1px 0; }
+.devres li.good { color: #1b8a3a; } .devres li.bad { color: #c62828; } .devres li.warn { color: #b26a00; } .devres li.info { color: var(--muted, #667); }

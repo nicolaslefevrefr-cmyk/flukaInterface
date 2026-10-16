@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.7';
+  FK.VERSION = '1.8';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -97,6 +97,9 @@
     const re = /(facet\s+normal|vertex)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/gi;
     const pos = [], nor = [];
     let m, vc = 0, curN = [0, 0, 0], tri = [];
+    // several "solid name … endsolid" blocks in one file = several objects
+    const parts = []; const sre = /^[ \t]*solid\b[ \t]*([^\r\n]*)/gim; let sm; const starts = [];
+    while ((sm = sre.exec(text))) starts.push({ i: sm.index, name: (sm[1] || '').trim() });
     while ((m = re.exec(text))) {
       const a = +m[2], b = +m[3], c = +m[4];
       if (/^facet/i.test(m[1])) { curN = [a, b, c]; vc = 0; tri = []; }
@@ -108,7 +111,15 @@
         }
       }
     }
-    return { positions: new Float32Array(pos), normals: new Float32Array(nor), count: pos.length / 9, binary: false };
+    if (starts.length > 1) {
+      for (let k = 0; k < starts.length; k++) {
+        const seg = text.slice(starts[k].i, k + 1 < starts.length ? starts[k + 1].i : text.length), pp = [];
+        const r2 = new RegExp(re.source, 'gi'); let mm, v3 = [];
+        while ((mm = r2.exec(seg))) { if (/^vertex/i.test(mm[1])) { v3.push(+mm[2], +mm[3], +mm[4]); if (v3.length === 9) { if (v3.every(isFinite)) pp.push(...v3); v3 = []; } } else v3 = []; }
+        if (pp.length >= 9) parts.push({ name: starts[k].name || 'solid' + (k + 1), positions: new Float32Array(pp), count: pp.length / 9 });
+      }
+    }
+    return { positions: new Float32Array(pos), normals: new Float32Array(nor), count: pos.length / 9, binary: false, parts };
   };
 
   /* ---------------- OBJ reader (Wavefront) ----------------
@@ -122,10 +133,16 @@
     text = text.replace(/\\\r?\n/g, ' ');
     const vx = [], pos = [];
     let groups = 0, skipped = 0;
+    // objects: "o name" if the file has any, otherwise "g name"; faces before any name go to "default"
+    const hasO = /^\s*o\s/m.test(text);
+    const parts = new Map(); let cur = null;
+    const part = (nm) => { if (!parts.has(nm)) parts.set(nm, []); return parts.get(nm); };
+    cur = part('default');
     for (const raw of text.split(/\r?\n/)) {
       const l = raw.trim();
       if (!l || l[0] === '#') continue;
       const t = l.split(/\s+/);
+      if ((t[0] === 'o' || (t[0] === 'g' && !hasO))) { cur = part(t.slice(1).join(' ') || 'object' + (parts.size)); }
       if (t[0] === 'v') { const a = +t[1], b = +t[2], c = +t[3]; vx.push(isFinite(a) && isFinite(b) && isFinite(c) ? [a, b, c] : [0, 0, 0]); }
       else if (t[0] === 'o' || t[0] === 'g') groups++;
       else if (t[0] === 'f') {
@@ -137,16 +154,36 @@
           if (k >= 0 && k < vx.length) idx.push(k);
         }
         if (idx.length < 3) { skipped++; continue; }
-        for (let i = 1; i < idx.length - 1; i++) for (const k of [idx[0], idx[i], idx[i + 1]]) pos.push(vx[k][0], vx[k][1], vx[k][2]);
+        for (let i = 1; i < idx.length - 1; i++) for (const k of [idx[0], idx[i], idx[i + 1]]) { pos.push(vx[k][0], vx[k][1], vx[k][2]); cur.push(vx[k][0], vx[k][1], vx[k][2]); }
       }
     }
     const positions = new Float32Array(pos);
-    return { positions, normals: new Float32Array(positions.length / 3), count: positions.length / 9, binary: false, format: 'OBJ', groups, skipped };
+    const plist = Array.from(parts.entries()).filter(([, v]) => v.length >= 9).map(([name, v]) => ({ name, positions: new Float32Array(v), count: v.length / 9 }));
+    return { positions, normals: new Float32Array(positions.length / 3), count: positions.length / 9, binary: false, format: 'OBJ', groups, skipped, parts: plist };
   };
   /** Picks STL or OBJ from the file name. */
   FK.parseMesh = function (buf, name) {
     if (/\.obj$/i.test(name || '')) return FK.parseOBJ(buf);
     const r = FK.parseSTL(buf); r.format = 'STL'; return r;
+  };
+
+  /** Splits a triangle soup into its connected solids (vertices welded within a tolerance). Returns [{ positions, count }] biggest first. */
+  FK.meshComponents = function (pos, tol) {
+    const n = pos.length / 9; if (!n) return [];
+    const st = FK.meshStats(pos); tol = tol || Math.max(boxDiag(st.bbox) * 1e-6, 1e-9);
+    const par = new Int32Array(n); for (let i = 0; i < n; i++) par[i] = i;
+    const find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const own = new Map();
+    for (let t = 0; t < n; t++) for (let k = 0; k < 3; k++) {
+      const o = t * 9 + k * 3, key = Math.round(pos[o] / tol) + ',' + Math.round(pos[o + 1] / tol) + ',' + Math.round(pos[o + 2] / tol), q = own.get(key);
+      if (q === undefined) own.set(key, t); else par[find(t)] = find(q);
+    }
+    const groups = new Map();
+    for (let t = 0; t < n; t++) { const r = find(t); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(t); }
+    return Array.from(groups.values()).sort((a, b) => b.length - a.length).map(ts => {
+      const arr = new Float32Array(ts.length * 9); ts.forEach((t, i) => arr.set(pos.subarray(t * 9, t * 9 + 9), i * 9));
+      return { positions: arr, count: ts.length };
+    });
   };
 
   /* ---------------- Statistiques de maillage ---------------- */

@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.7)
+# Combinatorial Geometry Tool  (v1.8)
 
 Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.8** — CAD links: bodies / planes made from a mesh (detected features, plane from a face, bounding RPP) carry a *CAD source* (editable in General; automatic by default; a region inherits the CAD of its bodies); a mesh lists its linked objects with *Show / Hide / Isolate*; **CAD ↔ FLUKA comparison** window (3D signed deviation map, mean / rms / p95 / max / bias in both directions, Hausdorff, CAD vs region volumes); one OBJ / multi-solid ASCII STL with several objects now creates several independent meshes, *Operations ▸ Split into solids* splits any mesh; **Geometry check** (`.inp` panel ▸ *Check…*): INP ↔ model equivalence, region overlaps and enclosed holes (3D markers), analytic "alignment accident" checks.
 - **1.7** — INP header audited against the FLUKA fixed-card rules: the GEOBEGIN card is now a true `(A8,2X,6E10.0,A8)` card in all three output styles (the Flair style used to write a free-format `GEOBEGIN COMBNAME` and a tab-separated title), the title line is `(2I5,10X,A60)` (cut to 60 characters, with a warning), `FK.fixedCard` / `FK.fmtWhat` implement the card rules (decimal point, right-aligned `E10.0`, ≤ 80 columns), optional `*` comment header.
 - **1.6** — *Export to the INP file* checkbox on bodies / planes / regions (⊘ in the tree when excluded) and a "not used" info sign for bodies no region uses; warnings shortened to ⚠ / ⓘ icons with factual tooltips; Operations buttons stacked, Delete at the bottom; "Creo → FLUKA" label removed.
 - **1.5** — region quality check (separate / nearly touching pieces, thin regions, degenerate polygons, nearly coincident faces); resizable `.inp` panel; *Import STL / INP* and *New project* buttons removed from the tree (STL import: Meshes ＋ menu; INP import and New project: File menu).
@@ -119,3 +120,17 @@ Drag the grip on the top edge of the panel to resize it (double-click the grip t
 
 ## FLUKA fixed-format cards (v1.7)
 A FLUKA card is `(A8, 2X, 6E10.0, A8)`: keyword in columns 1–8 (upper case), two blanks, up to six WHATs of 10 columns each (always written with a decimal point, e.g. `10.0`, exponents as `1.234E+05`, right-aligned), SDUM in columns 71–78; a line with `*` in column 1 is a comment. `FK.fixedCard(keyword, whats, sdum)` writes such a card (throws on a keyword / SDUM longer than 8 characters or more than 6 WHATs); `FK.fmtWhat(v)` formats one WHAT. The geometry block uses it for `GEOBEGIN … COMBNAME` (SDUM in columns 71–78) and `GEOEND`; the line after GEOBEGIN is the title `(2I5,10X,A60)`. Bodies and regions inside a `COMBNAME` (name-based) geometry are free format by FLUKA's design, so the E10.0 rule does not apply to them; the legacy numbered fixed geometry format is not produced. *Settings ▸ INP block ▸ Comment header* adds `* Combinatorial Geometry Tool vX.Y` before GEOBEGIN.
+
+## CAD links and comparison (v1.8)
+- *CAD source* (General tab of bodies, planes, regions): *Automatic* (made from a mesh → that mesh; a region → the mesh shared by all its bodies), *None*, or a chosen mesh.
+- Mesh ▸ *Linked FLUKA objects*: counts, *Show / Hide / Isolate*. Mesh ▸ Operations ▸ *Compare with FLUKA regions…*, region ▸ Operations ▸ *Compare with CAD…*.
+- Comparison window: tick the regions (their union is compared). Deviations are sampled on both surfaces (≈ 60 000 points each): FLUKA → CAD and CAD → FLUKA, colour on either surface. Sign "FLUKA − CAD": red = FLUKA has material where the CAD has none, blue = it lacks some. Scale = p95 unless a maximum (mm) is typed. Planes that cut the CAD (booleans not in the mesh) show up as deviations, and the sign is approximate within a few mm of sharp edges.
+- Volumes: CAD |V| (signed mesh volume) versus the region volume (polygon model, itself limited by the facet resolution).
+
+## Geometry check (v1.8)
+`.inp` panel ▸ *Check…* runs three independent checks:
+1. **INP ↔ model**: the generated INP is parsed back and each region is tested at random points with the model's bodies and with the INP's bodies (rotated boxes are split into RPP + planes, oblique cylinders become QUA…). Any disagreement is a bug of the export (or a number-formatting loss). ARB / unknown bodies are not checked.
+2. **Overlaps and holes** on a voxel grid: regions that share volume, and undefined space completely enclosed by regions. Red / orange cubes mark them in 3D. Thin features (< one cell) can be missed.
+3. **Alignment accidents** (analytic): cylinders whose axes are a fraction of a degree from parallel (the wedge gap of two end-to-end cylinders, one tilted 1°), axes / planes almost on a global axis, coaxial cylinders offset or with radii differing by a few µm, end-to-end gaps, almost coincident or almost parallel planes and faces. The "almost" tolerance is editable (mm).
+
+FLUKA itself does not validate the design: it reports undefined / multiply-defined points only when particles cross them (or with the geometry debugger, `GEOEND … DEBUG`, not generated by this tool). This check is meant to catch problems before that run.

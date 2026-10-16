@@ -329,6 +329,120 @@
     const d = $('#dlgFeat'); if (!d.open) d.show();
     featPlace();
   }
+  /* ---------- Geometry check window ---------- */
+  function chkRun() {
+    const esc2 = esc, rows = [];
+    const bodies = S.model.bodies.filter(b => !b.noExport), regs = S.model.regions.filter(r => !r.noExport && r.expr && r.expr.trim());
+    const tol = Math.max(0, parseFloat($('#chkTol').value) || 0.1) / 10, n = Math.max(20, Math.min(160, +$('#chkN').value || 72));
+    const R = { eq: null, ov: null, al: null };
+    // A. INP <-> model
+    R.eq = FK.checkEquivalence(S.model, APP.xbody, APP.inpText(), { points: 8000 });
+    // B. overlaps / holes (world frame)
+    const fns = new Map(); let box = null;
+    for (const b of bodies) { const wb = APP.wbody(b), f = FK.insideFn(wb); if (f) fns.set(b.name, f); const bb = b.type === 'RAW' ? null : FK.bodyBBox(wb); if (bb) box = box ? { min: box.min.map((x, i) => Math.min(x, bb.min[i])), max: box.max.map((x, i) => Math.max(x, bb.max[i])) } : bb; }
+    if (box) { const pad = 0.05 * (Math.max(...box.max.map((x, i) => x - box.min[i])) || 1); box = { min: box.min.map(x => x - pad), max: box.max.map(x => x + pad) }; }
+    const skipped = regs.filter(r => { try { return Array.from(FK.exprNames(FK.parseExpr(r.expr))).some(nm => !fns.has(nm)); } catch (e) { return true; } });
+    const okRegs = regs.filter(r => !skipped.includes(r));
+    R.ov = box && okRegs.length ? FK.checkOverlaps(okRegs, fns, box, { n }) : null;
+    // C. alignment
+    R.al = FK.checkAlignment(bodies.filter(b => b.type !== 'RAW').map(b => Object.assign({ name: b.name }, APP.xbody(b))), { tol });
+    const li = (cls, t) => `<li class="${cls}">${t}</li>`;
+    rows.push('<b>1. INP ↔ model</b><ul>');
+    if (R.eq.missing.length) R.eq.missing.forEach(m => rows.push(li('bad', esc2(m))));
+    rows.push(R.eq.ok && !R.eq.missing.length ? li('good', `✔ The generated INP gives the same region membership as the model (${R.eq.regionsChecked} region(s), ${R.eq.points} tests)`) : R.eq.mismatches.length ? li('bad', `✖ ${R.eq.mismatches.length}${R.eq.mismatches.length >= 50 ? '+' : ''} mismatching points, e.g. region ${esc2(R.eq.mismatches[0].region)} at (${R.eq.mismatches[0].point.map(x => x.toFixed(3)).join(', ')}) — model ${R.eq.mismatches[0].model ? 'inside' : 'outside'}, INP ${R.eq.mismatches[0].inp ? 'inside' : 'outside'}`) : '');
+    if (R.eq.unsupported.length) rows.push(li('info', `ⓘ Not checked (ARB / unsupported bodies): ${R.eq.unsupported.map(esc2).join(', ')}`));
+    rows.push('</ul><b>2. Overlaps and holes</b><ul>');
+    if (!R.ov) rows.push(li('info', 'ⓘ Nothing to scan'));
+    else {
+      const c = R.ov.cell * 10;
+      if (!R.ov.overlaps.length) rows.push(li('good', `✔ No overlap between regions (cell ${c.toFixed(2)} mm)`));
+      for (const o of R.ov.overlaps.slice(0, 8)) rows.push(li('bad', `✖ ${esc2(o.a)} ∩ ${esc2(o.b)}: ≈ ${o.volume.toPrecision(3)} cm³`));
+      if (!R.ov.holes.length) rows.push(li('good', '✔ No enclosed hole (undefined space inside the geometry)'));
+      for (const h of R.ov.holes.slice(0, 8)) rows.push(li('bad', `✖ Hole ≈ ${h.volume.toPrecision(3)} cm³ around (${h.center.map(x => x.toFixed(2)).join(', ')}) next to ${h.around.map(esc2).join(', ')}`));
+      rows.push(li('info', `ⓘ Grid scan: features thinner than ${c.toFixed(2)} mm can be missed — see section 3`));
+    }
+    if (skipped.length) rows.push(li('info', `ⓘ Not scanned (unsupported bodies): ${skipped.map(r => esc2(r.name)).join(', ')}`));
+    rows.push('</ul><b>3. Alignment accidents</b><ul>');
+    if (!R.al.length) rows.push(li('good', '✔ Nothing suspicious (near-parallel axes, almost coincident faces, tiny offsets or gaps)'));
+    for (const a of R.al.slice(0, 40)) rows.push(li(a.level === 'info' ? 'info' : 'warn', (a.level === 'info' ? 'ⓘ ' : '⚠ ') + esc2(a.text)));
+    rows.push('</ul>');
+    $('#chkRes').innerHTML = rows.join('');
+    APP.setCheckMarks(R.ov ? [{ centers: R.ov.overlapCenters, size: R.ov.cell, color: 0xff3030 }, { centers: R.ov.holeCenters, size: R.ov.cell, color: 0xff9900 }] : null);
+    return R;
+  }
+  (function () {
+    const d = $('#dlgChk'); if (!d) return;
+    $('#btnInpCheck').onclick = () => { if (!d.open) d.show(); if (typeof d._x === 'number') { d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; } else { d.style.left = 'auto'; d.style.right = '12px'; d.style.top = '64px'; } };
+    $('#chkRun').onclick = () => { try { chkRun(); } catch (e) { console.error(e); toast('Check failed: ' + e.message); } };
+    $('#chkClear').onclick = () => { APP.setCheckMarks(null); };
+    d.addEventListener('close', () => APP.setCheckMarks(null));
+    d.querySelector('[value=close]').onclick = () => d.close();
+    let drag = null; const h = d.querySelector('.fw-h');
+    h.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { h.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    h.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
+    h.addEventListener('pointerup', () => { drag = null; });
+  })();
+  /* ---------- CAD <-> FLUKA comparison window ---------- */
+  const DEV = { last: null };
+  function devRegionCheck(preId) {
+    const cad = +$('#devCad').value, box = $('#devRegs');
+    const regs = S.model.regions.filter(r => r.expr && r.expr.trim());
+    box.innerHTML = regs.length ? regs.map(r => `<label><input type="checkbox" data-r="${r.id}" ${(preId ? r.id === preId : APP.cadId(r, 'region') === cad) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('') : '<span class="muted">No region</span>';
+  }
+  function openDevDlg(pre) {
+    pre = pre || {};
+    if (!S.stls.length) { toast('Import a CAD mesh first'); return; }
+    const reg = pre.region ? S.model.regions.find(r => r.id === pre.region) : null;
+    const cadId = pre.cad || (reg ? APP.cadId(reg, 'region') : 0) || (S.sel && S.sel.t === 'stl' ? S.sel.id : S.stls[0].id);
+    $('#devCad').innerHTML = S.stls.map(m => `<option value="${m.id}" ${m.id === cadId ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
+    devRegionCheck(reg ? reg.id : 0);
+    $('#devRes').innerHTML = ''; $('#devLeg').style.display = 'none';
+    const d = $('#dlgDev'); if (!d.open) d.show();
+    if (typeof d._x === 'number') { d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; } else { d.style.left = 'auto'; d.style.right = '12px'; d.style.top = '64px'; }
+  }
+  function devRun() {
+    const cad = APP.getStl(+$('#devCad').value);
+    const ids = Array.from($('#devRegs').querySelectorAll('input:checked')).map(x => +x.dataset.r);
+    if (!cad || !cad.positions) { toast('Choose a CAD mesh'); return null; }
+    if (!ids.length) { toast('Tick at least one region'); return null; }
+    const regs = ids.map(id => S.model.regions.find(r => r.id === id)).filter(Boolean);
+    let expr = regs[0].expr;
+    try { for (let i = 1; i < regs.length; i++) expr = FK.combineExpr(expr, regs[i].expr, 'union', 'compact'); } catch (e) { toast(e.message); return null; }
+    const ev = APP.evalRegionNow({ expr });
+    if (ev.error || !ev.polys || !ev.polys.length) { toast('Region has no surface: ' + (ev.error || 'empty')); return null; }
+    const rpos = FK.polysToPositions(ev.polys);
+    const res = FK.compareSurfaces(rpos, cad.positions, { target: 60000 });
+    const on = $('#devOn').value, signed = $('#devSigned').checked, side = on === 'cad' && res.cad ? res.cad : res.region;
+    const userMax = parseFloat($('#devMax').value), auto = Math.max(res.stats.toCad.p95, res.stats.toRegion.p95, 1e-6);
+    const max = userMax > 0 ? userMax / 10 : auto;
+    const col = new Float32Array(side.d.length * 3);
+    for (let i = 0; i < side.d.length; i++) { const c = FK.devColor(signed ? side.s[i] * side.d[i] : side.d[i], max, signed); col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2]; }
+    APP.setDeviationOverlay({ points: side.points, tri: side.tri, colors: col });
+    const vc = Math.abs(cad.stats.volume), vr = ev.vol, mm = v => (v * 10).toFixed(3);
+    const row = (n, s) => `<tr><td>${n}</td><td>${mm(s.mean)}</td><td>${mm(s.rms)}</td><td>${mm(s.p95)}</td><td>${mm(s.max)}</td><td>${(s.bias >= 0 ? '+' : '') + mm(s.bias)}</td></tr>`;
+    $('#devRes').innerHTML = `<table><tr><th>mm</th><th>mean</th><th>rms</th><th>p95</th><th>max</th><th>bias</th></tr>${row('FLUKA → CAD', res.stats.toCad)}${row('CAD → FLUKA', res.stats.toRegion)}</table>
+      <div>Hausdorff: <b>${mm(res.stats.hausdorff)} mm</b></div>
+      <div>Volume CAD: <b>${vc.toFixed(3)} cm³</b> · FLUKA: <b>${vr.toFixed(3)} cm³</b> · Δ = ${(vr - vc >= 0 ? '+' : '') + (vr - vc).toFixed(3)} cm³ (${vc ? ((vr - vc) / vc * 100).toFixed(2) : '–'} %)</div>
+      <div class="muted">Bias &gt; 0: FLUKA has more material than the CAD. Planes cutting through the CAD (boolean cuts not in the mesh) appear as deviations.</div>`;
+    const lg = $('#devLeg'); lg.style.display = 'block';
+    lg.style.background = signed ? 'linear-gradient(90deg,#1a4de6,#dbe0e6,#dc1f1a)' : 'linear-gradient(90deg,#1aa64d,#fad91a,#dc1a1a)';
+    lg.title = (signed ? '−' : '0') + ' … ' + mm(max) + ' mm';
+    $('#devRes').insertAdjacentHTML('beforeend', `<div class="muted">Scale: ${signed ? '±' : '0 … '}${mm(max)} mm</div>`);
+    DEV.last = { res, vc, vr, max, ids };
+    return DEV.last;
+  }
+  (function () {
+    const d = $('#dlgDev'); if (!d) return;
+    $('#devRun').onclick = () => { try { devRun(); } catch (e) { console.error(e); toast('Comparison failed: ' + e.message); } };
+    $('#devClear').onclick = () => { APP.setDeviationOverlay(null); $('#devRes').innerHTML = ''; $('#devLeg').style.display = 'none'; };
+    $('#devCad').onchange = () => devRegionCheck(0);
+    d.addEventListener('close', () => APP.setDeviationOverlay(null));
+    d.querySelector('[value=close]').onclick = () => d.close();
+    let drag = null; const h = d.querySelector('.fw-h');
+    h.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { h.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    h.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
+    h.addEventListener('pointerup', () => { drag = null; });
+  })();
   /* Floating / docked placement of the feature window. Position is kept in S.opt.featWin = {x, y, docked}. */
   function featPlace() {
     const d = $('#dlgFeat'); if (!d) return;
@@ -372,7 +486,7 @@
     $('#gKind').onchange = () => guidedRefit();
     $('#gResult').addEventListener('click', e => {
       if (!e.target.closest('#gAdd') || !FEAT.g) return;
-      const b = APP.addFeature(FEAT.g.feature); toast(`${b.name} (${b.type}) added to the model`);
+      const b = APP.addFeature(FEAT.g.feature, FEAT.stl.id); toast(`${b.name} (${b.type}) added to the model`);
       FEAT.seeds = []; FEAT.g = null; $('#gResult').innerHTML = ''; $('#gInfo').textContent = 'Added. Pick the next surface.'; APP.setFeaturePreview(null);
     });
     d.addEventListener('change', e => { const k = e.target.dataset.fp; if (!k) return; FEAT.params[k] = e.target.type === 'checkbox' ? e.target.checked : (+e.target.value); });
@@ -393,12 +507,12 @@
     };
     $('#featList').addEventListener('click', e => {
       const add = e.target.closest('[data-fadd]');
-      if (add) { const f = FEAT.res.features.find(x => x.id === +add.dataset.fadd); if (f && !FEAT.done.has(f.id)) { const b = APP.addFeature(f); FEAT.done.add(f.id); toast(`${b.name} (${b.type}) added to the model`); $('#featList').innerHTML = featListHTML(); } return; }
+      if (add) { const f = FEAT.res.features.find(x => x.id === +add.dataset.fadd); if (f && !FEAT.done.has(f.id)) { const b = APP.addFeature(f, FEAT.stl.id); FEAT.done.add(f.id); toast(`${b.name} (${b.type}) added to the model`); $('#featList').innerHTML = featListHTML(); } return; }
       const row = e.target.closest('.fr'); if (row) featSelect(+row.dataset.fid);
     });
     $('#featAddAll').onclick = () => {
       if (!FEAT.res) return; let k = 0;
-      for (const f of FEAT.res.features) if (!FEAT.done.has(f.id)) { APP.addFeature(f); FEAT.done.add(f.id); k++; }
+      for (const f of FEAT.res.features) if (!FEAT.done.has(f.id)) { APP.addFeature(f, FEAT.stl.id); FEAT.done.add(f.id); k++; }
       toast(k + ' object(s) added'); $('#featList').innerHTML = featListHTML();
     };
   })();
@@ -932,6 +1046,13 @@
     const unused = kind === 'body' && !APP.bodyUsed(it);
     return `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="exportInp" ${it.noExport ? '' : 'checked'}>Export to the INP file</label>${unused ? ` <span class="wicon info" tabindex="0" title="Not used by any region">ⓘ not used</span>` : ''}</div>`;
   }
+  /** "CAD source" select: automatic / none / one of the meshes. */
+  function cadRow(it, kind) {
+    const cur = it.meta && it.meta.cad !== undefined ? String(it.meta.cad === 0 ? 'none' : it.meta.cad) : '';
+    const auto = APP.cadId(it, kind), an = auto ? APP.getStl(auto) : null;
+    if (!S.stls.length) return '';
+    return `<div class="fld full"><label title="Mesh this ${kind} was made from / is compared with (used to show / hide linked objects and for the CAD ↔ FLUKA comparison)">CAD source ⓘ</label><select data-k="cad"><option value="" ${cur === '' ? 'selected' : ''}>Automatic${an && cur === '' ? ' → ' + esc(an.name) : ''}</option><option value="none" ${cur === 'none' ? 'selected' : ''}>None</option>${S.stls.map(m => `<option value="${m.id}" ${cur === String(m.id) ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>`;
+  }
   function bodyProps(b) {
     const info = FK.BODY_TYPES[b.type];
     let h = '';
@@ -965,7 +1086,7 @@
       if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; planeBtns += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
     }
     const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
-      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${csHTML}</div></div>
+      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
@@ -1050,7 +1171,7 @@
     const opts = S.model.bodies.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.type === 'RAW' ? b.rawType : b.type)})</option>`).join('');
     const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
-      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}</div></div>
+      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Definition</span></h4><div class="fields">
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
@@ -1061,15 +1182,38 @@
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
       <button class="btn" data-act="voidRegion" title="RPP around this region + region = RPP minus this one">Create void region… <small>(experimental)</small></button>
+      <button class="btn" data-act="regionCompare" title="Colour this region by its distance to its CAD mesh; volumes and metrics">Compare with CAD…</button>
       <button class="btn" data-act="dup">Duplicate</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
+  /** One mesh per connected solid of a mesh. */
+  function splitStl(s) {
+    const comps = FK.meshComponents(s.raw).filter(c => c.count >= 4);
+    if (comps.length < 2) { toast('Only one solid in this mesh'); return; }
+    const L = APP.cadLinked(s.id), nLinked = L.bodies.length + L.planes.length + L.regions.length;
+    const names = new Set(S.stls.map(m => m.name));
+    comps.forEach((c, k) => {
+      let nm = s.name + '_' + (k + 1); for (let q = 2; names.has(nm); q++) nm = s.name + '_' + (k + 1) + ' (' + q + ')'; names.add(nm);
+      const m = { id: APP.nid(), name: nm, file: s.file || s.name, format: s.format, raw: c.positions, unit: s.unit, offset: s.offset.slice(), flip: s.flip, visible: true, opacity: s.opacity, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: c.count <= 80000, group: null, mesh: null };
+      APP.buildStl(m); S.stls.push(m);
+    });
+    if (nLinked) { s.visible = false; toast(`${comps.length} meshes created; the original is kept (hidden) because FLUKA objects are linked to it`); }
+    else { if (APP.hooks.disposeStl) APP.hooks.disposeStl(s); S.stls = S.stls.filter(x => x.id !== s.id); S.sel = null; toast(`${comps.length} meshes created`); }
+    APP.changed({ tree: true, right: true });
+  }
+  /** What is linked to a mesh + quick show / hide. */
+  function linkedHTML(s) {
+    const L = APP.cadLinked(s.id), n = L.bodies.length + L.planes.length + L.regions.length;
+    return `<div class="sec"><h4><span>Linked FLUKA objects</span></h4>
+      <div class="muted" style="font-size:12.5px">${n ? `${L.bodies.length} bod${L.bodies.length === 1 ? 'y' : 'ies'} · ${L.planes.length} plane${L.planes.length === 1 ? '' : 's'} · ${L.regions.length} region${L.regions.length === 1 ? '' : 's'}` : 'None yet (planes picked on a face, detected features and regions made of them are linked automatically).'}</div>
+      ${n ? `<div class="btns"><button class="btn sm" data-act="cadShow">Show</button><button class="btn sm" data-act="cadHide">Hide</button><button class="btn sm" data-act="cadIsolate" title="Show only this mesh and what is linked to it">Isolate</button></div>` : ''}</div>`;
+  }
   function stlProps(s) {
     const unitOpts = ['mm', 'cm', 'm', 'in'].map(u => `<option ${s.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     const general = `<div class="sec"><h4><span>Mesh file</span></h4><div class="fields">
-      <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(s.name)}"></div></div></div>
-      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+      <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(s.name)}"></div>${s.file ? `<div class="fld full"><div class="muted" style="font-size:12px">File: ${esc(s.file)}</div></div>` : ''}</div></div>
+      <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>${linkedHTML(s)}`;
     const definition = `<div class="sec"><h4><span>Placement</span></h4><div class="fields">
       <div class="fld"><label>File unit</label><select data-k="unit">${unitOpts}</select></div>
       <div class="fld"><label>&nbsp;</label><label class="chk" style="margin:0"><input type="checkbox" data-k="flip" ${s.flip ? 'checked' : ''}>Flip normals</label></div>
@@ -1078,7 +1222,9 @@
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(s)}
       <div class="row2"><label class="chk" style="margin:0"><input type="checkbox" data-k="edges" ${s.edges ? 'checked' : ''}>Sharp edges</label></div></div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
-      <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button></div>
+      <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button>
+      <button class="btn" data-act="cadCompare" title="Colour the FLUKA regions linked to this mesh by their distance to it, volumes and metrics">Compare with FLUKA regions…</button>
+      <button class="btn" data-act="splitStl" title="One mesh per connected solid">Split into solids</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del">Remove</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
@@ -1181,6 +1327,7 @@
       case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
       case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
+      case 'cad': if (e.type === 'change') { APP.snap(); it.meta = it.meta || {}; if (t.value === '') delete it.meta.cad; else it.meta.cad = t.value === 'none' ? 0 : +t.value; APP.changed({ tree: true, right: true }); } break;
       case 'exportInp': if (e.type === 'change') { APP.snap(); if (t.checked) delete it.noExport; else it.noExport = true; APP.changed({ tree: true }); } break;
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
       case 'expr': APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
@@ -1214,6 +1361,10 @@
       case 'fillUndo': if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } break;
       case 'pickCsysPos': if (it && S.sel.t === 'csys') startFill({ kind: 'csys', id: it.id, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
       case 'rtab': S.rtab = a.dataset.tab; $$('#rightBody .rtab').forEach(x => x.classList.toggle('on', x.dataset.tab === S.rtab)); $$('#rightBody .rpane').forEach(x => { x.hidden = x.dataset.pane !== S.rtab; }); break;
+      case 'cadShow': case 'cadHide': case 'cadIsolate': if (it && S.sel.t === 'stl') { const k = APP.cadVisibility(it.id, act === 'cadShow' ? 'show' : act === 'cadHide' ? 'hide' : 'isolate'); toast(k + ' linked object(s) ' + (act === 'cadHide' ? 'hidden' : act === 'cadShow' ? 'shown' : 'isolated')); } break;
+      case 'cadCompare': if (it && S.sel.t === 'stl') openDevDlg({ cad: it.id }); break;
+      case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
+      case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
       case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
       case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;
       case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
@@ -1224,7 +1375,7 @@
       case 'pickCsysFace': if (pk && pk.kind === 'face') { const c = APP.createCsysWorld(APP.csysFromNormal(pk.centroid, pk.normal)); if (c) toast('Coordinate system ' + c.name + ' created: Z = face normal'); } break;
       case 'pickRppFace': if (pk && pk.bbox) selectedBodyRppFromBox(pk.bbox); break;
       case 'pickRppObj': if (pk) { const bb = APP.objectStats(pk).bbox; if (bb) selectedBodyRppFromBox(bb); } break;
-      case 'rppStl': if (it && it.stats && it.stats.bbox) selectedBodyRppFromBox(it.stats.bbox); break;
+      case 'rppStl': if (it && it.stats && it.stats.bbox) { const nb = APP.rppFromBox(it.stats.bbox); nb.meta = nb.meta || {}; nb.meta.cad = it.id; APP.changed({ tree: true, right: true }); } break;
       case 'rppMeasure': if (it) APP.createRpp(it.a, it.b); break;
       case 'del': APP.deleteSel(); break;
       case 'dup':
@@ -1518,9 +1669,23 @@
         const buf = await file.arrayBuffer();
         const res = FK.parseMesh(buf, file.name);
         if (!res.count) { toast('Empty or unreadable mesh: ' + file.name); continue; }
-        const stl = { id: APP.nid(), name: file.name.replace(/\.(stl|obj)$/i, ''), format: res.format || 'STL', raw: res.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: '#8f9bb0', edges: res.count <= 80000, group: null, mesh: null };
+        const base = file.name.replace(/\.(stl|obj)$/i, ''), kind = res.format === 'OBJ' ? 'OBJ' : res.binary ? 'binary STL' : 'ASCII STL';
+        if (res.parts && res.parts.length > 1) {      // several objects in one file → independent CAD objects
+          const names = new Set(S.stls.map(m => m.name));
+          res.parts.forEach((pt, k) => {
+            let nm = pt.name && pt.name !== 'default' ? pt.name : base + '_' + (k + 1); for (let q = 2; names.has(nm); q++) nm = (pt.name || base) + ' (' + q + ')'; names.add(nm);
+            const stl = { id: APP.nid(), name: nm, file: file.name, format: res.format || 'STL', raw: pt.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: pt.count <= 80000, group: null, mesh: null };
+            APP.buildStl(stl); S.stls.push(stl); S.sel = { t: 'stl', id: stl.id };
+          });
+          ok++;
+          toast(`${file.name}: ${res.parts.length} objects → ${res.parts.length} independent meshes (${res.count} triangles, ${kind}) — assumed unit: mm`);
+          continue;
+        }
+        const stl = { id: APP.nid(), name: base, file: file.name, format: res.format || 'STL', raw: res.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: '#8f9bb0', edges: res.count <= 80000, group: null, mesh: null };
         APP.buildStl(stl); S.stls.push(stl); S.sel = { t: 'stl', id: stl.id }; ok++;
-        toast(`${file.name}: ${res.count} triangles (${res.format === 'OBJ' ? 'OBJ' : res.binary ? 'binary STL' : 'ASCII STL'}${res.groups > 1 ? ', ' + res.groups + ' objects merged' : ''}) — assumed unit: mm`);
+        let extra = '';
+        if (res.count <= 300000) { const nc = FK.meshComponents(res.positions).filter(c => c.count >= 4).length; if (nc > 1) extra = ` — ${nc} disjoint solids: use Operations ▸ Split into solids`; }
+        toast(`${file.name}: ${res.count} triangles (${kind}) — assumed unit: mm${extra}`);
       } catch (e) { console.error(e); toast('Read error: ' + e.message); }
     }
     if (ok) APP.changed({ tree: true, right: true, fit: true });
@@ -1564,5 +1729,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

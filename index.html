@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.7">
+<link rel="stylesheet" href="css/style.css?v=1.8">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.7</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.8</i></b></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -98,6 +98,7 @@
             <option value="3">Fixed columns (Fortran-like, ≤132 col)</option>
           </select>
           <div class="spacer"></div>
+          <button id="btnInpCheck" class="pill" title="Verify the generated INP against the model, find overlaps / holes and alignment accidents">Check…</button>
           <button id="btnInpImport" class="pill">Import…</button>
           <button id="btnInpCopy" class="pill">Copy</button>
           <button id="btnInpSave" class="pill">.inp</button>
@@ -170,6 +171,33 @@
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="boolOk">Create region</button></div>
   </form>
 </dialog>
+<dialog id="dlgDev" class="featwin devwin">
+  <form method="dialog">
+    <div class="fw-h"><b>CAD ↔ FLUKA comparison</b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
+    <div class="fields">
+      <div class="fld full"><label>CAD mesh</label><select id="devCad"></select></div>
+      <div class="fld full"><label>FLUKA regions (surface of their union)</label><div id="devRegs" class="devregs"></div></div>
+      <div class="fld"><label>Colour scale max (mm)</label><input type="number" id="devMax" min="0" step="0.1" placeholder="auto (p95)"></div>
+      <div class="fld"><label>Show on</label><select id="devOn"><option value="region">FLUKA surface</option><option value="cad">CAD surface</option></select></div>
+      <div class="fld full"><label class="chk"><input type="checkbox" id="devSigned" checked> Signed (red = FLUKA excess, blue = deficit)</label></div>
+    </div>
+    <div class="dlgBtns" style="justify-content:flex-start"><button type="button" class="pill primary" id="devRun">Compare</button><button type="button" class="pill" id="devClear">Clear</button></div>
+    <div id="devRes" class="devres"></div>
+    <div class="devleg" id="devLeg"></div>
+  </form>
+</dialog>
+<dialog id="dlgChk" class="featwin devwin chkwin">
+  <form method="dialog">
+    <div class="fw-h"><b>Geometry check</b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
+    <div class="fields">
+      <div class="fld"><label>Voxel grid (cells on the longest side)</label><input type="number" id="chkN" min="20" max="160" step="4" value="72"></div>
+      <div class="fld"><label>“Almost” tolerance (mm)</label><input type="number" id="chkTol" min="0" step="0.01" value="0.1"></div>
+    </div>
+    <div class="dlgBtns" style="justify-content:flex-start"><button type="button" class="pill primary" id="chkRun">Run checks</button><button type="button" class="pill" id="chkClear">Clear markers</button></div>
+    <div id="chkRes" class="devres"></div>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">Red cubes: overlapping regions · orange: enclosed holes. FLUKA itself only finds undefined / multiply-defined points while tracking, or with its geometry debugger (<code>GEOEND … DEBUG</code>); this tool is not a replacement for that run.</div>
+  </form>
+</dialog>
 <dialog id="dlgFeat" class="featwin">
   <form method="dialog">
     <div class="fw-h"><b>Detect features <small class="muted">(experimental)</small></b><span class="fw-ctl"><button type="button" class="ib" id="featDock" title="Dock beside the project panel / float" aria-label="Dock">⇥</button><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
@@ -192,12 +220,14 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.7"></script>
-<script src="js/core.js?v=1.7"></script>
-<script src="js/state.js?v=1.7"></script>
-<script src="js/scene.js?v=1.7"></script>
-<script src="js/cut.js?v=1.7"></script>
-<script src="js/ui.js?v=1.7"></script>
-<script src="js/pwa.js?v=1.7"></script>
+<script src="js/lib/three.min.js?v=1.8"></script>
+<script src="js/core.js?v=1.8"></script>
+<script src="js/state.js?v=1.8"></script>
+<script src="js/scene.js?v=1.8"></script>
+<script src="js/cut.js?v=1.8"></script>
+<script src="js/compare.js?v=1.8"></script>
+<script src="js/check.js?v=1.8"></script>
+<script src="js/ui.js?v=1.8"></script>
+<script src="js/pwa.js?v=1.8"></script>
 </body>
 </html>

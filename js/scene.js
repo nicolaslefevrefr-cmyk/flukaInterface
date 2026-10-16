@@ -20,8 +20,8 @@
   camera.add(headLight);
 
   const gStl = new THREE.Group(), gBody = new THREE.Group(), gRegion = new THREE.Group(),
-    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
-  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gSel, gHover, gCut);
+    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gDev = new THREE.Group(), gChk = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
+  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gDev, gChk, gSel, gHover, gCut);
   let axes = null;
 
   let needRender = true;
@@ -370,6 +370,30 @@
   };
 
   /* ---------- Temporary preview of a detected feature (not part of the model until validated) ---------- */
+  /** Deviation map: indexed triangles (points, tri) with a colour per point (Float32Array, 3 per point). null clears it. */
+  APP.setDeviationOverlay = function (o) {
+    for (const c of gDev.children.slice()) { gDev.remove(c); disposeObj(c); }
+    needRender = true;
+    if (!o) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(o.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(o.colors, 3));
+    g.setIndex(new THREE.BufferAttribute(o.tri, 1));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    m.raycast = () => {}; m.renderOrder = 6; gDev.add(m);
+  };
+  /** Geometry-check markers: [{ centers: Float32Array (xyz…), size, color }] drawn as small cubes. null clears them. */
+  APP.setCheckMarks = function (list) {
+    for (const c of gChk.children.slice()) { gChk.remove(c); disposeObj(c); }
+    needRender = true;
+    if (!list) return;
+    for (const L of list) {
+      const n = L.centers.length / 3; if (!n) continue;
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(L.size, L.size, L.size), new THREE.MeshBasicMaterial({ color: L.color, transparent: true, opacity: 0.55, depthWrite: false }), n);
+      const mt = new THREE.Matrix4();
+      for (let i = 0; i < n; i++) { mt.makeTranslation(L.centers[i * 3], L.centers[i * 3 + 1], L.centers[i * 3 + 2]); im.setMatrixAt(i, mt); }
+      im.raycast = () => {}; im.renderOrder = 7; gChk.add(im);
+    }
+  };
   APP.setFeaturePreview = function (feat, positions, seeds) {
     for (const c of gFeat.children.slice()) { gFeat.remove(c); disposeObj(c); }
     needRender = true;

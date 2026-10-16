@@ -473,13 +473,39 @@
     { const ev = APP.reportQuality(reg); if (!(ev.quality && ev.quality.length)) APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged`); }
     return { region: reg, plan: pl };
   };
+  /* ---------- Link between entities and their CAD mesh ---------- */
+  /** Id of the mesh an entity is linked to (0 = none). meta.cad: undefined = automatic (plane picked on a face, detected feature, region made of linked bodies), 0 = none, id = explicit. */
+  APP.cadId = function (it, kind) {
+    const m = it.meta || {};
+    if (m.cad === 0) return 0;
+    if (m.cad && APP.getStl(m.cad)) return m.cad;
+    if (kind === 'body') return m.src && m.src.kind === 'stl' && APP.getStl(m.src.id) ? m.src.id : 0;
+    let ids = new Set();
+    try { for (const n of FK.exprNames(FK.parseExpr(it.expr || '+x'))) { const b = S.model.bodies.find(x => x.name === n); const c = b ? APP.cadId(b, 'body') : 0; if (c) ids.add(c); } } catch (e) { return 0; }
+    return ids.size === 1 ? Array.from(ids)[0] : 0;
+  };
+  APP.cadLinked = (stlId) => ({
+    bodies: S.model.bodies.filter(b => !FK.isPlaneType(b.type) && APP.cadId(b, 'body') === stlId),
+    planes: S.model.bodies.filter(b => FK.isPlaneType(b.type) && APP.cadId(b, 'body') === stlId),
+    regions: S.model.regions.filter(r => APP.cadId(r, 'region') === stlId)
+  });
+  /** Show / hide / isolate everything linked to a mesh. */
+  APP.cadVisibility = function (stlId, mode) {
+    APP.snap();
+    const L = APP.cadLinked(stlId), inSet = new Set(L.bodies.concat(L.planes, L.regions));
+    for (const b of S.model.bodies) { if (inSet.has(b)) b.visible = mode !== 'hide'; else if (mode === 'isolate') b.visible = false; }
+    for (const r of S.model.regions) { if (inSet.has(r)) r.visible = mode !== 'hide'; else if (mode === 'isolate') r.visible = false; }
+    if (mode === 'isolate') for (const m of S.stls) m.visible = m.id === stlId;
+    APP.changed({ tree: true });
+    return inSet.size;
+  };
   /* ---------- Detected features (experimental) ---------- */
   /** Add a detected feature to the model as a body (world coordinates; a rotated box also gets its own coordinate system). */
-  APP.addFeature = function (f) {
+  APP.addFeature = function (f, stlId) {
     APP.snap();
     let cs = 0;
     if (f.cs) cs = APP.addCsys(f.cs.slice(), { parent: 0, name: FK.uniqueName('bxcs1', csysNames()) }).id;
-    const b = APP.addBody(f.type, f.p.slice(), { cs, meta: { detected: f.kind } });
+    const b = APP.addBody(f.type, f.p.slice(), { cs, meta: Object.assign({ detected: f.kind }, stlId ? { cad: stlId } : {}) });
     S.sel = { t: 'body', id: b.id };
     APP.changed({ tree: true, right: true });
     return b;
