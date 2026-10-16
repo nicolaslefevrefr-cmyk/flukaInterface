@@ -22,7 +22,7 @@
     const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id) }[S.sel.t];
     return g ? g(S.sel.id) || null : null;
   };
-  APP.changed = (f) => { if (APP.hooks.changed) APP.hooks.changed(f || {}); };
+  APP.changed = (f) => { if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
   APP.toast = (m) => { if (APP.hooks.toast) APP.hooks.toast(m); };
   const color = (i) => FK.PALETTE[i % FK.PALETTE.length];
 
@@ -96,6 +96,80 @@
     if (!ex) return APP.wbody(b);
     if (b.type === 'RAW') return b;
     return FK.worldBody(b, M.mul(M.inv(APP.csysWorld(ex)), APP.csysWorld(b.cs || 0)));
+  };
+  /** Matrix local frame of a body → export frame. */
+  APP.relM = function (b) {
+    const cw = APP.csysWorld(b.cs || 0), ex = APP.exportCs();
+    return ex ? FK.M.mul(FK.M.inv(APP.csysWorld(ex)), cw) : cw;
+  };
+  /** Applies a fix proposed by FK.checkAlignment (descriptors are in the export frame). Returns { ok, msg }. */
+  APP.applyFix = function (fx) {
+    const M = FK.M, V = FK.V, find = (n) => S.model.bodies.find(b => b.name === n);
+    const B = find(fx.name), R = fx.ref ? find(fx.ref) : null;
+    if (!B || (fx.ref && !R)) return { ok: false, msg: 'Body not found' };
+    const rel = APP.relM(B), toLocalV = (v) => M.applyVec(M.inv(rel), v), toLocalP = (q) => M.apply(M.inv(rel), q);
+    const clean = (n) => n.map(x => Math.abs(x) < 1e-12 ? 0 : Math.abs(Math.abs(x) - 1) < 1e-12 ? Math.sign(x) : x);
+    const isCyl = (b) => b.type === 'RCC' || b.type === 'TRC', isInf = (b) => b.type === 'XCC' || b.type === 'YCC' || b.type === 'ZCC';
+    const axisOf = (b) => { const x = APP.xbody(b), p = x.p; if (x.type === 'RCC' || x.type === 'TRC') { const H = [p[3], p[4], p[5]], L = V.len(H); return { o: [p[0], p[1], p[2]], d: V.mul(H, 1 / L) }; } if (x.type === 'XCC') return { o: [0, p[0], p[1]], d: [1, 0, 0] }; if (x.type === 'YCC') return { o: [p[1], 0, p[0]], d: [0, 1, 0] }; if (x.type === 'ZCC') return { o: [p[0], p[1], 0], d: [0, 0, 1] }; return null; };
+    switch (fx.type) {
+      case 'snapAxis': {
+        if (!isCyl(B)) return { ok: false, msg: 'Not a cylinder' };
+        const t = V.mul([0, 0, 0].map((_, i) => i === fx.axis ? 1 : 0), fx.sign), l = toLocalV(t), n = clean(V.norm(l)), L = +V.len([B.p[3], B.p[4], B.p[5]]).toPrecision(12);
+        APP.snap(); B.p[3] = n[0] * L; B.p[4] = n[1] * L; B.p[5] = n[2] * L; for (let i = 3; i < 6; i++) if (Math.abs(B.p[i]) < 1e-12 * L) B.p[i] = 0;
+        return { ok: true, msg: `${B.name}: axis set exactly on ${'XYZ'[fx.axis]}` };
+      }
+      case 'snapPlane': {
+        if (B.type !== 'PLA') return { ok: false, msg: 'Not an oblique plane' };
+        const t = [0, 0, 0].map((_, i) => i === fx.axis ? fx.sign : 0), l = toLocalV(t), n = clean(V.norm(l)), L = V.len([B.p[0], B.p[1], B.p[2]]) || 1;
+        APP.snap();
+        if (M.isTranslation(rel, 1e-9) && fx.sign > 0) { const c = B.p[3 + fx.axis]; B.type = ['YZP', 'XZP', 'XYP'][fx.axis]; B.p = [c]; return { ok: true, msg: `${B.name}: converted to ${B.type}` }; }
+        B.p[0] = n[0] * L; B.p[1] = n[1] * L; B.p[2] = n[2] * L; for (let i = 0; i < 3; i++) if (Math.abs(B.p[i]) < 1e-12 * L) B.p[i] = 0;
+        return { ok: true, msg: `${B.name}: normal set exactly on ${fx.sign > 0 ? '+' : '−'}${'XYZ'[fx.axis]}` };
+      }
+      case 'align': {
+        if (!isCyl(B)) return { ok: false, msg: 'Only RCC / TRC axes can be re-oriented' };
+        const ra = fx.ref ? axisOf(R) : null, d = ra ? ra.d : fx.d; if (!d) return { ok: false, msg: 'No reference axis' };
+        const cur = axisOf(B), sg = V.dot(cur.d, d) >= 0 ? 1 : -1, l = clean(V.norm(toLocalV(V.mul(d, sg)))), L = +V.len([B.p[3], B.p[4], B.p[5]]).toPrecision(12);
+        APP.snap(); B.p[3] = l[0] * L; B.p[4] = l[1] * L; B.p[5] = l[2] * L;
+        return { ok: true, msg: `${B.name}: axis aligned with ${R ? R.name : 'the reference'}` };
+      }
+      case 'concentric': {
+        const A = axisOf(R), C = axisOf(B); if (!A || !C) return { ok: false, msg: 'Unsupported bodies' };
+        const w = V.sub(C.o, A.o), perp = V.sub(w, V.mul(A.d, V.dot(w, A.d))), l = toLocalV(V.mul(perp, -1));
+        APP.snap();
+        if (isCyl(B)) { B.p[0] += l[0]; B.p[1] += l[1]; B.p[2] += l[2]; }
+        else if (B.type === 'XCC') { B.p[0] += l[1]; B.p[1] += l[2]; } else if (B.type === 'YCC') { B.p[0] += l[2]; B.p[1] += l[0]; } else if (B.type === 'ZCC') { B.p[0] += l[0]; B.p[1] += l[1]; }
+        else return { ok: false, msg: 'Unsupported body' };
+        return { ok: true, msg: `${B.name}: axis moved onto the axis of ${R.name}` };
+      }
+      case 'radius': {
+        const ra = APP.xbody(R).p, xb = APP.xbody(R), rr = xb.type === 'RCC' ? [ra[6]] : xb.type === 'TRC' ? [ra[6], ra[7]] : [ra[2]];
+        const idx = B.type === 'RCC' ? [6] : B.type === 'TRC' ? [6, 7] : isInf(B) ? [2] : null; if (!idx) return { ok: false, msg: 'Unsupported body' };
+        APP.snap(); let n = 0;
+        for (const i of idx) { let best = null; for (const x of rr) { const dd = Math.abs(x - B.p[i]); if (dd > 1e-9 && dd < (fx.tol || 1e-3) && (!best || dd < best.dd)) best = { x, dd }; } if (best) { B.p[i] = best.x; n++; } }
+        return n ? { ok: true, msg: `${B.name}: radius set equal to ${R.name}'s` } : { ok: false, msg: 'Nothing to change' };
+      }
+      case 'shift': {
+        if (!isCyl(B)) return { ok: false, msg: 'Only RCC / TRC can be translated this way' };
+        const l = toLocalV(fx.delta); APP.snap(); B.p[0] += l[0]; B.p[1] += l[1]; B.p[2] += l[2];
+        return { ok: true, msg: `${B.name}: translated by ${(V.len(fx.delta) * 10).toPrecision(3)} mm along its axis` };
+      }
+      case 'planeMerge': {
+        const pa = APP.xbody(R), pb = APP.xbody(B); if (!FK.isPlaneType(pa.type) || !FK.isPlaneType(pb.type)) return { ok: false, msg: 'Not planes' };
+        const qa = FK.planeOf(pa), qb = FK.planeOf(pb), na = V.norm(qa.H), sg = V.dot(na, V.norm(qb.H)) >= 0 ? 1 : -1, n = V.mul(na, sg);
+        const dist = V.dot(na, V.sub(qb.V, qa.V)), v = V.sub(qb.V, V.mul(na, dist));
+        const ln = V.norm(toLocalV(n)), lv = toLocalP(v), L = B.type === 'PLA' ? V.len([B.p[0], B.p[1], B.p[2]]) || 1 : 1;
+        APP.snap(); B.type = 'PLA'; B.p = [ln[0] * L, ln[1] * L, ln[2] * L, lv[0], lv[1], lv[2]];
+        return { ok: true, msg: `${B.name}: plane made coincident with ${R.name}` };
+      }
+      case 'face': {
+        if (!M.isTranslation(rel, 1e-9)) return { ok: false, msg: 'Body in a rotated coordinate system: edit it manually' };
+        if (B.type !== 'RPP' && !['XYP', 'XZP', 'YZP'].includes(B.type)) return { ok: false, msg: 'Unsupported body' };
+        APP.snap(); B.p[fx.idx] = fx.value - rel[[3, 7, 11][fx.axis]];
+        return { ok: true, msg: `${B.name}: ${'XYZ'[fx.axis]} face moved onto ${R.name}'s` };
+      }
+    }
+    return { ok: false, msg: 'Unknown fix' };
   };
   APP.setExportCsys = function (id) {
     id = id || 0; if (id && !APP.getCsys(id)) id = 0;
@@ -462,15 +536,38 @@
     APP.toast(`⚠ ${reg.name}: ${ev.quality[0].text}` + (ev.quality.length > 1 ? ` (+${ev.quality.length - 1})` : ''));
     return ev;
   };
-  APP.createBoolRegion = function (a, b, op, mode) {
+  /** Strong (live) links: region.meta.link = { a, b, op, mode } (region ids). The expression is recomputed whenever the parents change. */
+  APP.syncLinks = function () {
+    const regs = S.model && S.model.regions; if (!regs) return false;
+    let any = false, changed = false;
+    for (const r of regs) if (r.meta && r.meta.link) { any = true; break; }
+    if (!any) return false;
+    const byId = new Map(regs.map(r => [r.id, r]));
+    for (const r of regs) {                                  // parents that no longer exist: the link is dropped, the formula stays
+      const l = r.meta && r.meta.link; if (!l) continue;
+      if (!byId.has(l.a) || !byId.has(l.b) || l.a === r.id || l.b === r.id) { delete r.meta.link; changed = true; }
+    }
+    for (let pass = 0; pass <= regs.length; pass++) {        // chains (reg4 linked to reg3 linked to …) settle in a few passes; cycles stop here
+      let moved = false;
+      for (const r of regs) {
+        const l = r.meta && r.meta.link; if (!l) continue;
+        let e; try { e = FK.combineExpr(byId.get(l.a).expr, byId.get(l.b).expr, l.op, l.mode); l.error = ''; } catch (err) { l.error = err.message; continue; }
+        if (e !== r.expr) { r.expr = e; moved = true; changed = true; }
+      }
+      if (!moved) break;
+    }
+    return changed;
+  };
+  APP.createBoolRegion = function (a, b, op, mode, strong) {
     const pl = APP.boolPlan(a, b, op, mode);
     if (pl.error) return pl;
     APP.snap();
     const reg = APP.addRegion(pl.regName, pl.expr, { visible: true, nvois: a.nvois });
     reg.meta = { boolOf: [a.name, b.name, op] };
+    if (strong) reg.meta.link = { a: a.id, b: b.id, op, mode: mode || 'compact', error: '' };
     S.sel = { t: 'region', id: reg.id };
     APP.changed({ tree: true, right: true });
-    { const ev = APP.reportQuality(reg); if (!(ev.quality && ev.quality.length)) APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged`); }
+    { const ev = APP.reportQuality(reg); if (!(ev.quality && ev.quality.length)) APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged${strong ? '; strong link: it follows ' + a.name + ' and ' + b.name : ''}`); }
     return { region: reg, plan: pl };
   };
   /* ---------- Link between entities and their CAD mesh ---------- */
@@ -724,8 +821,8 @@
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (FLUKA limit)`);
-    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
-    for (const r of S.model.regions) { const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
+    for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
+    for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
     return w;
   };
 })();

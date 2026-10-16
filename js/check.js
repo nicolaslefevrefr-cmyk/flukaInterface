@@ -166,7 +166,7 @@
   FK.checkAlignment = function (bodies, opts) {
     opts = opts || {};
     const tol = opts.tol || 1e-3, angMax = opts.ang || 2, EPS = 1e-7, DEG = 180 / Math.PI, out = [];
-    const add = (level, kind, text, names) => out.push({ level, kind, text, names });
+    const add = (level, kind, text, names, fix) => out.push({ level, kind, text, names, fix: fix || null });
     const f = (x) => (+x.toPrecision(4)).toString();
     const cyl = [], pl = [], faces = [[], [], []];
     for (const b of bodies) {
@@ -174,13 +174,13 @@
       if (t === 'RCC' || t === 'TRC') { const H = [p[3], p[4], p[5]], L = V.len(H); if (L > 0) cyl.push({ b, o: [p[0], p[1], p[2]], d: V.mul(H, 1 / L), L, r: t === 'RCC' ? [p[6], p[6]] : [p[6], p[7]], bb: FK.bodyBBox(b) }); }
       else if (t === 'XCC' || t === 'YCC' || t === 'ZCC') cyl.push({ b, o: t === 'XCC' ? [0, p[0], p[1]] : t === 'YCC' ? [p[1], 0, p[0]] : [p[0], p[1], 0], d: t === 'XCC' ? [1, 0, 0] : t === 'YCC' ? [0, 1, 0] : [0, 0, 1], L: Infinity, r: [p[2], p[2]], bb: null, inf: true });
       else if (t === 'PLA') { const l = V.len([p[0], p[1], p[2]]); if (l > 0) pl.push({ b, n: V.mul([p[0], p[1], p[2]], 1 / l), v: [p[3], p[4], p[5]] }); }
-      if (t === 'RPP') for (let a = 0; a < 3; a++) { faces[a].push({ name: b.name, v: p[2 * a] }); faces[a].push({ name: b.name, v: p[2 * a + 1] }); }
-      else if (t === 'XYP') faces[2].push({ name: b.name, v: p[0] }); else if (t === 'XZP') faces[1].push({ name: b.name, v: p[0] }); else if (t === 'YZP') faces[0].push({ name: b.name, v: p[0] });
+      if (t === 'RPP') for (let a = 0; a < 3; a++) { faces[a].push({ name: b.name, v: p[2 * a], idx: 2 * a }); faces[a].push({ name: b.name, v: p[2 * a + 1], idx: 2 * a + 1 }); }
+      else if (t === 'XYP') faces[2].push({ name: b.name, v: p[0], idx: 0 }); else if (t === 'XZP') faces[1].push({ name: b.name, v: p[0], idx: 0 }); else if (t === 'YZP') faces[0].push({ name: b.name, v: p[0], idx: 0 });
     }
     // 1. a tilted axis that is almost a global axis; oblique planes almost axis-aligned
     const nearAxis = (d) => { let best = null; for (let a = 0; a < 3; a++) { const c = Math.min(1, Math.abs(d[a])), ang = Math.acos(c) * DEG; if (!best || ang < best.ang) best = { a, ang }; } return best; };
-    for (const c of cyl) if (!c.inf) { const na = nearAxis(c.d); if (na.ang > 1e-5 && na.ang <= 0.5) add('warn', 'axis', `Cylinder ${c.b.name}: axis is ${f(na.ang)}° off the ${'XYZ'[na.a]} axis (probably meant to be aligned)`, [c.b.name]); }
-    for (const q of pl) { const na = nearAxis(q.n); if (na.ang > 1e-5 && na.ang <= 0.5) add('warn', 'axis', `Plane ${q.b.name}: normal is ${f(na.ang)}° off the ${'XYZ'[na.a]} axis (use ${['YZP', 'XZP', 'XYP'][na.a]} if it should be aligned)`, [q.b.name]); }
+    for (const c of cyl) if (!c.inf) { const na = nearAxis(c.d); if (na.ang > 1e-5 && na.ang <= 0.5) add('warn', 'axis', `Cylinder ${c.b.name}: axis is ${f(na.ang)}° off the ${'XYZ'[na.a]} axis (probably meant to be aligned)`, [c.b.name], { type: 'snapAxis', name: c.b.name, axis: na.a, sign: Math.sign(c.d[na.a]) || 1 }); }
+    for (const q of pl) { const na = nearAxis(q.n); if (na.ang > 1e-5 && na.ang <= 0.5) add('warn', 'axis', `Plane ${q.b.name}: normal is ${f(na.ang)}° off the ${'XYZ'[na.a]} axis (use ${['YZP', 'XZP', 'XYP'][na.a]} if it should be aligned)`, [q.b.name], { type: 'snapPlane', name: q.b.name, axis: na.a, sign: Math.sign(q.n[na.a]) || 1 }); }
     // 2. pairs of cylinders that touch / overlap in space
     const near = (A, B) => { if (!A.bb || !B.bb) return true; const pad = tol + 0.01 * Math.min(FK.boxDiag(A.bb), FK.boxDiag(B.bb)); return [0, 1, 2].every(k => A.bb.min[k] - pad <= B.bb.max[k] && B.bb.min[k] - pad <= A.bb.max[k]); };
     for (let i = 0; i < cyl.length; i++) for (let j = i + 1; j < cyl.length; j++) {
@@ -188,17 +188,17 @@
       const c = Math.min(1, Math.abs(V.dot(A.d, B.d))), ang = Math.acos(c) * DEG, nm = [A.b.name, B.b.name];
       if (ang > 1e-5 && ang < angMax) {
         const R = Math.max(A.r[0], A.r[1], B.r[0], B.r[1]), w = 2 * R * Math.tan(ang / DEG);
-        add('warn', 'tilt', `Cylinders ${nm[0]} / ${nm[1]}: axes differ by ${f(ang)}° (not parallel); the mismatch at the rim reaches ≈ ${f(w * 10)} mm`, nm);
+        add('warn', 'tilt', `Cylinders ${nm[0]} / ${nm[1]}: axes differ by ${f(ang)}° (not parallel); the mismatch at the rim reaches ≈ ${f(w * 10)} mm`, nm, (A.inf && B.inf) ? null : { type: 'align', ref: A.inf ? nm[0] : B.inf ? nm[1] : nm[0], name: A.inf ? nm[1] : B.inf ? nm[0] : nm[1], d: (A.inf ? A.d : B.inf ? B.d : A.d) });
       } else if (ang <= 1e-5) {
         const w = V.sub(B.o, A.o), t = V.dot(w, A.d), perp = V.len(V.sub(w, V.mul(A.d, t)));
-        if (perp > EPS && perp < tol) add('warn', 'offset', `Cylinders ${nm[0]} / ${nm[1]}: parallel axes offset by only ${f(perp * 10)} mm (coaxial?)`, nm);
+        if (perp > EPS && perp < tol) add('warn', 'offset', `Cylinders ${nm[0]} / ${nm[1]}: parallel axes offset by only ${f(perp * 10)} mm (coaxial?)`, nm, { type: 'concentric', ref: nm[0], name: nm[1] });
         else if (perp <= EPS) {
-          for (const ra of A.r) for (const rb of B.r) { const dr = Math.abs(ra - rb); if (dr > EPS && dr < tol) { add('warn', 'radius', `Cylinders ${nm[0]} / ${nm[1]}: coaxial, radii differ by ${f(dr * 10)} mm (R=${f(ra)} vs ${f(rb)} cm)`, nm); ra === A.r[0] && (A.flag = 1); break; } }
+          for (const ra of A.r) for (const rb of B.r) { const dr = Math.abs(ra - rb); if (dr > EPS && dr < tol) { add('warn', 'radius', `Cylinders ${nm[0]} / ${nm[1]}: coaxial, radii differ by ${f(dr * 10)} mm (R=${f(ra)} vs ${f(rb)} cm)`, nm, { type: 'radius', ref: nm[0], name: nm[1], tol }); break; } }
           if (!A.inf && !B.inf) {
             const a0 = 0, a1 = A.L, b0 = V.dot(V.sub(B.o, A.o), A.d), b1 = b0 + (V.dot(B.d, A.d) >= 0 ? 1 : -1) * B.L;
             const lo = Math.min(b0, b1), hi = Math.max(b0, b1), gap = lo >= a1 ? lo - a1 : a0 >= hi ? a0 - hi : -1;
-            if (gap > EPS && gap < tol) add('warn', 'gap', `Cylinders ${nm[0]} / ${nm[1]}: end to end with a gap of ${f(gap * 10)} mm`, nm);
-            for (const e of [lo - a1, hi - a0, lo - a0, hi - a1]) if (Math.abs(e) > EPS && Math.abs(e) < tol) { add('info', 'face', `Cylinders ${nm[0]} / ${nm[1]}: end faces ${f(Math.abs(e) * 10)} mm apart (almost coincident)`, nm); break; }
+            if (gap > EPS && gap < tol) add('warn', 'gap', `Cylinders ${nm[0]} / ${nm[1]}: end to end with a gap of ${f(gap * 10)} mm`, nm, { type: 'shift', name: nm[1], delta: V.mul(A.d, (lo >= a1 ? -gap : gap)) });
+            if (!(gap > EPS && gap < tol)) for (const e of [lo - a1, hi - a0, lo - a0, hi - a1]) if (Math.abs(e) > EPS && Math.abs(e) < tol) { add('info', 'face', `Cylinders ${nm[0]} / ${nm[1]}: end faces ${f(Math.abs(e) * 10)} mm apart (almost coincident)`, nm, { type: 'shift', name: nm[1], delta: V.mul(A.d, -e) }); break; }
           }
         }
       }
@@ -206,15 +206,15 @@
     // 3. nearly parallel and nearly coincident planes (oblique)
     for (let i = 0; i < pl.length; i++) for (let j = i + 1; j < pl.length; j++) {
       const A = pl[i], B = pl[j], c = Math.min(1, Math.abs(V.dot(A.n, B.n))), ang = Math.acos(c) * DEG;
-      if (ang > 1e-5 && ang < 0.5) { const dist = Math.abs(V.dot(A.n, V.sub(B.v, A.v))); if (dist < 10 * tol) add('warn', 'planes', `Planes ${A.b.name} / ${B.b.name}: ${f(ang)}° apart and almost coincident (${f(dist * 10)} mm): they cut a thin wedge`, [A.b.name, B.b.name]); }
-      else if (ang <= 1e-5) { const dist = Math.abs(V.dot(A.n, V.sub(B.v, A.v))); if (dist > EPS && dist < tol) add('warn', 'planes', `Planes ${A.b.name} / ${B.b.name}: parallel, ${f(dist * 10)} mm apart (sliver)`, [A.b.name, B.b.name]); }
+      if (ang > 1e-5 && ang < 0.5) { const dist = Math.abs(V.dot(A.n, V.sub(B.v, A.v))); if (dist < 10 * tol) add('warn', 'planes', `Planes ${A.b.name} / ${B.b.name}: ${f(ang)}° apart and almost coincident (${f(dist * 10)} mm): they cut a thin wedge`, [A.b.name, B.b.name], { type: 'planeMerge', ref: A.b.name, name: B.b.name }); }
+      else if (ang <= 1e-5) { const dist = Math.abs(V.dot(A.n, V.sub(B.v, A.v))); if (dist > EPS && dist < tol) add('warn', 'planes', `Planes ${A.b.name} / ${B.b.name}: parallel, ${f(dist * 10)} mm apart (sliver)`, [A.b.name, B.b.name], { type: 'planeMerge', ref: A.b.name, name: B.b.name }); }
     }
     // 4. nearly coincident axis-aligned faces of different bodies
     for (let a = 0; a < 3; a++) {
       const L = faces[a].slice().sort((p, q) => p.v - q.v), seen = new Set();
       for (let i = 0; i + 1 < L.length; i++) for (let j = i + 1; j < L.length && L[j].v - L[i].v < tol; j++) {
         const d = L[j].v - L[i].v, key = L[i].name + '|' + L[j].name;
-        if (d > EPS && L[i].name !== L[j].name && !seen.has(key)) { seen.add(key); add('warn', 'faces', `${'XYZ'[a]} faces of ${L[i].name} and ${L[j].name} are ${f(d * 10)} mm apart (almost coincident: a sliver can appear)`, [L[i].name, L[j].name]); }
+        if (d > EPS && L[i].name !== L[j].name && !seen.has(key)) { seen.add(key); add('warn', 'faces', `${'XYZ'[a]} faces of ${L[i].name} and ${L[j].name} are ${f(d * 10)} mm apart (almost coincident: a sliver can appear)`, [L[i].name, L[j].name], { type: 'face', ref: L[i].name, name: L[j].name, axis: a, value: L[i].v, idx: L[j].idx }); }
       }
     }
     return out;

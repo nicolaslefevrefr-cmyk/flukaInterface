@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.8">
+<link rel="stylesheet" href="css/style.css?v=1.9">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.8</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.9</i></b></div>
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
@@ -46,8 +46,8 @@
             <button data-filter="object" title="Select objects"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="grpTool" role="group" aria-label="Tools">
-            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
-            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           </div>
           <div class="grp" id="grpProj" role="group" aria-label="Projection">
             <button data-proj="persp" title="Perspective view"><svg viewBox="0 0 24 24"><path d="M3 19l4-11h10l4 11z M7 8l2 11M17 8l-2 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
@@ -65,8 +65,8 @@
             <button id="btnRes" title="Resolution of curved surfaces (number of facets of cylinders / spheres)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7" stroke="currentColor" stroke-width="1" opacity=".7"/></svg></button>
           </div>
           <div class="grp" id="grpRot" role="group" aria-label="Mouse rotation">
-            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="viewBtns" role="group" aria-label="View">
             <button data-view="fit" title="Fit the view to what is displayed">⤢</button>
@@ -167,6 +167,9 @@
     <div class="fld" style="margin-top:6px"><label>Second region (B)</label><select id="boolB"></select></div>
     <label class="row"><input type="radio" name="boolMode" value="compact" checked> Compact: parentheses, <code>+( A ) −( B )</code></label>
     <label class="row"><input type="radio" name="boolMode" value="expanded"> Expanded (De Morgan: no negated parenthesis)</label>
+    <div class="fld" style="margin-top:6px"><label>Link with A and B</label>
+      <label class="row"><input type="radio" name="boolLink" value="soft" checked> Soft — the formula is computed now and never changes</label>
+      <label class="row"><input type="radio" name="boolLink" value="strong"> Strong — the formula follows A and B live (A, B and the operation stay editable in the region's Definition tab)</label></div>
     <div id="boolPrev" class="voidprev"></div>
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="boolOk">Create region</button></div>
   </form>
@@ -220,14 +223,14 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.8"></script>
-<script src="js/core.js?v=1.8"></script>
-<script src="js/state.js?v=1.8"></script>
-<script src="js/scene.js?v=1.8"></script>
-<script src="js/cut.js?v=1.8"></script>
-<script src="js/compare.js?v=1.8"></script>
-<script src="js/check.js?v=1.8"></script>
-<script src="js/ui.js?v=1.8"></script>
-<script src="js/pwa.js?v=1.8"></script>
+<script src="js/lib/three.min.js?v=1.9"></script>
+<script src="js/core.js?v=1.9"></script>
+<script src="js/state.js?v=1.9"></script>
+<script src="js/scene.js?v=1.9"></script>
+<script src="js/cut.js?v=1.9"></script>
+<script src="js/compare.js?v=1.9"></script>
+<script src="js/check.js?v=1.9"></script>
+<script src="js/ui.js?v=1.9"></script>
+<script src="js/pwa.js?v=1.9"></script>
 </body>
 </html>

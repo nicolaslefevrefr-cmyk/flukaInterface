@@ -330,9 +330,31 @@
     featPlace();
   }
   /* ---------- Geometry check window ---------- */
+  const FIX_HINT = { snapAxis: 'Set the axis exactly on the global axis', snapPlane: 'Set the plane exactly perpendicular to the global axis (XYP / XZP / YZP when possible)', align: 'Rotate the second cylinder so that its axis is parallel to the first', concentric: 'Move the second cylinder onto the axis of the first', radius: 'Give the second cylinder the radius of the first', shift: 'Translate the second cylinder along its axis so the ends touch', planeMerge: 'Make the second plane coincide with the first', face: 'Move the face onto the reference face' };
+  const CHK = { last: null, bodies: [], tol: 0.01 };
+  function chkAlign(bodies, tol) { return FK.checkAlignment(bodies.filter(b => b.type !== 'RAW').map(b => Object.assign({ name: b.name }, APP.xbody(b))), { tol }); }
+  /** Applies one fix, or all of them in turn (findings are recomputed after each change). */
+  function chkSolve(i) {
+    const R = CHK.last; if (!R) return;
+    if (i === 'all') {
+      APP.snap(); let n = 0; const tried = new Set(), msgs = [];
+      for (let it = 0; it < 80; it++) {
+        const al = chkAlign(CHK.bodies, CHK.tol), f = al.find(a => a.fix && !tried.has(JSON.stringify(a.fix)));
+        if (!f) break; tried.add(JSON.stringify(f.fix));
+        const res = APP.applyFix(f.fix); if (res.ok) { n++; msgs.push(res.msg); }
+      }
+      APP.changed({ tree: true, right: true }); toast(n ? `${n} fix(es) applied (Ctrl+Z undoes the last one)` : 'Nothing could be fixed automatically');
+    } else {
+      const a = R.al[+i]; if (!a || !a.fix) return;
+      const res = APP.applyFix(a.fix); toast(res.msg); if (res.ok) APP.changed({ tree: true, right: true });
+    }
+    chkRun();
+  }
   function chkRun() {
     const esc2 = esc, rows = [];
-    const bodies = S.model.bodies.filter(b => !b.noExport), regs = S.model.regions.filter(r => !r.noExport && r.expr && r.expr.trim());
+    const regs0 = S.model.regions.filter(r => !r.noExport && r.expr && r.expr.trim()), used = new Set();
+    for (const r of regs0) { try { for (const nm of FK.exprNames(FK.parseExpr(r.expr))) used.add(nm); } catch (e) { /* ignored */ } }
+    const bodies = S.model.bodies.filter(b => !b.noExport && used.has(b.name)), regs = S.model.regions.filter(r => !r.noExport && r.expr && r.expr.trim());
     const tol = Math.max(0, parseFloat($('#chkTol').value) || 0.1) / 10, n = Math.max(20, Math.min(160, +$('#chkN').value || 72));
     const R = { eq: null, ov: null, al: null };
     // A. INP <-> model
@@ -345,7 +367,7 @@
     const okRegs = regs.filter(r => !skipped.includes(r));
     R.ov = box && okRegs.length ? FK.checkOverlaps(okRegs, fns, box, { n }) : null;
     // C. alignment
-    R.al = FK.checkAlignment(bodies.filter(b => b.type !== 'RAW').map(b => Object.assign({ name: b.name }, APP.xbody(b))), { tol });
+    R.al = chkAlign(bodies, tol); CHK.last = R; CHK.bodies = bodies; CHK.tol = tol;
     const li = (cls, t) => `<li class="${cls}">${t}</li>`;
     rows.push('<b>1. INP ↔ model</b><ul>');
     if (R.eq.missing.length) R.eq.missing.forEach(m => rows.push(li('bad', esc2(m))));
@@ -362,9 +384,10 @@
       rows.push(li('info', `ⓘ Grid scan: features thinner than ${c.toFixed(2)} mm can be missed — see section 3`));
     }
     if (skipped.length) rows.push(li('info', `ⓘ Not scanned (unsupported bodies): ${skipped.map(r => esc2(r.name)).join(', ')}`));
-    rows.push('</ul><b>3. Alignment accidents</b><ul>');
+    const nfix = R.al.filter(a => a.fix).length;
+    rows.push('</ul><b>3. Alignment accidents</b>' + (nfix ? ` <button type="button" class="btn sm" data-fix="all" title="Apply every automatic fix, one after the other">Solve all (${nfix})</button>` : '') + '<ul>');
     if (!R.al.length) rows.push(li('good', '✔ Nothing suspicious (near-parallel axes, almost coincident faces, tiny offsets or gaps)'));
-    for (const a of R.al.slice(0, 40)) rows.push(li(a.level === 'info' ? 'info' : 'warn', (a.level === 'info' ? 'ⓘ ' : '⚠ ') + esc2(a.text)));
+    R.al.slice(0, 40).forEach((a, i) => rows.push(li(a.level === 'info' ? 'info' : 'warn', (a.level === 'info' ? 'ⓘ ' : '⚠ ') + esc2(a.text) + (a.fix ? ` <button type="button" class="btn sm" data-fix="${i}" title="${esc2(FIX_HINT[a.fix.type] || 'Fix')}">Solve</button>` : ''))));
     rows.push('</ul>');
     $('#chkRes').innerHTML = rows.join('');
     APP.setCheckMarks(R.ov ? [{ centers: R.ov.overlapCenters, size: R.ov.cell, color: 0xff3030 }, { centers: R.ov.holeCenters, size: R.ov.cell, color: 0xff9900 }] : null);
@@ -374,6 +397,7 @@
     const d = $('#dlgChk'); if (!d) return;
     $('#btnInpCheck').onclick = () => { if (!d.open) d.show(); if (typeof d._x === 'number') { d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; } else { d.style.left = 'auto'; d.style.right = '12px'; d.style.top = '64px'; } };
     $('#chkRun').onclick = () => { try { chkRun(); } catch (e) { console.error(e); toast('Check failed: ' + e.message); } };
+    $('#chkRes').addEventListener('click', e => { const b = e.target.closest('[data-fix]'); if (b) chkSolve(b.dataset.fix); });
     $('#chkClear').onclick = () => { APP.setCheckMarks(null); };
     d.addEventListener('close', () => APP.setCheckMarks(null));
     d.querySelector('[value=close]').onclick = () => d.close();
@@ -572,7 +596,7 @@
     d.addEventListener('close', () => {
       if (d.returnValue !== 'ok') return;
       const a = APP.getRegion(+d.dataset.rid); if (!a) return;
-      const res = APP.createBoolRegion(a, ...boolArgs());
+      const res = APP.createBoolRegion(a, ...boolArgs(), ((document.querySelector('input[name=boolLink]:checked') || {}).value) === 'strong');
       if (res.error) toast(res.error);
     });
   })();
@@ -1173,8 +1197,17 @@
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
       <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
-    const definition = `<div class="sec"><h4><span>Definition</span></h4><div class="fields">
-      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false">${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
+    const lk = r.meta && r.meta.link, others = S.model.regions.filter(x => x.id !== r.id);
+    const regOpts = (sel) => others.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    const linkBlock = lk ? `<div class="sec"><h4><span>⛓ Strong link <small class="muted">(live formula)</small></span></h4><div class="fields">
+      <div class="fld"><label>Region A</label><select data-k="lnkA">${regOpts(lk.a)}</select></div>
+      <div class="fld"><label>Region B</label><select data-k="lnkB">${regOpts(lk.b)}</select></div>
+      <div class="fld"><label>Operation</label><select data-k="lnkOp"><option value="sub" ${lk.op === 'sub' ? 'selected' : ''}>A − B</option><option value="int" ${lk.op === 'int' ? 'selected' : ''}>A ∩ B</option><option value="union" ${lk.op === 'union' ? 'selected' : ''}>A ∪ B</option></select></div>
+      <div class="fld"><label>Form</label><select data-k="lnkMode"><option value="compact" ${lk.mode !== 'expanded' ? 'selected' : ''}>Compact</option><option value="expanded" ${lk.mode === 'expanded' ? 'selected' : ''}>Expanded (De Morgan)</option></select></div></div>
+      ${lk.error ? `<div class="msg bad">${esc(lk.error)}</div>` : ''}
+      <div class="btns"><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
+    const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
+      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
       <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
@@ -1330,7 +1363,8 @@
       case 'cad': if (e.type === 'change') { APP.snap(); it.meta = it.meta || {}; if (t.value === '') delete it.meta.cad; else it.meta.cad = t.value === 'none' ? 0 : +t.value; APP.changed({ tree: true, right: true }); } break;
       case 'exportInp': if (e.type === 'change') { APP.snap(); if (t.checked) delete it.noExport; else it.noExport = true; APP.changed({ tree: true }); } break;
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
-      case 'expr': APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
+      case 'lnkA': case 'lnkB': case 'lnkOp': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) { APP.snap(); const l = it.meta.link; if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkB') l.b = +t.value; else if (k === 'lnkOp') l.op = t.value; else l.mode = t.value; APP.changed({ tree: true, right: true }); } break;
+      case 'expr': if (it.meta && it.meta.link) break; APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
       case 'color': if (e.type === 'input') { APP.snap(key + 'col'); it.color = t.value; APP.changed({ tree: true, csys: type === 'csys' }); } break;
       case 'opacity': if (e.type === 'input') { it.opacity = (+t.value) / 100; APP.applyStyles(); APP.changed({ tree: true }); } break;
       case 'visible': if (e.type === 'change') { APP.snap(); it.visible = t.checked; APP.changed({ tree: true, csys: type === 'csys' }); } break;
@@ -1363,6 +1397,7 @@
       case 'rtab': S.rtab = a.dataset.tab; $$('#rightBody .rtab').forEach(x => x.classList.toggle('on', x.dataset.tab === S.rtab)); $$('#rightBody .rpane').forEach(x => { x.hidden = x.dataset.pane !== S.rtab; }); break;
       case 'cadShow': case 'cadHide': case 'cadIsolate': if (it && S.sel.t === 'stl') { const k = APP.cadVisibility(it.id, act === 'cadShow' ? 'show' : act === 'cadHide' ? 'hide' : 'isolate'); toast(k + ' linked object(s) ' + (act === 'cadHide' ? 'hidden' : act === 'cadShow' ? 'shown' : 'isolated')); } break;
       case 'cadCompare': if (it && S.sel.t === 'stl') openDevDlg({ cad: it.id }); break;
+      case 'unlinkRegion': if (it && it.meta && it.meta.link) { APP.snap(); delete it.meta.link; APP.changed({ tree: true, right: true }); toast('Link removed; the formula is kept'); } break;
       case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
       case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
       case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
@@ -1729,5 +1764,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();
