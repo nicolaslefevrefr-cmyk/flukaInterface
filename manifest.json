@@ -1,7 +1,7 @@
 {
   "name": "Combinatorial Geometry Tool",
   "short_name": "CG Tool",
-  "description": "Transfer geometry from Creo Parametric (STL / OBJ) to FLUKA / Flair cards (RPP, PLA, regions).",
+  "description": "Transfer geometry from CAD (STL / OBJ) to CG cards (RPP, PLA, regions).",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

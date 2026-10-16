@@ -145,10 +145,10 @@
     gesture.moved += Math.abs(dx) + Math.abs(dy);
     if (gesture.moved < 6 && gesture.mode !== 'pinch') return;
     if (gesture.mode === 'rotate') {
-      // yaw about the world Z axis, pitch about the camera's right axis; no limit on either
-      const qy = new THREE.Quaternion().setFromAxisAngle(Zaxis, -dx * 0.008 * (S.opt.invX ? -1 : 1));
+      // CAD-style trackball: horizontal drag turns about the screen's vertical axis, vertical drag about the screen's horizontal axis (no limit)
+      const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.008 * (S.opt.invX ? -1 : 1));
       const qp = new THREE.Quaternion().setFromAxisAngle(Xaxis, -dy * 0.008 * (S.opt.invY ? -1 : 1));
-      cam.q = qy.multiply(cam.q).multiply(qp); applyCam();
+      cam.q = cam.q.multiply(qy).multiply(qp); applyCam();
     }
     else if (gesture.mode === 'pan') { panBy(dx, dy); applyCam(); }
   });
@@ -688,8 +688,17 @@
       }
       const pk = Object.assign({ kind: 'edge', a, b, length: V.dist(a, b), chain }, base);
       if (opts && opts.loop) {          // circular rim: follow the sharp edges around, then fit a circle
-        pk.loop = FK.edgeLoop(topo, va, vb, S.opt.sharp);
-        pk.circle = pk.loop.segments >= 3 ? FK.fitCircle3D(pk.loop.pts) : null;
+        const tryLoop = (k) => {
+          const x = topo.vid[tri * 3 + k], y = topo.vid[tri * 3 + (k + 1) % 3];
+          let lp = FK.edgeLoop(topo, x, y, S.opt.sharp);
+          if (!lp.closed && lp.segments < 6) { const alt = FK.edgeLoop(topo, x, y, Math.max(3, S.opt.sharp / 4)); if (alt.segments > lp.segments) lp = alt; }   // softer rim: lower the threshold
+          return { lp, circle: lp.segments >= 3 ? FK.fitCircle3D(lp.pts) : null, k };
+        };
+        let r = tryLoop(best);
+        if (!r.circle) {                // the nearest edge may be an axial wall edge: try the other sharp edges of the same facet
+          for (let k = 0; k < 3; k++) { if (k === best) continue; if (S.opt.edgeSharpOnly && !FK.isSharpEdge(topo, tri, k, cosA)) continue; const q = tryLoop(k); if (q.circle) { r = q; break; } }
+        }
+        pk.loop = r.lp; pk.circle = r.circle;
       }
       return pk;
     }

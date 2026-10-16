@@ -648,7 +648,7 @@
     APP.toast(`Plane ${b.name} recomputed from the new face`);
   };
 
-  /* ---------- Organisation groups (tool only: no effect on the FLUKA output) ---------- */
+  /* ---------- Organisation groups (tool only: no effect on the CG output) ---------- */
   const CAT_ITEMS = {
     meshes: () => S.stls, csys: () => S.model.csys, planes: () => S.model.bodies.filter(b => FK.isPlaneType(b.type)),
     bodies: () => S.model.bodies.filter(b => !FK.isPlaneType(b.type)), regions: () => S.model.regions, measures: () => S.measures
@@ -820,7 +820,7 @@
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
-    if (long) w.push(`${long} line(s) longer than 132 columns (FLUKA limit)`);
+    if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
     return w;

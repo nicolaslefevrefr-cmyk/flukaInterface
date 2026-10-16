@@ -1,8 +1,8 @@
-/* compare.js — CAD ↔ FLUKA comparison (pure logic, no DOM, no three.js)
+/* compare.js — CAD ↔ CG comparison (pure logic, no DOM, no three.js)
  *  - FK.TriIndex      : uniform-grid nearest-triangle search on a triangle soup
  *  - FK.subdivide     : barycentric subdivision of a triangle soup (sample points + sub-triangles for colouring)
  *  - FK.compareSurfaces(regionPos, cadPos, opts) : two-way surface deviation (region → CAD and CAD → region), signed
- *      sign convention "FLUKA − CAD": > 0 = FLUKA has material where the CAD has none (excess), < 0 = FLUKA lacks material (deficit)
+ *      sign convention "CG − CAD": > 0 = CG has material where the CAD has none (excess), < 0 = CG lacks material (deficit)
  * Lengths in cm. */
 (function (root) {
   'use strict';
@@ -138,10 +138,10 @@
   FK.deviationStats = stats;
 
   /**
-   * Two-way deviation between the FLUKA region surface (triangles regionPos) and the CAD mesh (cadPos).
+   * Two-way deviation between the CG region surface (triangles regionPos) and the CAD mesh (cadPos).
    * opts: { target: number of sample points per side (default 60000) }
    * Returns { region: { points, tri, d, s }, cad: { points, tri, d, s }, stats: { toCad, toRegion, hausdorff } }.
-   * Signs: "FLUKA − CAD" (> 0 excess of FLUKA, < 0 deficit).
+   * Signs: "CG − CAD" (> 0 excess of CG, < 0 deficit).
    */
   FK.compareSurfaces = function (regionPos, cadPos, opts) {
     opts = opts || {};
@@ -167,7 +167,7 @@
       const sc = FK.subdivide(sub, hC); const dC = new Float32Array(sc.points.length / 3), sC = new Float32Array(dC.length);
       for (let i = 0; i < dC.length; i++) {
         const r = idxR.nearest([sc.points[i * 3], sc.points[i * 3 + 1], sc.points[i * 3 + 2]]);
-        dC[i] = r.d; sC[i] = -r.s;                      // CAD point outside the region (r.s > 0) = FLUKA deficit
+        dC[i] = r.d; sC[i] = -r.s;                      // CAD point outside the region (r.s > 0) = CG deficit
       }
       out.cad = { points: sc.points, tri: sc.tri, d: dC, s: sC, triCount: keep.length };
       out.stats.toRegion = stats(dC, sC);

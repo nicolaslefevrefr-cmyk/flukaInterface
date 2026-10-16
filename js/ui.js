@@ -406,7 +406,7 @@
     h.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
     h.addEventListener('pointerup', () => { drag = null; });
   })();
-  /* ---------- CAD <-> FLUKA comparison window ---------- */
+  /* ---------- CAD <-> CG comparison window ---------- */
   const DEV = { last: null };
   function devRegionCheck(preId) {
     const cad = +$('#devCad').value, box = $('#devRegs');
@@ -444,10 +444,10 @@
     APP.setDeviationOverlay({ points: side.points, tri: side.tri, colors: col });
     const vc = Math.abs(cad.stats.volume), vr = ev.vol, mm = v => (v * 10).toFixed(3);
     const row = (n, s) => `<tr><td>${n}</td><td>${mm(s.mean)}</td><td>${mm(s.rms)}</td><td>${mm(s.p95)}</td><td>${mm(s.max)}</td><td>${(s.bias >= 0 ? '+' : '') + mm(s.bias)}</td></tr>`;
-    $('#devRes').innerHTML = `<table><tr><th>mm</th><th>mean</th><th>rms</th><th>p95</th><th>max</th><th>bias</th></tr>${row('FLUKA → CAD', res.stats.toCad)}${row('CAD → FLUKA', res.stats.toRegion)}</table>
+    $('#devRes').innerHTML = `<table><tr><th>mm</th><th>mean</th><th>rms</th><th>p95</th><th>max</th><th>bias</th></tr>${row('CG → CAD', res.stats.toCad)}${row('CAD → CG', res.stats.toRegion)}</table>
       <div>Hausdorff: <b>${mm(res.stats.hausdorff)} mm</b></div>
-      <div>Volume CAD: <b>${vc.toFixed(3)} cm³</b> · FLUKA: <b>${vr.toFixed(3)} cm³</b> · Δ = ${(vr - vc >= 0 ? '+' : '') + (vr - vc).toFixed(3)} cm³ (${vc ? ((vr - vc) / vc * 100).toFixed(2) : '–'} %)</div>
-      <div class="muted">Bias &gt; 0: FLUKA has more material than the CAD. Planes cutting through the CAD (boolean cuts not in the mesh) appear as deviations.</div>`;
+      <div>Volume CAD: <b>${vc.toFixed(3)} cm³</b> · CG: <b>${vr.toFixed(3)} cm³</b> · Δ = ${(vr - vc >= 0 ? '+' : '') + (vr - vc).toFixed(3)} cm³ (${vc ? ((vr - vc) / vc * 100).toFixed(2) : '–'} %)</div>
+      <div class="muted">Bias &gt; 0: CG has more material than the CAD. Planes cutting through the CAD (boolean cuts not in the mesh) appear as deviations.</div>`;
     const lg = $('#devLeg'); lg.style.display = 'block';
     lg.style.background = signed ? 'linear-gradient(90deg,#1a4de6,#dbe0e6,#dc1f1a)' : 'linear-gradient(90deg,#1aa64d,#fad91a,#dc1a1a)';
     lg.title = (signed ? '−' : '0') + ' … ' + mm(max) + ' mm';
@@ -640,7 +640,7 @@
         <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
         <div class="fld" style="margin-top:6px"><label title="All INP coordinates and directions are written in this frame">Export coordinate system ⓘ</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div class="fld" style="margin-top:6px"><label title="Name-based geometry (COMBNAME): free format, names ≤ 8 characters, lines ≤ 132 columns. Fixed columns: GEOBEGIN (A8,2X,6E10.0,A8), title (2I5,10X,A60).">Output format ⓘ</label><select data-opt="style">
-          <option value="1" ${o.style == 1 ? 'selected' : ''}>Flair style (REGION + line)</option>
+          <option value="1" ${o.style == 1 ? 'selected' : ''}>Multi-line style (REGION + line)</option>
           <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
           <option value="3" ${o.style == 3 ? 'selected' : ''}>Fixed columns (Fortran-like, ≤132 col)</option></select></div>
         <label class="chk" title="Adds a comment line (* in column 1) before GEOBEGIN"><input type="checkbox" data-opt="inpComment" ${o.inpComment ? 'checked' : ''}>Comment header in the INP</label></div></details>
@@ -1075,7 +1075,7 @@
     const cur = it.meta && it.meta.cad !== undefined ? String(it.meta.cad === 0 ? 'none' : it.meta.cad) : '';
     const auto = APP.cadId(it, kind), an = auto ? APP.getStl(auto) : null;
     if (!S.stls.length) return '';
-    return `<div class="fld full"><label title="Mesh this ${kind} was made from / is compared with (used to show / hide linked objects and for the CAD ↔ FLUKA comparison)">CAD source ⓘ</label><select data-k="cad"><option value="" ${cur === '' ? 'selected' : ''}>Automatic${an && cur === '' ? ' → ' + esc(an.name) : ''}</option><option value="none" ${cur === 'none' ? 'selected' : ''}>None</option>${S.stls.map(m => `<option value="${m.id}" ${cur === String(m.id) ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>`;
+    return `<div class="fld full"><label title="Mesh this ${kind} was made from / is compared with (used to show / hide linked objects and for the CAD ↔ CG comparison)">CAD source ⓘ</label><select data-k="cad"><option value="" ${cur === '' ? 'selected' : ''}>Automatic${an && cur === '' ? ' → ' + esc(an.name) : ''}</option><option value="none" ${cur === 'none' ? 'selected' : ''}>None</option>${S.stls.map(m => `<option value="${m.id}" ${cur === String(m.id) ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>`;
   }
   function bodyProps(b) {
     const info = FK.BODY_TYPES[b.type];
@@ -1110,7 +1110,7 @@
       if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; planeBtns += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
     }
     const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
-      <div class="fld full"><label>Name (max 8 characters for FLUKA)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
+      <div class="fld full"><label>Name (max 8 characters for CG)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
@@ -1231,14 +1231,14 @@
       const m = { id: APP.nid(), name: nm, file: s.file || s.name, format: s.format, raw: c.positions, unit: s.unit, offset: s.offset.slice(), flip: s.flip, visible: true, opacity: s.opacity, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: c.count <= 80000, group: null, mesh: null };
       APP.buildStl(m); S.stls.push(m);
     });
-    if (nLinked) { s.visible = false; toast(`${comps.length} meshes created; the original is kept (hidden) because FLUKA objects are linked to it`); }
+    if (nLinked) { s.visible = false; toast(`${comps.length} meshes created; the original is kept (hidden) because CG objects are linked to it`); }
     else { if (APP.hooks.disposeStl) APP.hooks.disposeStl(s); S.stls = S.stls.filter(x => x.id !== s.id); S.sel = null; toast(`${comps.length} meshes created`); }
     APP.changed({ tree: true, right: true });
   }
   /** What is linked to a mesh + quick show / hide. */
   function linkedHTML(s) {
     const L = APP.cadLinked(s.id), n = L.bodies.length + L.planes.length + L.regions.length;
-    return `<div class="sec"><h4><span>Linked FLUKA objects</span></h4>
+    return `<div class="sec"><h4><span>Linked CG objects</span></h4>
       <div class="muted" style="font-size:12.5px">${n ? `${L.bodies.length} bod${L.bodies.length === 1 ? 'y' : 'ies'} · ${L.planes.length} plane${L.planes.length === 1 ? '' : 's'} · ${L.regions.length} region${L.regions.length === 1 ? '' : 's'}` : 'None yet (planes picked on a face, detected features and regions made of them are linked automatically).'}</div>
       ${n ? `<div class="btns"><button class="btn sm" data-act="cadShow">Show</button><button class="btn sm" data-act="cadHide">Hide</button><button class="btn sm" data-act="cadIsolate" title="Show only this mesh and what is linked to it">Isolate</button></div>` : ''}</div>`;
   }
@@ -1251,12 +1251,12 @@
       <div class="fld"><label>File unit</label><select data-k="unit">${unitOpts}</select></div>
       <div class="fld"><label>&nbsp;</label><label class="chk" style="margin:0"><input type="checkbox" data-k="flip" ${s.flip ? 'checked' : ''}>Flip normals</label></div>
       ${numField('Offset X (cm)', 'data-off="0"', s.offset[0])}${numField('Offset Y (cm)', 'data-off="1"', s.offset[1])}${numField('Offset Z (cm)', 'data-off="2"', s.offset[2])}</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">Everything is converted to cm (FLUKA unit) on import. Mesh normals point out of the material.</div></div>`;
+      <div class="muted" style="font-size:12px;margin-top:6px">Everything is converted to cm (CG unit) on import. Mesh normals point out of the material.</div></div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(s)}
       <div class="row2"><label class="chk" style="margin:0"><input type="checkbox" data-k="edges" ${s.edges ? 'checked' : ''}>Sharp edges</label></div></div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button>
-      <button class="btn" data-act="cadCompare" title="Colour the FLUKA regions linked to this mesh by their distance to it, volumes and metrics">Compare with FLUKA regions…</button>
+      <button class="btn" data-act="cadCompare" title="Colour the CG regions linked to this mesh by their distance to it, volumes and metrics">Compare with CG regions…</button>
       <button class="btn" data-act="splitStl" title="One mesh per connected solid">Split into solids</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del">Remove</button></div></div>`;
     return tabbed({ general, view, definition, operations });

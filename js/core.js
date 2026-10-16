@@ -1,10 +1,10 @@
 /* core.js — pure logic (no DOM, no three.js)
- * Mesh parsing, topology, CSG, FLUKA bodies/regions, generation and parsing of the GEOBEGIN/GEOEND block.
- * All lengths are in cm (FLUKA unit). */
+ * Mesh parsing, topology, CSG, CG bodies/regions, generation and parsing of the GEOBEGIN/GEOEND block.
+ * All lengths are in cm (CG unit). */
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.9';
+  FK.VERSION = '1.9.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -336,11 +336,10 @@
     const visited = new Set([va, vb]);
     function extend(end, dir, push) {
       for (let guard = 0; guard < 20000; guard++) {
-        const nb = sharpNeighbors(topo, end, cosA).filter(x => !visited.has(x));
-        if (nb.length !== 1) return;
-        const c = nb[0];
-        const d = V.norm(V.sub(vpt(topo, c), vpt(topo, end)));
-        if (V.dot(d, dir) < dirTol) return;
+        const nb = sharpNeighbors(topo, end, cosA).filter(x => !visited.has(x))
+          .map(c => ({ c, dot: V.dot(V.norm(V.sub(vpt(topo, c), vpt(topo, end))), dir) })).filter(x => x.dot >= dirTol).sort((p, q) => q.dot - p.dot);
+        if (!nb.length) return;
+        const c = nb[0].c;
         visited.add(c);
         push(c); end = c;
       }
@@ -363,12 +362,14 @@
     const ext = (push, first) => {
       let prev = first[0], end = first[1];
       for (let guard = 0; guard < 200000; guard++) {
-        const nb = sharpNeighbors(topo, end, cosA).filter(x => x !== prev);
-        if (nb.length !== 1) return;
-        const c = nb[0];
-        if (seen.has(c)) { if (c === path[0] && path.length > 2 && !closed) closed = true; return; }
-        const d1 = V.norm(V.sub(vpt(topo, end), vpt(topo, prev))), d2 = V.norm(V.sub(vpt(topo, c), vpt(topo, end)));
-        if (V.dot(d1, d2) < cosT) return;
+        // several sharp neighbours (coarse tessellations: the wall edge of the cylinder is sharp too): keep the one that continues the path best
+        const d1 = V.norm(V.sub(vpt(topo, end), vpt(topo, prev)));
+        const cands = sharpNeighbors(topo, end, cosA).filter(x => x !== prev).map(c => ({ c, dot: V.dot(d1, V.norm(V.sub(vpt(topo, c), vpt(topo, end)))) })).filter(x => x.dot >= cosT);
+        if (!cands.length) return;
+        if (path.length > 2 && cands.some(x => x.c === path[0]) && !closed) { closed = true; return; }
+        const fresh = cands.filter(x => !seen.has(x.c)).sort((p, q) => q.dot - p.dot);
+        if (!fresh.length) return;
+        const c = fresh[0].c;
         seen.add(c); push(c); prev = end; end = c;
       }
     };
@@ -651,7 +652,7 @@
   }
   FK.primitives = { orientedBox, boxPolys, cylinderPolys, spherePolys };
 
-  /* ---------------- Corps FLUKA ---------------- */
+  /* ---------------- Corps CG ---------------- */
   const BODY_TYPES = {
     RPP: { label: 'RPP — rectangular box', fields: ['Xmin', 'Xmax', 'Ymin', 'Ymax', 'Zmin', 'Zmax'], prefix: 'rpp' },
     SPH: { label: 'SPH — sphere', fields: ['Xc', 'Yc', 'Zc', 'R'], prefix: 'sph' },
@@ -788,7 +789,7 @@
   FK.M = M;
 
   /** Equivalent body expressed in the world frame (m = world matrix of the body's csys).
-   * Returned types: usual FLUKA types, plus 'OBOX' (rotated RPP → bounding RPP + planes) and 'ICC' (oblique infinite cylinder → QUA). */
+   * Returned types: usual CG types, plus 'OBOX' (rotated RPP → bounding RPP + planes) and 'ICC' (oblique infinite cylinder → QUA). */
   FK.worldBody = function (b, m) {
     if (b.type === 'RAW' || !m || M.isIdentity(m)) return b;
     const p = b.p, tr = M.isTranslation(m, 1e-9), perm = M.signedPerm(m);
@@ -1095,7 +1096,7 @@
 
   /**
    * Boolean combination of two region expressions, written ONLY with the bodies they already use
-   * (FLUKA cannot reference a region inside another region, so the formulas themselves are combined).
+   * (CG cannot reference a region inside another region, so the formulas themselves are combined).
    *   op 'sub'   : A − B   =  A ∩ not B
    *   op 'int'   : A ∩ B
    *   op 'union' : A ∪ B
@@ -1849,7 +1850,7 @@
     return w;
   };
 
-  /** FLUKA advises against ARB: a rotated RPP (world OBOX) is written as a bounding RPP
+  /** CG advises against ARB: a rotated RPP (world OBOX) is written as a bounding RPP
    * + cutting PLA planes (faces not aligned with the axes). Returns Map(body name → {rpp, planes:[{name, body}]}).
    * opts.arb = true: legacy behaviour (ARB card). */
   FK.splitObox = function (model, opts) {
@@ -1910,7 +1911,7 @@
     return lines.map((l, i) => (i ? indent : '') + l);
   }
 
-  /* ---- FLUKA fixed-format cards: (A8, 2X, 6E10.0, A8), max 78 columns used (80 allowed); '*' in column 1 = comment ---- */
+  /* ---- CG fixed-format cards: (A8, 2X, 6E10.0, A8), max 78 columns used (80 allowed); '*' in column 1 = comment ---- */
   /** A WHAT value as a right-aligned 10-column field: always with a decimal point (10 → "10.0"), exponents like 1.234E+05, never wider than 10. */
   FK.fmtWhat = function (v) {
     if (v === null || v === undefined || v === '') return ' '.repeat(10);
@@ -1956,7 +1957,7 @@
     return out;
   };
 
-  /** style 1: "REGION name n" + expression line (Flair type); style 2: compact aligned;
+  /** style 1: "REGION name n" + expression line (multi-line type); style 2: compact aligned;
    * style 3: fixed Fortran-like columns (GEOBEGIN card (A8,2X,6E10.0,A8), title (2I5,10X,A60), bodies A3/A8/19-col numbers,
    * regions A8 + I5 + expression), every line <= 132 columns. */
   FK.generateInp = function (model, opts) {
@@ -2064,7 +2065,7 @@
       const line = raw.trim();
       if (!line || line[0] === '*') continue;
       if (/^END\b/i.test(line)) { i++; break; }
-      if (line[0] === '@') { if (!warnedAt) { warnings.push('Flair @… directives ignored in regions.'); warnedAt = true; } continue; }
+      if (line[0] === '@') { if (!warnedAt) { warnings.push('@… directives ignored in regions.'); warnedAt = true; } continue; }
       const toks = line.split(/\s+/);
       if (toks[0].toUpperCase() === 'REGION') { regionStart(toks[1], toks[2], toks.slice(3).join(' ')); continue; }
       if (!/^[+\-|(]/.test(line) && toks.length >= 2 && /^\d+$/.test(toks[1])) { regionStart(toks[0], toks[1], toks.slice(2).join(' ')); continue; }

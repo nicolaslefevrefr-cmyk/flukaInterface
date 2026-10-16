@@ -1,8 +1,8 @@
-# Combinatorial Geometry Tool  (v1.9)
+# Combinatorial Geometry Tool  (v1.9.1)
 
-Creo Parametric (STL / OBJ) → FLUKA / Flair combinatorial geometry.
+CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
-Pure web tool (HTML/CSS/JS, installable as a PWA): loads an STL or OBJ mesh exported from Creo Parametric, lets you measure, create RPP (2 points) and PLA (from a mesh triangle), cut regions, and writes the FLUKA / Flair `GEOBEGIN … GEOEND` block live (everything in cm).
+Pure web tool (HTML/CSS/JS, installable as a PWA): loads an STL or OBJ mesh exported from CAD, lets you measure, create RPP (2 points) and PLA (from a mesh triangle), cut regions, and writes the CG / multi-line `GEOBEGIN … GEOEND` block live (everything in cm).
 
 **GitHub Pages deployment**: push this folder to the root of a repository, then *Settings → Pages* → branch `main`, folder `/ (root)`. PWA install needs HTTPS (provided by GitHub Pages); locally, just open `index.html`.
 
@@ -18,11 +18,11 @@ Pure web tool (HTML/CSS/JS, installable as a PWA): loads an STL or OBJ mesh expo
 - **Global (0,0,0)** is active by default. Create, activate (●), hide, duplicate, delete coordinate systems; the **Csys** tool builds one from 3 points (origin, X axis, XY plane); "Csys here" / "Csys on face" in the pick card.
 - Each system is defined relative to a parent (position + angles, X/Y vectors, or 3×4 matrix). When a parent moves, its children follow, unless **Freeze** is checked (the child keeps its world pose).
 - Each body chooses its system ("Defined in coordinate system"); new bodies (2-point RPP, PLA…) are created in the active system. "Keep the position" recomputes the parameters when changing system.
-- The .inp block is written in world coordinates: SPH/RCC/TRC/PLA/XYP… are transformed exactly; a rotated RPP is written as a bounding RPP + cutting PLA planes (no ARB, as recommended by FLUKA) and regions are adapted; an oblique infinite cylinder becomes QUA (check in Flair).
+- The .inp block is written in world coordinates: SPH/RCC/TRC/PLA/XYP… are transformed exactly; a rotated RPP is written as a bounding RPP + cutting PLA planes (no ARB, as recommended by CG) and regions are adapted; an oblique infinite cylinder becomes QUA (check in multi-line).
 - Coordinate systems are not stored in the .inp: use *File ▸ Save project (.json)*, which also embeds the source meshes (STL / OBJ triangles, gzip + base64).
 
 ## INP output formats
-Name-based geometry (`GEOBEGIN … COMBNAME`) is free format (blank / `,` `/` `;` `:` separators, names ≤ 8 characters, lines ≤ 132 columns). Three writing styles are offered: Flair style, compact aligned, and fixed columns (GEOBEGIN as `(A8,2X,6E10.0,A8)`, title `(2I5,10X,A60)`, bodies A3 / A8 / 19-column numbers, regions A8 + I5). The legacy numeric COMBINAT fixed format is not generated.
+Name-based geometry (`GEOBEGIN … COMBNAME`) is free format (blank / `,` `/` `;` `:` separators, names ≤ 8 characters, lines ≤ 132 columns). Three writing styles are offered: multi-line style, compact aligned, and fixed columns (GEOBEGIN as `(A8,2X,6E10.0,A8)`, title `(2I5,10X,A60)`, bodies A3 / A8 / 19-column numbers, regions A8 + I5). The legacy numeric COMBINAT fixed format is not generated.
 
 ## Section view, tools and projection
 
@@ -33,7 +33,7 @@ Name-based geometry (`GEOBEGIN … COMBNAME`) is free format (blank / `,` `/` `;
 
 ## Groups (organisation only)
 
-Each tree category (meshes, coordinate systems, planes, bodies, regions, measures) can hold groups: use the category "＋" menu → *New group*, or an item's ⋮ menu → *New group with this item…*. Drag an item onto a group row to move it; drop it on the category header to take it out. The eye of a group shows / hides all its members, the arrow folds it, right-click (or ⋮) renames or deletes it (members are kept). Groups are saved with the project but have no effect on the FLUKA output.
+Each tree category (meshes, coordinate systems, planes, bodies, regions, measures) can hold groups: use the category "＋" menu → *New group*, or an item's ⋮ menu → *New group with this item…*. Drag an item onto a group row to move it; drop it on the category header to take it out. The eye of a group shows / hides all its members, the arrow folds it, right-click (or ⋮) renames or deletes it (members are kept). Groups are saved with the project but have no effect on the CG output.
 
 Creating bodies or planes never creates a region or edits one: a new plane is only created, you add it to a region yourself.
 
@@ -48,7 +48,7 @@ The buttons under the expression insert **only at the caret** (or replace the se
 
 ## Void region around a region (experimental)
 
-Region ⋮ menu ▸ *Create void region around this one…*. The region is evaluated (even if hidden), its bounding box is enlarged by a margin (default 10 mm) and a hidden RPP `vb_<name>` is created in the global coordinate system. A new hidden region `v_<name>` (FLUKA names are ≤ 8 characters) is defined as the exact negative of the original inside that box:
+Region ⋮ menu ▸ *Create void region around this one…*. The region is evaluated (even if hidden), its bounding box is enlarged by a margin (default 10 mm) and a hidden RPP `vb_<name>` is created in the global coordinate system. A new hidden region `v_<name>` (CG names are ≤ 8 characters) is defined as the exact negative of the original inside that box:
 
 - *Compact*: `+vb_reg1 -( +rcc1 | +rcc2 | … )`
 - *Expanded* (De Morgan, no leading `-( )`): `+vb_reg1 +(-rcc1) +(-rcc2) +(-a | -b) …`
@@ -98,10 +98,11 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.9.1** — CAD-style trackball (horizontal drag turns about the screen's vertical axis, vertical drag about its horizontal axis); every "Creo" / "FLUKA" mention in the interface replaced by "CAD" / "CG"; rim picking: the circular-rim loop now crosses the branch points of coarse tessellations (it keeps the neighbour edge that continues the path best), retries with a softer sharpness threshold and with the other sharp edges of the clicked facet, so centre / radius are fitted on the whole rim instead of one facet edge.
 - **1.9** — Geometry check: a **Solve** button on each automatic-fixable warning (axis a fraction of a degree off X/Y/Z → snapped exactly, oblique plane → XYP/XZP/YZP, nearly parallel cylinders → aligned, nearly coaxial → concentric, radii differing by µm → equal, end gaps / almost coincident ends → touching, almost coincident faces / planes → merged) and **Solve all**; the checks only look at regions exported to the INP and at the bodies they use (non-exported regions no longer produce warnings); **strong links** for *Combine with another region…*: the region keeps pointing at its parents A and B and its formula follows them live (A, B, operation and form editable in its Definition tab; *Unlink* keeps the formula), *soft* keeps the old one-shot behaviour.
-- **1.8** — CAD links: bodies / planes made from a mesh (detected features, plane from a face, bounding RPP) carry a *CAD source* (editable in General; automatic by default; a region inherits the CAD of its bodies); a mesh lists its linked objects with *Show / Hide / Isolate*; **CAD ↔ FLUKA comparison** window (3D signed deviation map, mean / rms / p95 / max / bias in both directions, Hausdorff, CAD vs region volumes); one OBJ / multi-solid ASCII STL with several objects now creates several independent meshes, *Operations ▸ Split into solids* splits any mesh; **Geometry check** (`.inp` panel ▸ *Check…*): INP ↔ model equivalence, region overlaps and enclosed holes (3D markers), analytic "alignment accident" checks.
-- **1.7** — INP header audited against the FLUKA fixed-card rules: the GEOBEGIN card is now a true `(A8,2X,6E10.0,A8)` card in all three output styles (the Flair style used to write a free-format `GEOBEGIN COMBNAME` and a tab-separated title), the title line is `(2I5,10X,A60)` (cut to 60 characters, with a warning), `FK.fixedCard` / `FK.fmtWhat` implement the card rules (decimal point, right-aligned `E10.0`, ≤ 80 columns), optional `*` comment header.
-- **1.6** — *Export to the INP file* checkbox on bodies / planes / regions (⊘ in the tree when excluded) and a "not used" info sign for bodies no region uses; warnings shortened to ⚠ / ⓘ icons with factual tooltips; Operations buttons stacked, Delete at the bottom; "Creo → FLUKA" label removed.
+- **1.8** — CAD links: bodies / planes made from a mesh (detected features, plane from a face, bounding RPP) carry a *CAD source* (editable in General; automatic by default; a region inherits the CAD of its bodies); a mesh lists its linked objects with *Show / Hide / Isolate*; **CAD ↔ CG comparison** window (3D signed deviation map, mean / rms / p95 / max / bias in both directions, Hausdorff, CAD vs region volumes); one OBJ / multi-solid ASCII STL with several objects now creates several independent meshes, *Operations ▸ Split into solids* splits any mesh; **Geometry check** (`.inp` panel ▸ *Check…*): INP ↔ model equivalence, region overlaps and enclosed holes (3D markers), analytic "alignment accident" checks.
+- **1.7** — INP header audited against the CG fixed-card rules: the GEOBEGIN card is now a true `(A8,2X,6E10.0,A8)` card in all three output styles (the multi-line style used to write a free-format `GEOBEGIN COMBNAME` and a tab-separated title), the title line is `(2I5,10X,A60)` (cut to 60 characters, with a warning), `FK.fixedCard` / `FK.fmtWhat` implement the card rules (decimal point, right-aligned `E10.0`, ≤ 80 columns), optional `*` comment header.
+- **1.6** — *Export to the INP file* checkbox on bodies / planes / regions (⊘ in the tree when excluded) and a "not used" info sign for bodies no region uses; warnings shortened to ⚠ / ⓘ icons with factual tooltips; Operations buttons stacked, Delete at the bottom; "CAD → CG" label removed.
 - **1.5** — region quality check (separate / nearly touching pieces, thin regions, degenerate polygons, nearly coincident faces); resizable `.inp` panel; *Import STL / INP* and *New project* buttons removed from the tree (STL import: Meshes ＋ menu; INP import and New project: File menu).
 - **1.4** — resolution slider (top band): global facet count of cylinders / cones / spheres; *Combine with another region…* (A − B, A ∩ B, A ∪ B written with the bodies of both regions only).
 - **1.3** — renamed *Combinatorial Geometry Tool*; version display; toolbar moved to a top band; floating / dockable feature window; mouse-rotation inversion; update mechanism; overlapping-entities pop-up; properties tabs and collapsible scale tool.
@@ -111,7 +112,7 @@ The service worker is *network-first* (cache only as offline fallback, cache nam
 The ◍ button of the top band opens a slider (×0.25 … ×3) that multiplies the number of facets used to draw (and to evaluate sections / region booleans for) cylinders, cones and spheres: ×1 = 48 facets per cylinder / cone, 64 per infinite cylinder, 32 × 20 per sphere. It is a display setting only: the INP is unchanged. Stored in the project.
 
 ## Combine two regions (experimental, v1.4)
-FLUKA cannot subtract a region from another one, but the *formulas* can be combined. On region **reg1**, *Operations ▸ Combine with another region…* (or its ⋮ menu) opens a dialog: choose reg2 and **A − B**, **A ∩ B** or **A ∪ B**. A new region is created whose expression uses only the bodies of reg1 and reg2 (which stay untouched), e.g. `+rpp1 -xzp1 -( +rcc1 -xzp1 )` for reg1 − reg2. *Compact* keeps parentheses; *Expanded* applies De Morgan (`-( +a -b )` → `+( -a | +b )`), with no negated parenthesis. The dialog previews the expression and the volumes of A, B and the result (inside the render zone).
+CG cannot subtract a region from another one, but the *formulas* can be combined. On region **reg1**, *Operations ▸ Combine with another region…* (or its ⋮ menu) opens a dialog: choose reg2 and **A − B**, **A ∩ B** or **A ∪ B**. A new region is created whose expression uses only the bodies of reg1 and reg2 (which stay untouched), e.g. `+rpp1 -xzp1 -( +rcc1 -xzp1 )` for reg1 − reg2. *Compact* keeps parentheses; *Expanded* applies De Morgan (`-( +a -b )` → `+( -a | +b )`), with no negated parenthesis. The dialog previews the expression and the volumes of A, B and the result (inside the render zone).
 
 ## Region quality check (v1.5)
 Every non-empty region is checked after evaluation; warnings appear under *Valid expression* in the region's Definition tab, in the INP warnings list (badge on `.inp`), and as a toast when a region is created by *Combine with another region*. Checks: **separate pieces** (info) and pieces whose bounding boxes are almost touching (e.g. two bodies of a union 0.01 mm apart); **tiny fragments** (slivers); **extremely thin** regions (tiny overlap of two bodies); **degenerate polygons**; **nearly coincident faces** between RPP / coordinate-plane bodies of the expression (a few 1e-4 of the model size apart but not equal). The near-tolerance is 1e-4 × the render-zone diagonal (≥ 1e-5 cm).
@@ -119,13 +120,13 @@ Every non-empty region is checked after evaluation; warnings appear under *Valid
 ## `.inp` panel
 Drag the grip on the top edge of the panel to resize it (double-click the grip to reset); the height is remembered.
 
-## FLUKA fixed-format cards (v1.7)
-A FLUKA card is `(A8, 2X, 6E10.0, A8)`: keyword in columns 1–8 (upper case), two blanks, up to six WHATs of 10 columns each (always written with a decimal point, e.g. `10.0`, exponents as `1.234E+05`, right-aligned), SDUM in columns 71–78; a line with `*` in column 1 is a comment. `FK.fixedCard(keyword, whats, sdum)` writes such a card (throws on a keyword / SDUM longer than 8 characters or more than 6 WHATs); `FK.fmtWhat(v)` formats one WHAT. The geometry block uses it for `GEOBEGIN … COMBNAME` (SDUM in columns 71–78) and `GEOEND`; the line after GEOBEGIN is the title `(2I5,10X,A60)`. Bodies and regions inside a `COMBNAME` (name-based) geometry are free format by FLUKA's design, so the E10.0 rule does not apply to them; the legacy numbered fixed geometry format is not produced. *Settings ▸ INP block ▸ Comment header* adds `* Combinatorial Geometry Tool vX.Y` before GEOBEGIN.
+## CG fixed-format cards (v1.7)
+A CG card is `(A8, 2X, 6E10.0, A8)`: keyword in columns 1–8 (upper case), two blanks, up to six WHATs of 10 columns each (always written with a decimal point, e.g. `10.0`, exponents as `1.234E+05`, right-aligned), SDUM in columns 71–78; a line with `*` in column 1 is a comment. `FK.fixedCard(keyword, whats, sdum)` writes such a card (throws on a keyword / SDUM longer than 8 characters or more than 6 WHATs); `FK.fmtWhat(v)` formats one WHAT. The geometry block uses it for `GEOBEGIN … COMBNAME` (SDUM in columns 71–78) and `GEOEND`; the line after GEOBEGIN is the title `(2I5,10X,A60)`. Bodies and regions inside a `COMBNAME` (name-based) geometry are free format by CG's design, so the E10.0 rule does not apply to them; the legacy numbered fixed geometry format is not produced. *Settings ▸ INP block ▸ Comment header* adds `* Combinatorial Geometry Tool vX.Y` before GEOBEGIN.
 
 ## CAD links and comparison (v1.8)
 - *CAD source* (General tab of bodies, planes, regions): *Automatic* (made from a mesh → that mesh; a region → the mesh shared by all its bodies), *None*, or a chosen mesh.
-- Mesh ▸ *Linked FLUKA objects*: counts, *Show / Hide / Isolate*. Mesh ▸ Operations ▸ *Compare with FLUKA regions…*, region ▸ Operations ▸ *Compare with CAD…*.
-- Comparison window: tick the regions (their union is compared). Deviations are sampled on both surfaces (≈ 60 000 points each): FLUKA → CAD and CAD → FLUKA, colour on either surface. Sign "FLUKA − CAD": red = FLUKA has material where the CAD has none, blue = it lacks some. Scale = p95 unless a maximum (mm) is typed. Planes that cut the CAD (booleans not in the mesh) show up as deviations, and the sign is approximate within a few mm of sharp edges.
+- Mesh ▸ *Linked CG objects*: counts, *Show / Hide / Isolate*. Mesh ▸ Operations ▸ *Compare with CG regions…*, region ▸ Operations ▸ *Compare with CAD…*.
+- Comparison window: tick the regions (their union is compared). Deviations are sampled on both surfaces (≈ 60 000 points each): CG → CAD and CAD → CG, colour on either surface. Sign "CG − CAD": red = CG has material where the CAD has none, blue = it lacks some. Scale = p95 unless a maximum (mm) is typed. Planes that cut the CAD (booleans not in the mesh) show up as deviations, and the sign is approximate within a few mm of sharp edges.
 - Volumes: CAD |V| (signed mesh volume) versus the region volume (polygon model, itself limited by the facet resolution).
 
 ## Geometry check (v1.8)
@@ -134,7 +135,7 @@ A FLUKA card is `(A8, 2X, 6E10.0, A8)`: keyword in columns 1–8 (upper case), t
 2. **Overlaps and holes** on a voxel grid: regions that share volume, and undefined space completely enclosed by regions. Red / orange cubes mark them in 3D. Thin features (< one cell) can be missed.
 3. **Alignment accidents** (analytic): cylinders whose axes are a fraction of a degree from parallel (the wedge gap of two end-to-end cylinders, one tilted 1°), axes / planes almost on a global axis, coaxial cylinders offset or with radii differing by a few µm, end-to-end gaps, almost coincident or almost parallel planes and faces. The "almost" tolerance is editable (mm).
 
-FLUKA itself does not validate the design: it reports undefined / multiply-defined points only when particles cross them (or with the geometry debugger, `GEOEND … DEBUG`, not generated by this tool). This check is meant to catch problems before that run.
+CG itself does not validate the design: it reports undefined / multiply-defined points only when particles cross them (or with the geometry debugger, `GEOEND … DEBUG`, not generated by this tool). This check is meant to catch problems before that run.
 
 ## Solve buttons and strong region links (v1.9)
 - Fixes are applied on the body parameters (undoable with Ctrl+Z); they work through coordinate systems and the export frame. They never touch RAW bodies. Typical tolerance for "almost" is the value in the check window (default 0.1 mm); an axis is snapped when it is within 0.5° of a global axis.
