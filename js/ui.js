@@ -329,6 +329,49 @@
     const d = $('#dlgFeat'); if (!d.open) d.show();
     featPlace();
   }
+  /* ---------- Alignment suggestions for a new body ---------- */
+  const SNAP = { id: 0, orig: null, off: new Set() };
+  function snapOthers(b) { return S.model.bodies.filter(x => x.id !== b.id && x.type !== 'RAW').map(x => Object.assign({}, APP.wbody(x), { name: x.name })).filter(x => x.p); }
+  function snapOpts() { return { tol: (S.opt.snapTol === undefined ? 0.2 : S.opt.snapTol) / 10, ang: S.opt.snapAng === undefined ? 0.5 : S.opt.snapAng }; }
+  function snapHide() { const c = $('#snapCard'); c.hidden = true; c.innerHTML = ''; SNAP.id = 0; }
+  function snapRender() {
+    const b = APP.getBody(SNAP.id), c = $('#snapCard'); if (!b || !SNAP.orig) { snapHide(); return; }
+    const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(), new Set());
+    if (!res) { snapHide(); return; }
+    const o = snapOpts();
+    c.innerHTML = `<div class="sn-h"><b>Alignment check — ${esc(b.name)}</b><button type="button" class="ib" data-sn="close" aria-label="Close">✕</button></div>
+      <div class="sn-t muted">Tolerance <input type="number" data-sn="tol" step="0.05" min="0" value="${S.opt.snapTol === undefined ? 0.2 : S.opt.snapTol}"> mm · <input type="number" data-sn="ang" step="0.1" min="0" value="${o.ang}"> °</div>
+      <ul>${res.changes.map(ch => `<li><label><input type="checkbox" data-sn-id="${ch.id}" ${SNAP.off.has(ch.id) ? '' : 'checked'}> ${esc(ch.text)}</label></li>`).join('')}</ul>
+      <div class="sn-b"><button type="button" class="pill primary" data-sn="apply">Use corrected values</button><button type="button" class="pill" data-sn="close">Keep as is</button></div>`;
+    c.hidden = false;
+  }
+  /** Proposes corrected values for body b (only when something is within the tolerances). Returns true when a proposal is shown. */
+  function suggestSnap(b, force) {
+    if (!b || b.cs || b.type === 'RAW' || (!force && S.opt.snapOn === false)) return false;
+    const res = FK.snapSuggest(b, snapOthers(b), snapOpts(), new Set());
+    if (!res) { if (force) toast('Nothing to align: no other object within the tolerances'); snapHide(); return false; }
+    SNAP.id = b.id; SNAP.orig = { type: b.type, p: b.p.slice(), name: b.name }; SNAP.off = new Set();
+    snapRender(); return true;
+  }
+  APP.hooks.suggestSnap = (b) => setTimeout(() => suggestSnap(b), 0);
+  (function () {
+    const c = $('#snapCard'); if (!c) return;
+    c.addEventListener('change', e => {
+      const t = e.target;
+      if (t.dataset.snId) { if (t.checked) SNAP.off.delete(t.dataset.snId); else SNAP.off.add(t.dataset.snId); return; }
+      if (t.dataset.sn === 'tol' || t.dataset.sn === 'ang') { const v = parseFloat(t.value); if (!isFinite(v) || v < 0) return; S.opt[t.dataset.sn === 'tol' ? 'snapTol' : 'snapAng'] = v; APP.save(); const off = SNAP.off; snapRender(); SNAP.off = off; }
+    });
+    c.addEventListener('click', e => {
+      const a = e.target.closest('[data-sn]'); if (!a) return;
+      if (a.dataset.sn === 'close') snapHide();
+      else if (a.dataset.sn === 'apply') {
+        const b = APP.getBody(SNAP.id); if (!b) { snapHide(); return; }
+        const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(), SNAP.off);
+        if (res) { APP.snap(); b.type = res.type; b.p = res.p; APP.changed({ tree: true, right: true }); toast(`${b.name}: corrected values applied (Ctrl+Z restores the previous ones)`); }
+        snapHide();
+      }
+    });
+  })();
   /* ---------- Geometry check window ---------- */
   const FIX_HINT = { snapAxis: 'Set the axis exactly on the global axis', snapPlane: 'Set the plane exactly perpendicular to the global axis (XYP / XZP / YZP when possible)', align: 'Rotate the second cylinder so that its axis is parallel to the first', concentric: 'Move the second cylinder onto the axis of the first', radius: 'Give the second cylinder the radius of the first', shift: 'Translate the second cylinder along its axis so the ends touch', planeMerge: 'Make the second plane coincide with the first', face: 'Move the face onto the reference face' };
   const CHK = { last: null, bodies: [], tol: 0.01 };
@@ -636,6 +679,10 @@
         <label class="chk"><input type="checkbox" data-opt="invX" ${o.invX ? 'checked' : ''}>Invert left / right mouse rotation</label>
         <label class="chk"><input type="checkbox" data-opt="invY" ${o.invY ? 'checked' : ''}>Invert up / down mouse rotation</label>
         <div class="row2"><span class="muted" style="flex:1">Render zone margin (%)</span><input type="number" step="1" min="0" style="width:80px" data-opt="margin" value="${o.margin}"></div></div></details>
+      <details class="fold" open><summary>Alignment check on creation</summary><div>
+        <label class="chk" title="After a detected feature, a plane from a face or a picked cylinder / box is created, propose exact values: axis on X / Y / Z, parallel / coaxial with other cylinders, equal radii, faces and ends coincident with other objects"><input type="checkbox" data-opt="snapOn" ${o.snapOn !== false ? 'checked' : ''}>Propose corrected values for new objects</label>
+        <div class="row2"><span class="muted" style="flex:1">Length tolerance (mm)</span><input type="number" step="0.05" min="0" style="width:80px" data-opt="snapTol" value="${o.snapTol === undefined ? 0.2 : o.snapTol}"></div>
+        <div class="row2"><span class="muted" style="flex:1">Angle tolerance (°)</span><input type="number" step="0.1" min="0" style="width:80px" data-opt="snapAng" value="${o.snapAng === undefined ? 0.5 : o.snapAng}"></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
         <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
         <div class="fld" style="margin-top:6px"><label title="All INP coordinates and directions are written in this frame">Export coordinate system ⓘ</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
@@ -969,7 +1016,7 @@
     return h + `<div class="btns">${acts}<button class="btn sm" data-act="clearPick">Close</button></div></div>`;
   }
 
-  function numField(label, attr, val) { return `<div class="fld"><label>${label}</label><input type="number" step="any" value="${esc(fmt(val, 6))}" ${attr}></div>`; }
+  function numField(label, attr, val) { return `<div class="fld"><label>${label}</label><input type="number" step="0.1" value="${esc(fmt(val, 6))}" ${attr}></div>`; }
   function commonStyle(o, withEdge) {
     return `<div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(o.color)}">
       <label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${o.visible ? 'checked' : ''}>Visible</label></div>
@@ -1088,7 +1135,7 @@
           <div class="gN" style="grid-template-columns:repeat(${Math.min(g.idx.length, 3)},1fr)">${g.idx.map((i, ii) => {
             const canOne = g.pick && g.pick.kind !== 'radius' && g.idx.length > 1;
             const onOne = S.fill && S.fill.kind === 'body' && S.fill.id === b.id && S.fill.g === gi && S.fill.only === ii;
-            return `<div class="fld"><div class="fl"><label>${info.fields[i]}</label>${canOne ? `<button class="pk sm${onOne ? ' on' : ''}" data-act="pickField" data-g="${gi}" data-i="${ii}" title="Pick this coordinate only" aria-label="Pick ${info.fields[i]} only">⌖</button>` : ''}</div><input type="number" step="any" value="${esc(fmt(b.p[i], 6))}" data-bf="${i}"></div>`;
+            return `<div class="fld"><div class="fl"><label>${info.fields[i]}</label>${canOne ? `<button class="pk sm${onOne ? ' on' : ''}" data-act="pickField" data-g="${gi}" data-i="${ii}" title="Pick this coordinate only" aria-label="Pick ${info.fields[i]} only">⌖</button>` : ''}</div><input type="number" step="0.1" value="${esc(fmt(b.p[i], 6))}" data-bf="${i}"></div>`;
           }).join('')}</div></div>`;
       });
     } else info.fields.forEach((fl, i) => { h += numField(fl, `data-bf="${i}"`, b.p[i]); });
@@ -1115,7 +1162,7 @@
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
-      <div class="btns"><button class="btn" data-act="dup">Duplicate</button></div>
+      <div class="btns">${b.type !== 'RAW' ? '<button class="btn" data-act="snapCheck" title="Propose exact values: axis on X / Y / Z, coaxial / parallel with other cylinders, equal radii, faces and ends coincident with other objects">Check alignment with other objects…</button>' : ''}<button class="btn" data-act="dup">Duplicate</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
@@ -1123,7 +1170,7 @@
     const w = APP.csysWorld(c.id), e = FK.M.toEuler(w);
     return kv([['Position (world)', xyz([w[3], w[7], w[11]], 5)], ['Angles (world)', xyz(e, 4) + '°'], ['Axe X', xyz([w[0], w[4], w[8]], 5)], ['Axe Y', xyz([w[1], w[5], w[9]], 5)], ['Axe Z', xyz([w[2], w[6], w[10]], 5)]]);
   }
-  function cf(kind, i, val) { return `<input type="number" step="any" data-cf="${kind}:${i}" value="${esc(fmt(val, 6))}">`; }
+  function cf(kind, i, val) { return `<input type="number" step="${kind === 'eul' ? 1 : 0.1}" data-cf="${kind}:${i}" value="${esc(fmt(val, 6))}">`; }
   function csysProps(c) {
     const m = c.m, e = FK.M.toEuler(m);
     const parents = [`<option value="0">Global (0,0,0)</option>`].concat(S.model.csys.filter(x => x.id !== c.id && !APP.isDescendant(x.id, c.id)).map(x => `<option value="${x.id}" ${c.parent === x.id ? 'selected' : ''}>${esc(x.name)}</option>`)).join('');
@@ -1398,6 +1445,7 @@
       case 'cadShow': case 'cadHide': case 'cadIsolate': if (it && S.sel.t === 'stl') { const k = APP.cadVisibility(it.id, act === 'cadShow' ? 'show' : act === 'cadHide' ? 'hide' : 'isolate'); toast(k + ' linked object(s) ' + (act === 'cadHide' ? 'hidden' : act === 'cadShow' ? 'shown' : 'isolated')); } break;
       case 'cadCompare': if (it && S.sel.t === 'stl') openDevDlg({ cad: it.id }); break;
       case 'unlinkRegion': if (it && it.meta && it.meta.link) { APP.snap(); delete it.meta.link; APP.changed({ tree: true, right: true }); toast('Link removed; the formula is kept'); } break;
+      case 'snapCheck': if (it && S.sel.t === 'body') suggestSnap(it, true); break;
       case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
       case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
       case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
@@ -1470,7 +1518,7 @@
     if (!c) { toast('The points are collinear: cannot define a circle. Pick points that are not on a line.'); return; }
     applyCircle(fl, sp, c, `${pts.length} points`);
     S.fillPts = []; APP.setPending(null);
-    S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus();
+    { const fb = S.fill && S.fill.id ? APP.getBody(S.fill.id) : null; S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus(); if (fb) suggestSnap(fb); }
     if (narrow()) setDrawer('right', true);
   }
   function applyCircle(fl, sp, c, src) {
@@ -1514,7 +1562,7 @@
         APP.snap(); APP.applyFieldPick(b, { kind: 'value', idx: sp.idx }, { v: val });
         toast(`${b.name}: radius = ${f(val, 5)} cm (${arc ? 'circle fitted on ' + e.loop.segments + ' segments' : 'length of the straight edge'})`);
       }
-      S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus();
+      { const fb = S.fill && S.fill.id ? APP.getBody(S.fill.id) : null; S.fill = null; APP.changed({ tree: true, right: true }); renderToolOpts(); updateStatus(); if (fb) suggestSnap(fb); }
       if (narrow()) setDrawer('right', true);
       return;
     }
@@ -1764,5 +1812,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

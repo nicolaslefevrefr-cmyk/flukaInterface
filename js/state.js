@@ -605,6 +605,7 @@
     const b = APP.addBody(f.type, f.p.slice(), { cs, meta: Object.assign({ detected: f.kind }, stlId ? { cad: stlId } : {}) });
     S.sel = { t: 'body', id: b.id };
     APP.changed({ tree: true, right: true });
+    if (APP.hooks.suggestSnap) APP.hooks.suggestSnap(b);
     return b;
   };
   APP.regionNameFor = (bodyName) => FK.uniqueName('r_' + bodyName.slice(0, 6), regionNames());
@@ -618,7 +619,7 @@
     APP.changed({ tree: true, right: true });
     return body;
   };
-  APP.rppFromBox = function (box) { return APP.createRpp(box.min, box.max); };
+  APP.rppFromBox = function (box) { const b = APP.createRpp(box.min, box.max); if (APP.hooks.suggestSnap) APP.hooks.suggestSnap(b); return b; };
 
   /* ---------- Planes and cuts ---------- */
   APP.planeFromPick = function (pk, cs) {
@@ -637,6 +638,7 @@
     S.sel = { t: 'body', id: b.id };
     APP.changed({ tree: true, right: true });
     APP.toast(msg);
+    if (APP.hooks.suggestSnap) APP.hooks.suggestSnap(b);
     return b;
   };
   APP.reassignPlane = function (bodyId, pk) {
