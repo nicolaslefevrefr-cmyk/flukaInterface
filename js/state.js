@@ -9,7 +9,7 @@
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
-    opt: { snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSharpOnly: true, circleAll: false,
+    opt: { defV2: true, render: 'opaque', edges: true, invX: false, invY: false, names: 'off', pieceHl: true, snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSharpOnly: true, circleAll: false,
       margin: 10, style: 1, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
   };
   APP.nid = () => S.nextId++;
@@ -60,7 +60,9 @@
       if (o.model && Array.isArray(o.model.bodies)) {
         S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || [];
         S.measures = o.measures || []; S.nextId = o.nextId || 1000;
-        Object.assign(S.opt, o.opt || {}); S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
+        Object.assign(S.opt, o.opt || {});
+        if (!(o.opt && o.opt.defV2)) { S.opt.render = 'opaque'; S.opt.edges = true; S.opt.invX = false; S.opt.invY = false; S.opt.defV2 = true; }   // new defaults, applied once
+        S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
         if (o.filter) S.filter = o.filter;
         let mx = S.nextId; for (const a of [S.model.bodies, S.model.regions, S.measures, S.model.csys]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
         S.nextId = mx;
@@ -641,6 +643,28 @@
     if (APP.hooks.suggestSnap) APP.hooks.suggestSnap(b);
     return b;
   };
+  /** Adds +name / −name to one zone (index) or to every zone ('all') of a region expression. */
+  APP.addRegionTerm = function (r, zone, sign, name) {
+    if (r.meta && r.meta.link) return { error: 'This region follows a live link: its formula is read-only' };
+    let ast; try { ast = (r.expr || '').trim() ? FK.parseExpr(r.expr) : { zones: [[]] }; } catch (e) { return { error: e.message }; }
+    if (!ast.zones.length) ast.zones = [[]];
+    const targets = zone === 'all' ? ast.zones : [ast.zones[Math.min(Math.max(0, +zone || 0), ast.zones.length - 1)]];
+    for (const z of targets) if (!z.some(x => x.name === name && (x.sign > 0) === (sign > 0))) z.push({ sign: sign > 0 ? 1 : -1, name });
+    r.expr = FK.formatExpr(ast);
+    return { ok: true, zones: ast.zones.length };
+  };
+  /** Plane through the picked face: an existing identical plane is reused, otherwise a PLA is created (not selected). Returns { body, created }. */
+  APP.planeForCut = function (pk) {
+    const v = pk.seedVerts, c = V.mul(V.add(V.add(v[0], v[1]), v[2]), 1 / 3), n = V.norm(pk.normal);
+    for (const b of S.model.bodies) {
+      if (!FK.isPlaneType(b.type)) continue;
+      const pl = FK.planeOf(APP.wbody(b)); if (!pl) continue;
+      const m = V.norm(pl.H); if (V.dot(m, n) > 1 - 1e-9 && Math.abs(V.dot(n, V.sub(c, pl.V))) < 1e-6) return { body: b, created: false };
+    }
+    const pl = APP.planeFromPick(pk);
+    const b = APP.addBody('PLA', pl.p, { meta: pl.meta });
+    return { body: b, created: true };
+  };
   APP.reassignPlane = function (bodyId, pk) {
     const b = APP.getBody(bodyId); if (!b || b.type !== 'PLA') return;
     APP.snap();
@@ -818,12 +842,36 @@
   /* ---------- INP text ---------- */
   /** Is the body referenced by at least one region expression? */
   APP.bodyUsed = (b) => S.model.regions.some(r => { try { return FK.exprNames(FK.parseExpr(r.expr || '+x')).has(b.name); } catch (e) { return (r.expr || '').includes(b.name); } });
+  /** Bodies exported to the INP that no exported region uses. */
+  APP.unusedBodies = function () {
+    const used = new Set();
+    for (const r of S.model.regions) { if (r.noExport) continue; try { for (const n of FK.exprNames(FK.parseExpr(r.expr || ''))) used.add(n); } catch (e) { /* ignored */ } }
+    return S.model.bodies.filter(b => !b.noExport && !used.has(b.name));
+  };
+  /** What stops working when an item is no longer exported. Bodies → the regions that use them, then (chain) every region whose live link
+   *  follows one of those; regions → regions linked to them. Returns [{ kind, item, depth, via }]. */
+  APP.exportImpact = function (kind, item) {
+    const out = [], seen = new Set([kind + item.id]);
+    const regs = S.model.regions;
+    const usersOfBody = (b) => regs.filter(r => { try { return FK.exprNames(FK.parseExpr(r.expr || '')).has(b.name); } catch (e) { return false; } });
+    const followers = (r) => regs.filter(x => x.meta && x.meta.link && (x.meta.link.a === r.id || x.meta.link.b === r.id));
+    let frontier = [];
+    if (kind === 'body') for (const r of usersOfBody(item)) { if (!seen.has('region' + r.id)) { seen.add('region' + r.id); out.push({ kind: 'region', item: r, depth: 1, via: item.name }); frontier.push({ r, depth: 1 }); } }
+    else if (kind === 'region') frontier.push({ r: item, depth: 0 });
+    while (frontier.length) {
+      const nxt = [];
+      for (const { r, depth } of frontier) for (const f of followers(r)) { if (seen.has('region' + f.id)) continue; seen.add('region' + f.id); out.push({ kind: 'region', item: f, depth: depth + 1, via: r.name }); nxt.push({ r: f, depth: depth + 1 }); }
+      frontier = nxt;
+    }
+    return out;
+  };
   APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
+    for (const b of APP.unusedBodies()) w.push(`${b.type === 'RAW' ? b.rawType : b.type} "${b.name}" is not used by any exported region`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
     return w;
   };

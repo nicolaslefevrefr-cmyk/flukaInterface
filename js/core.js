@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.10.1';
+  FK.VERSION = '1.11.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1707,18 +1707,35 @@
    *   degen    : degenerate / zero-area polygons
    *   nearface : faces of two bodies of the expression lie on almost, but not exactly, the same plane (creates slivers)
    */
-  FK.checkRegionQuality = function (ast, ctx) {
-    const out = [], f = (x) => FK.fmt(x, 4), AX = ['X', 'Y', 'Z'];
-    const diag = boxDiag(ctx.W), nearTol = Math.max(1e-5, diag * 1e-4), polys = ctx.polys || [];
-    if (!polys.length) return out;
-    // --- connected pieces (union-find on welded vertices) ---
+  /** Connected pieces of a polygon soup (union-find on welded vertices), biggest first: [{ polys, vol, bb }]. */
+  FK.regionPieces = function (polys, diag) {
     const wtol = Math.max(diag * 1e-5, 1e-9), key = (v) => Math.round(v[0] / wtol) + ',' + Math.round(v[1] / wtol) + ',' + Math.round(v[2] / wtol);
     const par = polys.map((_, i) => i), find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
     const owner = new Map();
     polys.forEach((pl, i) => { for (const v of pl.v) { const k = key(v), o = owner.get(k); if (o === undefined) owner.set(k, i); else par[find(i)] = find(o); } });
     const groups = new Map();
     polys.forEach((pl, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(pl); });
-    const comps = Array.from(groups.values()).map(g => ({ polys: g, vol: Math.abs(FK.polysVolume(g)), bb: bboxOfPolys(g) })).sort((a, b) => b.vol - a.vol);
+    return Array.from(groups.values()).map(g => ({ polys: g, vol: Math.abs(FK.polysVolume(g)), bb: bboxOfPolys(g) })).sort((a, b) => b.vol - a.vol);
+  };
+  /** Closest pair of points between two polygon soups (sampled on vertices and edges): { d, p, q } or null. */
+  FK.closestPoints = function (A, B, maxPts) {
+    maxPts = maxPts || 3000;
+    const sample = (polys) => {
+      const pts = [];
+      for (const pl of polys) for (let i = 0; i < pl.v.length; i++) { const a = pl.v[i], b = pl.v[(i + 1) % pl.v.length]; pts.push(a, V.mul(V.add(a, b), 0.5), V.add(V.mul(a, 0.75), V.mul(b, 0.25)), V.add(V.mul(a, 0.25), V.mul(b, 0.75))); }
+      if (pts.length > maxPts) { const st = pts.length / maxPts, o = []; for (let i = 0; i < maxPts; i++) o.push(pts[Math.floor(i * st)]); return o; }
+      return pts;
+    };
+    const pa = sample(A), pb = sample(B); if (!pa.length || !pb.length) return null;
+    let best = null;
+    for (const a of pa) for (const b of pb) { const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2], d2 = dx * dx + dy * dy + dz * dz; if (!best || d2 < best.d2) best = { d2, p: a, q: b }; }
+    return { d: Math.sqrt(best.d2), p: best.p, q: best.q };
+  };
+  FK.checkRegionQuality = function (ast, ctx) {
+    const out = [], f = (x) => FK.fmt(x, 4), AX = ['X', 'Y', 'Z'];
+    const diag = boxDiag(ctx.W), nearTol = Math.max(1e-5, diag * 1e-4), polys = ctx.polys || [];
+    if (!polys.length) return out;
+    const comps = FK.regionPieces(polys, diag);
     const total = comps.reduce((a, c) => a + c.vol, 0) || 1;
     if (comps.length > 1) {
       const tiny = comps.filter(c => c.vol < 1e-4 * total);
@@ -1728,8 +1745,11 @@
         const d = Math.hypot(g[0], g[1], g[2]);
         if (d < nearTol * 10 && (!close || d < close.d)) close = { d, g, i, j };
       }
-      if (close) out.push({ kind: 'gap', text: `${comps.length} separate pieces, two of them ${f(close.d)} cm apart (${AX.map((a, k) => close.g[k] > 0 ? a + ' ' + f(close.g[k]) : '').filter(Boolean).join(', ') || 'touching'})` });
-      else out.push({ kind: 'pieces', text: `${comps.length} separate pieces (V = ${comps.slice(0, 4).map(c => f(c.vol)).join(', ')}${comps.length > 4 ? ', …' : ''} cm³)` });
+      let spot = null;
+      { let bi = null; for (let i = 0; i < Math.min(comps.length, 12); i++) for (let j = i + 1; j < Math.min(comps.length, 12); j++) { const g = [0, 1, 2].map(k => Math.max(0, comps[j].bb.min[k] - comps[i].bb.max[k], comps[i].bb.min[k] - comps[j].bb.max[k])), d = Math.hypot(g[0], g[1], g[2]); if (!bi || d < bi.d) bi = { d, i, j }; }
+        if (bi) { try { spot = FK.closestPoints(comps[bi.i].polys, comps[bi.j].polys); } catch (e) { spot = null; } } }
+      if (close) out.push({ kind: 'gap', spot, pieces: comps.length, text: `${comps.length} separate pieces, two of them ${f(close.d)} cm apart (${AX.map((a, k) => close.g[k] > 0 ? a + ' ' + f(close.g[k]) : '').filter(Boolean).join(', ') || 'touching'})` });
+      else out.push({ kind: 'pieces', spot, pieces: comps.length, text: `${comps.length} separate pieces (V = ${comps.slice(0, 4).map(c => f(c.vol)).join(', ')}${comps.length > 4 ? ', …' : ''} cm³)` });
       if (tiny.length) out.push({ kind: 'tiny', text: `${tiny.length} tiny fragment(s), V = ${tiny.map(c => f(c.vol)).slice(0, 3).join(', ')} cm³` });
     }
     // --- thin region / degenerate polygons ---

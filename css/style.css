@@ -342,3 +342,18 @@ dialog.devwin { width: min(400px, 94vw); z-index: 41; }
 #snapCard ul { list-style: none; margin: 6px 0; padding: 0; max-height: 220px; overflow: auto; }
 #snapCard li { padding: 2px 0; } #snapCard li label { display: flex; gap: 6px; align-items: flex-start; }
 #snapCard .sn-t input { width: 62px; } #snapCard .sn-b { display: flex; gap: 8px; }
+
+/* object names in the viewport */
+#olabels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.olab { position: absolute; transform: translate(-50%, -50%); font-size: 12px; font-weight: 600; white-space: nowrap; padding: 0 5px; border-radius: 6px; background: rgba(255,255,255,.72); text-shadow: 0 0 3px #fff; box-shadow: 0 0 0 1px currentColor; }
+
+.item.ne { opacity: .6; }
+.item.ne .nm { font-weight: 500; }
+.item .lk { border: 0; background: none; cursor: pointer; font-size: 13px; color: var(--muted); padding: 0 3px; }
+.item .lk.on { color: var(--accent); }
+.item .top .wicon { margin-left: 3px; }
+.implist { list-style: none; padding: 0; margin: 6px 0 10px; max-height: 240px; overflow: auto; font-size: 13px; }
+.implist li { padding: 2px 0; }
+.item.ne { opacity: .72; }
+.pieceleg i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
+

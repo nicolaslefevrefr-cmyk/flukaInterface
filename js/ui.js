@@ -71,7 +71,7 @@
       if (fl.measures) APP.rebuildMeasures();
       if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
       if (fl.right) renderRight(); else { updateLive(); if (fl.csys) updateCsysFields(); }
-      updateInp(); updateStatus(); updateDropHint();
+      updateInp(); updateStatus(); updateDropHint(); updatePieces();
       if (APP.cutUpdate) APP.cutUpdate();
       if (fl.fit) APP.fit();
       clearTimeout(saveT); saveT = setTimeout(APP.save, 400);
@@ -92,6 +92,7 @@
     $$('#grpProj button[data-proj]').forEach(b => b.classList.toggle('on', b.dataset.proj === (S.opt.proj || 'persp')));
     $$('#grpRender button[data-render]').forEach(b => b.classList.toggle('on', b.dataset.render === (S.opt.render || 'shaded')));
     $('#btnEdges').classList.toggle('on', S.opt.edges !== false);
+    { const nm = S.opt.names || 'off', b = $('#btnNames'); b.classList.toggle('on', nm !== 'off'); b.title = 'Object names in the viewport: ' + nm + ' (click: off → regions → bodies → all)'; }
     $('#btnInvX').classList.toggle('on', !!S.opt.invX); $('#btnInvY').classList.toggle('on', !!S.opt.invY);
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
   }
@@ -116,6 +117,7 @@
   });
   $$('#grpProj button[data-proj]').forEach(b => b.onclick = () => { APP.setProjection(b.dataset.proj); syncToolbar(); APP.save(); });
   $$('#grpRender button[data-render]').forEach(b => b.onclick = () => { S.opt.render = b.dataset.render; APP.applyStyles(); syncToolbar(); APP.save(); });
+  $('#btnNames').onclick = () => { const order = ['off', 'regions', 'bodies', 'all']; S.opt.names = order[(order.indexOf(S.opt.names || 'off') + 1) % order.length]; APP.refreshNames(); APP.changed({}); syncToolbar(); APP.save(); toast('Names: ' + S.opt.names); };
   $('#btnEdges').onclick = () => { S.opt.edges = S.opt.edges === false; APP.applyStyles(); syncToolbar(); APP.save(); };
   { // global tessellation resolution (display + section + region booleans use the same facets)
     const pop = $('#resPop'), sl = $('#resSlider'); let tm = null;
@@ -142,7 +144,7 @@
   function winTitle() {
     if (S.fill) return 'Pick a value';
     return { select: 'Selection · ' + ({ point: 'points', edge: 'edges', face: 'faces', object: 'objects' }[S.filter]), measure: 'Distance', rpp: 'RPP from 2 points',
-      plane: 'PLA from a face', replane: 'Re-pick a plane', csys3: 'Coordinate system from 3 points', viewface: 'Look at a face' }[S.tool] || 'Tool';
+      regcut: 'Cut a region with a face', regpick: 'Pick objects for a region', plane: 'PLA from a face', replane: 'Re-pick a plane', csys3: 'Coordinate system from 3 points', viewface: 'Look at a face' }[S.tool] || 'Tool';
   }
   function toolOptsHTML() {
     const o = S.opt;
@@ -167,7 +169,18 @@
     } else if (S.tool === 'measure') h += chk('snap', 'Snap to vertices');
     else if (S.tool === 'rpp') h += chk('snap', 'Snap to vertices');
     else if (S.tool === 'csys3') h += chk('snap', 'Snap to vertices') + '<label class="muted">Created as a child of the active system</label>';
-    else if (S.tool === 'plane' || S.tool === 'replane') {
+    else if (S.tool === 'regpick') {
+      const r = APP.getRegion(S.cutRid); let nz = 1; try { nz = Math.max(1, FK.parseExpr(r ? r.expr : '').zones.length); } catch (e) { /* ignored */ }
+      h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a body or plane in the view; if several overlap, a list lets you choose</label>
+        <label>Add as <select data-opt="pickSign"><option value="+" ${o.pickSign !== '-' ? 'selected' : ''}>inside (+)</option><option value="-" ${o.pickSign === '-' ? 'selected' : ''}>outside (−)</option></select></label>
+        ${nz > 1 ? `<label>In <select data-opt="cutZone"><option value="all" ${o.cutZone === 'all' ? 'selected' : ''}>every zone</option>${Array.from({ length: nz }, (_, i) => `<option value="${i}" ${String(o.cutZone) === String(i) ? 'selected' : ''}>zone ${i + 1} only</option>`).join('')}</select></label>` : ''}`;
+    } else if (S.tool === 'regcut') {
+      const r = APP.getRegion(S.cutRid); let nz = 1; try { nz = Math.max(1, FK.parseExpr(r ? r.expr : '').zones.length); } catch (e) { /* ignored */ }
+      h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a face; its plane is created (or reused) and added to the formula</label>
+        <label>Keep <select data-opt="cutKeep"><option value="+" ${o.cutKeep !== '-' ? 'selected' : ''}>the material side (behind the face): +plane</option><option value="-" ${o.cutKeep === '-' ? 'selected' : ''}>the other side: −plane</option></select></label>
+        ${nz > 1 ? `<label>In <select data-opt="cutZone"><option value="all" ${o.cutZone === 'all' ? 'selected' : ''}>every zone</option>${Array.from({ length: nz }, (_, i) => `<option value="${i}" ${String(o.cutZone) === String(i) ? 'selected' : ''}>zone ${i + 1} only</option>`).join('')}</select></label>` : ''}
+        ${chk('cutStay', 'Keep cutting (several faces)')}`;
+    } else if (S.tool === 'plane' || S.tool === 'replane') {
       h += chk('coplanar', 'Highlight the whole face') + '<label class="muted">The plane is only created; add it to a region yourself</label>';
     } else if (S.tool === 'viewface') h += chk('coplanar', 'Highlight the whole face');
     return h;
@@ -207,6 +220,7 @@
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly'].includes(k)) clearPick();
     if (k === 'margin' || k === 'axes') APP.changed({});
     if (k === 'invX' || k === 'invY') syncToolbar();
+    if (k === 'pieceHl') updatePieces(true);
     if (k === 'inpComment') updateInp();
     if (k === 'style') { S.opt.style = +v; $('#inpStyle').value = String(S.opt.style); updateInp(); }
     APP.save();
@@ -242,6 +256,8 @@
     } else if (S.tool === 'measure') t = (S.pending ? 'Distance: click point B' : 'Distance: click point A') + ' · <a href="#" data-act="cancelTool">Cancel (Esc)</a>';
     else if (S.tool === 'csys3') t = 'Coordinate system: click ' + ['the origin', 'a point on the X axis', 'a point in the XY plane (+Y side)'][(S.cs3 || []).length];
     else if (S.tool === 'rpp') t = S.pending ? 'RPP: click the opposite corner (point 2)' : 'RPP: click the first corner (point 1)';
+    else if (S.tool === 'regpick') { const r = APP.getRegion(S.cutRid); t = `Pick for ${r ? esc(r.name) : 'the region'}: click a body or plane (${S.opt.pickSign === '-' ? '−' : '+'}) · <a href="#" data-act="cancelTool">Done (Esc)</a>`; }
+    else if (S.tool === 'regcut') { const r = APP.getRegion(S.cutRid); t = `Cut ${r ? esc(r.name) : 'the region'}: click a face of a mesh or object · <a href="#" data-act="cancelTool">Done (Esc)</a>`; }
     else if (S.tool === 'plane') t = 'Plane: click a triangle / face — its normal gives the PLA vector H';
     else if (S.tool === 'viewface') t = 'Click a face to look at it · <a href="#" data-act="cancelTool">Cancel (Esc)</a>';
     else if (S.tool === 'replane') { const b = APP.getBody(S.reassign); t = `Click the new face for ${b ? esc(b.name) : 'the plane'}`; }
@@ -328,6 +344,31 @@
     APP.setFeaturePreview(null);
     const d = $('#dlgFeat'); if (!d.open) d.show();
     featPlace();
+  }
+  /* ---------- Separate pieces of the selected region: one colour each + red spot at the closest points ---------- */
+  const PIECE_PAL = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa5c8', '#d6208f', '#8aa800'];
+  let pieceKey = '';
+  function updatePieces(force) {
+    const it = S.sel && S.sel.t === 'region' ? APP.getRegion(S.sel.id) : null;
+    const c = it && !it.noExport ? APP.regionCache.get(it.id) : null;
+    const q = c && c.quality ? c.quality.find(x => x.kind === 'gap' || x.kind === 'pieces') : null;
+    if (!it || !q || !c.polys || !c.polys.length || S.opt.pieceHl === false) { if (pieceKey) { APP.setPieceOverlay(null); pieceKey = ''; } return; }
+    const key = it.id + '|' + it.expr + '|' + c.polys.length + '|' + (S.opt.res || 1);
+    if (key === pieceKey && !force) return;
+    pieceKey = key;
+    let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const pl of c.polys) for (const v of pl.v) for (let k = 0; k < 3; k++) { if (v[k] < mn[k]) mn[k] = v[k]; if (v[k] > mx[k]) mx[k] = v[k]; }
+    const pcs = FK.regionPieces(c.polys, FK.boxDiag({ min: mn, max: mx }));
+    APP.setPieceOverlay(pcs.map((p, i) => ({ polys: p.polys, color: PIECE_PAL[i % PIECE_PAL.length] })), q.spot || null);
+  }
+  /* ---------- Impact of "Export to the INP" being switched off ---------- */
+  function askImpact(kind, it, imp) {
+    const d = $('#dlgImpact');
+    $('#impTitle').textContent = `"${it.name}" is used elsewhere`;
+    $('#impText').textContent = kind === 'body' ? 'These regions use this body, directly or through a live link; they would reference something that is not in the INP:' : 'These regions follow this region through a live link:';
+    $('#impList').innerHTML = imp.map(x => `<li style="margin-left:${(x.depth - 1) * 16}px">${x.depth > 1 ? '↳ ' : ''}<b>${esc(x.item.name)}</b> <span class="muted">(${x.depth === 1 && kind === 'body' ? 'uses ' + esc(x.via) : 'follows ' + esc(x.via)})</span></li>`).join('');
+    $('#impAll').textContent = `Exclude all of them (${imp.length + 1})`;
+    return new Promise(res => { d.returnValue = ''; d.addEventListener('close', () => res(d.returnValue || 'cancel'), { once: true }); d.showModal(); });
   }
   /* ---------- Alignment suggestions for a new body ---------- */
   const SNAP = { id: 0, orig: null, off: new Set() };
@@ -706,13 +747,26 @@
   $('#settingsBody').addEventListener('change', e => { if (e.target.dataset.opt) onOptChange(e); else if (e.target.dataset.k === 'exportCs') APP.setExportCsys(+e.target.value); });
 
   /* ---------- Left panel: project tree ---------- */
-  function itemHTML(t, o) {
+  function itemHTML(t, o, ex) {
+    ex = ex || {};
     const sel = S.sel && S.sel.t === t && S.sel.id === o.id;
-    return `<div class="item${sel ? ' sel' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
+    const warn = ex.warn && ex.warn.length ? `<span class="wicon" tabindex="0" title="${esc(ex.warn.join('\n'))}">⚠${ex.warn.length > 1 ? ex.warn.length : ''}</span>` : '';
+    const info = ex.info ? `<span class="wicon info" tabindex="0" title="${esc(ex.info)}">ⓘ</span>` : '';
+    const look = ex.look !== undefined ? `<button class="lk${ex.look ? ' on' : ''}" data-act="look" title="${ex.look === 'opaque' ? 'Always opaque (click: always transparent)' : ex.look === 'transparent' ? 'Always transparent (click: follow the global mode)' : 'Follows the global mode (click: always opaque)'}">${ex.look === 'opaque' ? '●' : ex.look === 'transparent' ? '○' : '◐'}</button>` : '';
+    return `<div class="item${sel ? ' sel' : ''}${ex.ne ? ' ne' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
       <div class="top"><button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>
-      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span><span class="ty">${o.noExport ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div>
+      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span>${warn}${info}<span class="ty">${ex.ne ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span>${look}<button class="mn" data-act="imenu" title="Actions">⋮</button></div>
       ${o.opacity !== undefined ? `<div class="op"><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-act="op" aria-label="Opacity"><small>${Math.round(o.opacity * 100)}%</small></div>` : ''}</div>`;
   }
+  /** Warnings shown next to a region in the tree (empty, quality check). */
+  function regionWarns(r) {
+    const c = APP.regionCache && APP.regionCache.get(r.id), w = [];
+    if (c && c.diag && c.diag.length) w.push('Empty: ' + brief(String(c.diag[0].text)));
+    if (c && c.quality) for (const q of c.quality) w.push(q.text);
+    if (c && c.err) w.push(c.err);
+    return w;
+  }
+  let UNUSED = new Set();
   const treeState = () => S.opt.tree || (S.opt.tree = {});
   const isOpen = (k) => treeState()[k] !== false;
   const GROUPS_DEF = [
@@ -739,9 +793,10 @@
   }
   function rowHTML(k, o) {
     switch (k) {
-      case 'meshes': return itemHTML('stl', { id: o.id, name: o.name, type: o.format || 'STL', color: o.color, visible: o.visible, opacity: o.opacity });
-      case 'planes': case 'bodies': return itemHTML('body', { id: o.id, name: o.name, type: o.type === 'RAW' ? o.rawType : o.type, color: o.color, visible: o.visible, opacity: o.type === 'RAW' ? undefined : o.opacity });
-      case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity });
+      case 'meshes': return itemHTML('stl', { id: o.id, name: o.name, type: o.format || 'STL', color: o.color, visible: o.visible, opacity: o.opacity }, { look: o.look || '' });
+      case 'planes': case 'bodies': return itemHTML('body', { id: o.id, name: o.name, type: o.type === 'RAW' ? o.rawType : o.type, color: o.color, visible: o.visible, opacity: o.type === 'RAW' ? undefined : o.opacity },
+        { ne: !!o.noExport, look: o.type === 'RAW' ? undefined : (o.look || ''), info: !o.noExport && UNUSED.has(o.id) ? 'Not used by any exported region' : '' });
+      case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity }, { ne: !!o.noExport, look: o.look || '', warn: o.noExport ? [] : regionWarns(o), info: o.meta && o.meta.link ? 'Strong link (formula follows its parent regions)' : '' });
       case 'measures': return itemHTML('measure', { id: o.id, name: `M${S.measures.indexOf(o) + 1} · ${f(V.dist(o.a, o.b), 3)} cm`, type: 'DIST', visible: o.visible });
     }
     return '';
@@ -769,6 +824,7 @@
     return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
   }
   function renderLeft() {
+    UNUSED = new Set(APP.unusedBodies().map(b => b.id));
     let h = `<div class="tree">`;
     for (const g of GROUPS_DEF) {
       const list = g.items(), open = isOpen(g.k), anyVis = list.some(o => o.visible);
@@ -906,6 +962,7 @@
       if (o) { APP.snap(); o.visible = !o.visible; APP.changed({ tree: true, csys: item.dataset.t === 'csys', measures: item.dataset.t === 'measure' }); }
       return;
     }
+    if (a === 'look' && item) { const o = findItem(item.dataset.t, +item.dataset.id); if (o) { APP.snap(); const nx = { '': 'opaque', opaque: 'transparent', transparent: '' }[o.look || '']; if (nx) o.look = nx; else delete o.look; APP.applyStyles(); APP.changed({ tree: true, right: true }); } return; }
     if (a === 'activate') { APP.setActiveCsys(+act.dataset.cid); return; }
     if (a === 'op') return;
     if (item && item.dataset.t && !e.target.closest('input')) { selectItem(item.dataset.t, +item.dataset.id); return; }
@@ -1020,7 +1077,8 @@
   function commonStyle(o, withEdge) {
     return `<div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(o.color)}">
       <label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${o.visible ? 'checked' : ''}>Visible</label></div>
-      <div class="row2"><span class="muted">Opacity</span><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-k="opacity"></div>`;
+      <div class="row2"><span class="muted">Opacity</span><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-k="opacity"></div>
+      <div class="row2"><span class="muted" title="Overrides the global render mode for this object">Appearance ⓘ</span><select data-k="look"><option value="" ${!o.look ? 'selected' : ''}>Follow the global mode</option><option value="opaque" ${o.look === 'opaque' ? 'selected' : ''}>Always opaque</option><option value="transparent" ${o.look === 'transparent' ? 'selected' : ''}>Always transparent</option></select></div>`;
   }
 
   function liveInfoHTML() {
@@ -1074,7 +1132,9 @@
           (d.fix ? `<div><button class="btn sm" data-act="applyFix" data-rid="${r.id}" data-expr="${esc(d.fix.expr)}" title="${esc(d.fix.expr)}">${esc(d.fix.label)}: ${esc(d.fix.expr)}</button></div>` : '') + '</div>').join('') + '</div>';
       }
       const q = (c && c.quality) || [];
-      return '<div class="msg ok">Valid expression' + (q.length ? ` <span class="wicon" tabindex="0" title="${esc(q.map(x => x.text).join('\n'))}">⚠${q.length > 1 ? q.length : ''}</span>` : '') + '</div>';
+      const pq = q.find(x => x.kind === 'gap' || x.kind === 'pieces');
+      const pcs = pq ? `<div class="msg"><label class="chk" style="margin:0" title="Each separate piece gets its own colour in the 3D view; the red spot marks where two pieces are closest"><input type="checkbox" data-opt="pieceHl" ${S.opt.pieceHl === false ? '' : 'checked'}>Highlight the ${pq.pieces} pieces${pq.spot ? ` · red spot: closest points, ${FK.fmt(pq.spot.d * 10, 4)} mm apart` : ''}</label> <span class="pieceleg">${PIECE_PAL.slice(0, Math.min(pq.pieces, 8)).map(c => `<i style="background:${c}"></i>`).join('')}</span></div>` : '';
+      return pcs + '<div class="msg ok">Valid expression' + (q.length ? ` <span class="wicon" tabindex="0" title="${esc(q.map(x => x.text).join('\n'))}">⚠${q.length > 1 ? q.length : ''}</span>` : '') + '</div>';
     } catch (e) { return `<div class="msg bad">${esc(e.message)}</div>`; }
   }
   /** Keeps the style controls of the properties panel in step with changes made elsewhere (tree slider, eye…), without re-rendering it. */
@@ -1162,7 +1222,7 @@
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
-      <div class="btns">${b.type !== 'RAW' ? '<button class="btn" data-act="snapCheck" title="Propose exact values: axis on X / Y / Z, coaxial / parallel with other cylinders, equal radii, faces and ends coincident with other objects">Check alignment with other objects…</button>' : ''}<button class="btn" data-act="dup">Duplicate</button></div>
+      <div class="btns">${b.type !== 'RAW' ? '<button class="btn" data-act="regFromBodyCut" title="Creates a region made of this body, then lets you click faces to cut it with planes">New region from this body + cut by faces…</button><button class="btn" data-act="snapCheck" title="Propose exact values: axis on X / Y / Z, coaxial / parallel with other cylinders, equal radii, faces and ends coincident with other objects">Check alignment with other objects…</button>' : ''}<button class="btn" data-act="dup">Duplicate</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
@@ -1257,7 +1317,7 @@
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
+      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click bodies / planes in the 3D view to add (+) or subtract (−) them; overlapping objects are listed so you can choose">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -1408,11 +1468,18 @@
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
       case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
       case 'cad': if (e.type === 'change') { APP.snap(); it.meta = it.meta || {}; if (t.value === '') delete it.meta.cad; else it.meta.cad = t.value === 'none' ? 0 : +t.value; APP.changed({ tree: true, right: true }); } break;
-      case 'exportInp': if (e.type === 'change') { APP.snap(); if (t.checked) delete it.noExport; else it.noExport = true; APP.changed({ tree: true }); } break;
+      case 'exportInp': if (e.type === 'change') {
+        if (t.checked) { APP.snap(); delete it.noExport; APP.changed({ tree: true, right: true }); break; }
+        const imp = APP.exportImpact(type, it).filter(x => !x.item.noExport);
+        if (!imp.length) { APP.snap(); it.noExport = true; APP.changed({ tree: true, right: true }); break; }
+        t.checked = true;                                   // stays checked until the user decides
+        askImpact(type, it, imp).then(res => { if (res === 'cancel') return; APP.snap(); it.noExport = true; if (res === 'all') imp.forEach(x => { x.item.noExport = true; }); APP.changed({ tree: true, right: true }); });
+      } break;
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
       case 'lnkA': case 'lnkB': case 'lnkOp': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) { APP.snap(); const l = it.meta.link; if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkB') l.b = +t.value; else if (k === 'lnkOp') l.op = t.value; else l.mode = t.value; APP.changed({ tree: true, right: true }); } break;
       case 'expr': if (it.meta && it.meta.link) break; APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
       case 'color': if (e.type === 'input') { APP.snap(key + 'col'); it.color = t.value; APP.changed({ tree: true, csys: type === 'csys' }); } break;
+      case 'look': if (e.type === 'change') { APP.snap(); if (t.value) it.look = t.value; else delete it.look; APP.applyStyles(); APP.changed({ tree: true }); } break;
       case 'opacity': if (e.type === 'input') { it.opacity = (+t.value) / 100; APP.applyStyles(); APP.changed({ tree: true }); } break;
       case 'visible': if (e.type === 'change') { APP.snap(); it.visible = t.checked; APP.changed({ tree: true, csys: type === 'csys' }); } break;
       case 'unit': if (e.type === 'change') { it.unit = t.value; APP.buildStl(it); APP.changed({ right: true, fit: true }); } break;
@@ -1442,10 +1509,14 @@
       case 'fillUndo': if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } break;
       case 'pickCsysPos': if (it && S.sel.t === 'csys') startFill({ kind: 'csys', id: it.id, only: a.dataset.i === undefined ? undefined : +a.dataset.i }); break;
       case 'rtab': S.rtab = a.dataset.tab; $$('#rightBody .rtab').forEach(x => x.classList.toggle('on', x.dataset.tab === S.rtab)); $$('#rightBody .rpane').forEach(x => { x.hidden = x.dataset.pane !== S.rtab; }); break;
+      case 'look': break;
       case 'cadShow': case 'cadHide': case 'cadIsolate': if (it && S.sel.t === 'stl') { const k = APP.cadVisibility(it.id, act === 'cadShow' ? 'show' : act === 'cadHide' ? 'hide' : 'isolate'); toast(k + ' linked object(s) ' + (act === 'cadHide' ? 'hidden' : act === 'cadShow' ? 'shown' : 'isolated')); } break;
       case 'cadCompare': if (it && S.sel.t === 'stl') openDevDlg({ cad: it.id }); break;
       case 'unlinkRegion': if (it && it.meta && it.meta.link) { APP.snap(); delete it.meta.link; APP.changed({ tree: true, right: true }); toast('Link removed; the formula is kept'); } break;
       case 'snapCheck': if (it && S.sel.t === 'body') suggestSnap(it, true); break;
+      case 'pickRegion': if (it && S.sel.t === 'region') { if (it.meta && it.meta.link) { toast('This region follows a live link: its formula is read-only'); break; } S.cutRid = it.id; setTool('regpick'); if (narrow()) setDrawer('right', false); } break;
+      case 'cutRegion': if (it && S.sel.t === 'region') { S.cutRid = it.id; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
+      case 'regFromBodyCut': if (it && S.sel.t === 'body') { APP.snap(); const r = APP.addRegion(APP.regionNameFor(it.name), '+' + it.name, { visible: true }); S.sel = { t: 'region', id: r.id }; S.cutRid = r.id; APP.changed({ tree: true, right: true }); S.opt.cutStay = true; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
       case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
       case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
       case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
@@ -1660,6 +1731,31 @@
         case 'plane': {
           const pk = APP.makePick(hit, 'face', x, y);
           APP.createPlaneFromPick(pk); break;
+        }
+        case 'regpick': {
+          const r = APP.getRegion(S.cutRid); if (!r) { setTool('select'); break; }
+          const o = APP.ownerOf(hit);
+          if (o.kind !== 'body') { toast('Only bodies and planes can be added to a region: click one of them'); break; }
+          const b = APP.getBody(o.id); if (!b) break;
+          APP.snap();
+          const sign = S.opt.pickSign === '-' ? -1 : 1, zone = S.opt.cutZone === undefined ? 'all' : S.opt.cutZone;
+          const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, sign, b.name);
+          if (res.error) { toast(res.error); break; }
+          S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });
+          toast(`${sign < 0 ? '−' : '+'}${b.name} added to ${r.name}`);
+          break;
+        }
+        case 'regcut': {
+          const r = APP.getRegion(S.cutRid); if (!r) { setTool('select'); break; }
+          const pk = APP.makePick(hit, 'face', x, y);
+          APP.snap();
+          const pl = APP.planeForCut(pk), zone = S.opt.cutZone === undefined ? 'all' : S.opt.cutZone;
+          const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, S.opt.cutKeep === '-' ? -1 : 1, pl.body.name);
+          if (res.error) { toast(res.error); break; }
+          S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });
+          toast(`${S.opt.cutKeep === '-' ? '−' : '+'}${pl.body.name} ${pl.created ? 'created and ' : '(existing plane) '}added to ${r.name}`);
+          if (!S.opt.cutStay) setTool('select');
+          break;
         }
         case 'replane': {
           const pk = APP.makePick(hit, 'face', x, y);

@@ -20,8 +20,8 @@
   camera.add(headLight);
 
   const gStl = new THREE.Group(), gBody = new THREE.Group(), gRegion = new THREE.Group(),
-    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gDev = new THREE.Group(), gChk = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
-  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gDev, gChk, gSel, gHover, gCut);
+    gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gDev = new THREE.Group(), gChk = new THREE.Group(), gPcs = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
+  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gDev, gChk, gPcs, gSel, gHover, gCut);
   let axes = null;
 
   let needRender = true;
@@ -381,6 +381,55 @@
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
     m.raycast = () => {}; m.renderOrder = 6; gDev.add(m);
   };
+  /** Separate pieces of a region, one colour each, + a red spot where two of them are closest. pieces: [{ polys, color }], spot: { p, q, d } | null. null clears. */
+  APP.setPieceOverlay = function (pieces, spot) {
+    for (const c of gPcs.children.slice()) { gPcs.remove(c); disposeObj(c); }
+    needRender = true;
+    if (!pieces) return;
+    pieces.forEach(pc => {
+      const pos = FK.polysToPositions(pc.polys), g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: pc.color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+      m.raycast = () => {}; m.renderOrder = 6; gPcs.add(m);
+    });
+    if (spot) { const mid = V.mul(V.add(spot.p, spot.q), 0.5); gPcs.add(markers([mid], 0xff0000, 18)); if (spot.d > 1e-9) gPcs.add(polyline([spot.p, spot.q], 0xff0000)); }
+  };
+  /* ---------- Object names drawn in the viewport ---------- */
+  const olabels = document.createElement('div'); olabels.id = 'olabels'; labelsEl.parentElement.appendChild(olabels);
+  let nameItems = [];
+  APP.refreshNames = function () {
+    olabels.innerHTML = ''; nameItems = [];
+    const mode = S.opt.names || 'off'; if (mode === 'off') return;
+    const add = (name, color, bb) => {
+      if (!bb || nameItems.length >= 160) return;
+      const el = document.createElement('div'); el.className = 'olab'; el.textContent = name;
+      el.style.color = '#' + darker(color, 0.7).getHexString(); olabels.appendChild(el);
+      nameItems.push({ el, c: FK.boxCenter(bb), color });
+    };
+    if (mode === 'bodies' || mode === 'all') for (const b of S.model.bodies) { if (!b.visible || b.type === 'RAW') continue;
+      let bb = null;
+      if (FK.isPlaneType(b.type)) { const c = bodyC.get(b.id); if (c && c.group) { const bx = new THREE.Box3().setFromObject(c.group); if (!bx.isEmpty()) bb = { min: bx.min.toArray(), max: bx.max.toArray() }; } }
+      else { try { bb = FK.bodyBBox(APP.wbody(b)); } catch (e) { bb = null; } if (bb && ![...bb.min, ...bb.max].every(Number.isFinite)) bb = null; }
+      add(b.name, b.color, bb); }
+    if (mode === 'regions' || mode === 'all') for (const r of S.model.regions) {
+      if (!r.visible) continue; const c = regC.get(r.id); if (!c || !c.polys || !c.polys.length) continue;
+      let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (const pl of c.polys) for (const v of pl.v) for (let k = 0; k < 3; k++) { if (v[k] < mn[k]) mn[k] = v[k]; if (v[k] > mx[k]) mx[k] = v[k]; }
+      add(r.name, r.color, { min: mn, max: mx });
+    }
+    if (mode === 'all') for (const m of S.stls) if (m.visible && m.stats && m.stats.bbox) add(m.name, m.color, m.stats.bbox);
+  };
+  function placeNames() {
+    if (!nameItems.length) return;
+    const cw = canvas.clientWidth, ch = canvas.clientHeight, placed = [];
+    for (const it of nameItems) {
+      const v = new THREE.Vector3(it.c[0], it.c[1], it.c[2]).project(camera);
+      if (v.z > 1 || v.z < -1) { it.el.style.display = 'none'; continue; }
+      let x = (v.x + 1) / 2 * cw, y = (1 - v.y) / 2 * ch - 14; const w = it.el.textContent.length * 7 + 8;
+      for (let t = 0; t < 8; t++) { const hit = placed.find(q => Math.abs(q.x - x) < (q.w + w) / 2 && Math.abs(q.y - y) < 15); if (!hit) break; y += 15; }
+      placed.push({ x, y, w }); it.el.style.display = ''; it.el.style.left = x + 'px'; it.el.style.top = y + 'px';
+    }
+  }
   /** Geometry-check markers: [{ centers: Float32Array (xyz…), size, color }] drawn as small cubes. null clears them. */
   APP.setCheckMarks = function (list) {
     for (const c of gChk.children.slice()) { gChk.remove(c); disposeObj(c); }
@@ -449,15 +498,21 @@
   APP.applyStyles = function () {
     const sel = S.sel, rm = S.opt.render || 'shaded', edgesOn = S.opt.edges !== false || rm === 'wire';
     // global render mode: shaded (per-item opacities) · wire (edges only) · opaque (all solids at 1) · ghost (all solids very transparent)
-    const effOp = (op, plane, isSel) => {
+    // presets: 'meshop' = meshes opaque, CG objects slightly transparent · 'cgop' = the reverse; item.look = 'opaque' | 'transparent' overrides the global mode
+    const effOp = (op, plane, isSel, item, isMesh) => {
       if (rm === 'wire') return 0;
-      if (plane) return Math.min(1, op + (isSel ? 0.15 : 0));
+      const bump = isSel ? 0.15 : 0;
+      if (plane) return Math.min(1, op + bump);
+      if (item && item.look === 'opaque') return rm === 'ghost' ? Math.min(op, 0.12) : 1;
+      if (item && item.look === 'transparent') return op < 0.995 ? Math.min(1, op + bump) : 0.3;
       if (rm === 'opaque') return 1;
       if (rm === 'ghost') return Math.min(op, 0.12);
-      return Math.min(1, op + (isSel ? 0.15 : 0));
+      if (rm === 'meshop') return isMesh ? 1 : Math.min(0.3, op) + bump;
+      if (rm === 'cgop') return isMesh ? Math.min(0.3, op) + bump : 1;
+      return Math.min(1, op + bump);
     };
     const style = (c, item, plane, isSel, col) => {
-      const o = effOp(item.opacity, plane, isSel), m = c.mesh.material;
+      const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
       c.group.visible = !!item.visible;
       c.mesh.visible = item.opacity > 0.004;
       m.color.set(item.color); m.opacity = o;
@@ -478,7 +533,7 @@
       if (!s.group) continue;
       const isSel = sel && sel.t === 'stl' && sel.id === s.id;
       s.group.visible = !!s.visible;
-      const m = s.mesh.material, o = rm === 'wire' ? 0 : rm === 'opaque' ? 1 : rm === 'ghost' ? Math.min(s.opacity, 0.12) : s.opacity, tr = o < 0.995;
+      const m = s.mesh.material, o = effOp(s.opacity, false, false, s, true), tr = o < 0.995;
       m.color.set(s.color); m.opacity = o; m.transparent = tr; m.depthWrite = !tr;
       m.emissive.setHex(isSel ? 0x1c3566 : 0x000000); m.needsUpdate = true;
       s.mesh.visible = s.opacity > 0.004;
@@ -486,6 +541,7 @@
       wireOf(s.group, s.mesh, rm === 'wire', isSel ? 0xff6a00 : 0x39434f);
     }
     if (axes) axes.visible = !!S.opt.axes;
+    APP.refreshNames();
     needRender = true;
   };
 
@@ -579,7 +635,7 @@
   });
 
   function updateLabels() {
-    updateTriad();
+    updateTriad(); placeNames();
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
     for (const l of csysLab) {
       const v = new THREE.Vector3(l.p[0], l.p[1], l.p[2]).project(camera);
