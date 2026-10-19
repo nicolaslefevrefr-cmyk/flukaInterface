@@ -357,3 +357,5 @@ dialog.devwin { width: min(400px, 94vw); z-index: 41; }
 .item.ne { opacity: .72; }
 .pieceleg i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
 
+
+#termBody.flash { outline: 3px solid #f2994a; outline-offset: 1px; transition: outline-color .8s; }

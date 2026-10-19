@@ -170,10 +170,8 @@
     else if (S.tool === 'rpp') h += chk('snap', 'Snap to vertices');
     else if (S.tool === 'csys3') h += chk('snap', 'Snap to vertices') + '<label class="muted">Created as a child of the active system</label>';
     else if (S.tool === 'regpick') {
-      const r = APP.getRegion(S.cutRid); let nz = 1; try { nz = Math.max(1, FK.parseExpr(r ? r.expr : '').zones.length); } catch (e) { /* ignored */ }
-      h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a body or plane in the view; if several overlap, a list lets you choose</label>
-        <label>Add as <select data-opt="pickSign"><option value="+" ${o.pickSign !== '-' ? 'selected' : ''}>inside (+)</option><option value="-" ${o.pickSign === '-' ? 'selected' : ''}>outside (−)</option></select></label>
-        ${nz > 1 ? `<label>In <select data-opt="cutZone"><option value="all" ${o.cutZone === 'all' ? 'selected' : ''}>every zone</option>${Array.from({ length: nz }, (_, i) => `<option value="${i}" ${String(o.cutZone) === String(i) ? 'selected' : ''}>zone ${i + 1} only</option>`).join('')}</select></label>` : ''}`;
+      const r = APP.getRegion(S.cutRid);
+      h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a body or plane in the view; if several overlap, a list lets you choose. It is then selected in the body list, ready for + / − / union.</label>`;
     } else if (S.tool === 'regcut') {
       const r = APP.getRegion(S.cutRid); let nz = 1; try { nz = Math.max(1, FK.parseExpr(r ? r.expr : '').zones.length); } catch (e) { /* ignored */ }
       h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a face; its plane is created (or reused) and added to the formula</label>
@@ -256,7 +254,7 @@
     } else if (S.tool === 'measure') t = (S.pending ? 'Distance: click point B' : 'Distance: click point A') + ' · <a href="#" data-act="cancelTool">Cancel (Esc)</a>';
     else if (S.tool === 'csys3') t = 'Coordinate system: click ' + ['the origin', 'a point on the X axis', 'a point in the XY plane (+Y side)'][(S.cs3 || []).length];
     else if (S.tool === 'rpp') t = S.pending ? 'RPP: click the opposite corner (point 2)' : 'RPP: click the first corner (point 1)';
-    else if (S.tool === 'regpick') { const r = APP.getRegion(S.cutRid); t = `Pick for ${r ? esc(r.name) : 'the region'}: click a body or plane (${S.opt.pickSign === '-' ? '−' : '+'}) · <a href="#" data-act="cancelTool">Done (Esc)</a>`; }
+    else if (S.tool === 'regpick') { const r = APP.getRegion(S.cutRid); t = `Pick a body or plane for ${r ? esc(r.name) : 'the region'}: click it in the view · <a href="#" data-act="cancelTool">Cancel (Esc)</a>`; }
     else if (S.tool === 'regcut') { const r = APP.getRegion(S.cutRid); t = `Cut ${r ? esc(r.name) : 'the region'}: click a face of a mesh or object · <a href="#" data-act="cancelTool">Done (Esc)</a>`; }
     else if (S.tool === 'plane') t = 'Plane: click a triangle / face — its normal gives the PLA vector H';
     else if (S.tool === 'viewface') t = 'Click a face to look at it · <a href="#" data-act="cancelTool">Cancel (Esc)</a>';
@@ -264,6 +262,7 @@
     if (hoverText && !(S.tool === 'select' && S.pick)) t += (t ? ' · ' : '') + '<span class="muted">' + esc(hoverText) + '</span>';
     $('#status').innerHTML = t ? `<span>${t}</span>` : '';
   }
+  document.addEventListener('change', e => { if (e.target && e.target.id === 'termBody') S.termSel = e.target.value; });
   $('#status').addEventListener('click', e => { if (e.target.closest('[data-act=cancelTool]')) { e.preventDefault(); setTool('select'); } });
   $('#status').addEventListener('click', e => { const a = e.target.closest('[data-act=fillDone],[data-act=fillUndo]'); if (!a) return; e.preventDefault(); if (a.dataset.act === 'fillDone') finishCirclePts(); else if (S.fillPts && S.fillPts.length) { S.fillPts.pop(); APP.setPending(S.fillPts.slice()); renderToolOpts(); updateStatus(); } });
   $('#status').addEventListener('click', e => { if (e.target.closest('[data-act=cancelFill]')) { e.preventDefault(); cancelFill(); } });
@@ -1299,7 +1298,10 @@
     }
   }
   function regionProps(r) {
-    const opts = S.model.bodies.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.type === 'RAW' ? b.rawType : b.type)})</option>`).join('');
+    const bodyTypeOf = (b) => b.type === 'RAW' ? (b.rawType || 'RAW') : b.type;
+    const byType = new Map(); for (const b of S.model.bodies) { const t = bodyTypeOf(b); if (!byType.has(t)) byType.set(t, []); byType.get(t).push(b); }
+    const collate = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+    const opts = [...byType.keys()].sort(collate.compare).map(t => `<optgroup label="${esc(t)}">${byType.get(t).sort((x, y) => collate.compare(x.name, y.name)).map(b => `<option value="${esc(b.name)}"${S.termSel === b.name ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</optgroup>`).join('');
     const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
       <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
@@ -1317,7 +1319,7 @@
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click bodies / planes in the 3D view to add (+) or subtract (−) them; overlapping objects are listed so you can choose">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
+      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -1733,16 +1735,15 @@
           APP.createPlaneFromPick(pk); break;
         }
         case 'regpick': {
-          const r = APP.getRegion(S.cutRid); if (!r) { setTool('select'); break; }
           const o = APP.ownerOf(hit);
-          if (o.kind !== 'body') { toast('Only bodies and planes can be added to a region: click one of them'); break; }
+          if (o.kind !== 'body') { toast('Only bodies and planes can be picked: click one of them'); break; }
           const b = APP.getBody(o.id); if (!b) break;
-          APP.snap();
-          const sign = S.opt.pickSign === '-' ? -1 : 1, zone = S.opt.cutZone === undefined ? 'all' : S.opt.cutZone;
-          const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, sign, b.name);
-          if (res.error) { toast(res.error); break; }
-          S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });
-          toast(`${sign < 0 ? '−' : '+'}${b.name} added to ${r.name}`);
+          S.termSel = b.name; setTool('select');
+          const rr = APP.getRegion(S.cutRid); if (rr) S.sel = { t: 'region', id: rr.id };
+          APP.changed({ tree: true, right: true });
+          const sel = $('#termBody'); if (sel) { sel.value = b.name; sel.classList.add('flash'); setTimeout(() => sel.classList.remove('flash'), 1200); }
+          toast(`${b.name} selected: use + add, − subtract or | union`);
+          if (narrow()) setDrawer('right', true);
           break;
         }
         case 'regcut': {

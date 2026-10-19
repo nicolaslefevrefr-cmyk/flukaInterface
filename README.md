@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.11.1)
+# Combinatorial Geometry Tool  (v1.11.2)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.11.2** — "Pick in view" now only selects the clicked body / plane in the body list of the region definition (you then choose + / − / union); that list is grouped by type, each group sorted alphabetically (natural order).
 - **1.11.1** — visual formula builder removed; object names also drawn on planes; new "🖱 Pick in view…" in the region definition: click bodies / planes in the 3D view to add them (inside or outside, in every zone or one), with the list of overlapping objects when several are under the cursor.
 - **1.11.0** — new defaults (opaque, edges shown, mouse rotation not inverted); per-item opaque / transparent override and two presets (CAD opaque + CG ghosted, and the reverse); object names drawn in the 3D view in the object colour; ⚠ warnings shown on the tree row of the region / component concerned; items not exported are greyed, and un-ticking "Export to the INP file" opens a window listing every impacted component (full chain); "not used" warning for any element no exported region uses; separated pieces of a region highlighted in distinct colours with a red spot where they are closest; **visual formula builder** (zones as cards, +/− chips, live volume and preview) and **interactive cut**: pick a face of the mesh to create (or reuse) the plane and add it to the region.
 - **1.10.1** — number fields of positions, radii, coordinate-system positions and mesh offsets step by 1 mm (0.1 cm) instead of 1 cm; Euler angles by 1°.
