@@ -148,17 +148,19 @@
   }
   /* Point source for the tools that pick a position (csys from 3 points, csys position, distance, RPP) */
   const PT_MODES = [['vertex', 'Vertex / point on a surface'], ['arc', 'Centre of a circular edge (arc / rim)'], ['mid', 'Midpoint of an edge'], ['planes3', 'Intersection of 3 faces']];
-  const ptTool = () => S.tool === 'csys3' || S.tool === 'measure' || S.tool === 'rpp' || (S.fill && S.fill.kind === 'csys');
-  const ptMode = () => ptTool() ? (S.opt.ptMode || 'vertex') : 'vertex';
+  const csd = () => S.fill && S.fill.kind === 'csdef' ? S.fill : null;
+  const ptTool = () => S.tool === 'csys3' || S.tool === 'measure' || S.tool === 'rpp' || (S.fill && (S.fill.kind === 'csys' || S.fill.kind === 'csdef'));
+  const ptMode = () => csd() ? csd().mode : ptTool() ? (S.opt.ptMode || 'vertex') : 'vertex';
   function ptModeHTML() {
-    const o = S.opt, m = ptMode();
-    let h = `<label>Point from <select data-opt="ptMode">${PT_MODES.map(([k, l]) => `<option value="${k}" ${m === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
-    if (m === 'vertex') h += `<label><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}>Snap to vertices</label>`;
-    else if (m === 'planes3') h += `<label class="muted">Click 3 faces (meshes or plane bodies): the point is where their planes meet${(S.ptPlanes || []).length ? ' — ' + S.ptPlanes.length + '/3 picked' : ''}</label><span class="btns"><button class="btn sm" data-act="ptUndo">Undo last face</button></span>`;
-    else h += `<label>Edge angle ≥ <input type="number" step="any" data-opt="sharp" value="${o.sharp}">°</label><label><input type="checkbox" data-opt="edgeSoft" ${o.edgeSoft !== false ? 'checked' : ''}>Retry with a lower angle if the rim is open</label>`;
-    return h;
+    const o = S.opt, m = ptMode(), sel = csd() ? '' : `<label>Point from <select data-opt="ptMode">${PT_MODES.map(([k, l]) => `<option value="${k}" ${m === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    const ang = `<label>Edge angle ≥ <input type="number" step="any" data-opt="sharp" value="${o.sharp}">°</label>`, soft = `<label><input type="checkbox" data-opt="edgeSoft" ${o.edgeSoft !== false ? 'checked' : ''}>Retry with a lower angle if the rim is open</label>`;
+    if (m === 'vertex') return sel + `<label><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}>Snap to vertices</label>`;
+    if (m === 'planes3') return sel + `<label class="muted">Click 3 faces (meshes or plane bodies): the point is where their planes meet${(S.ptPlanes || []).length ? ' — ' + S.ptPlanes.length + '/3 picked' : ''}</label><span class="btns"><button class="btn sm" data-act="ptUndo">Undo last face</button></span>`;
+    if (m === 'face') return sel + `<label><input type="checkbox" data-opt="coplanar" ${o.coplanar ? 'checked' : ''}>Whole face (coplanar triangles)</label><label>Face tolerance <input type="number" step="any" data-opt="coTol" value="${o.coTol}">°</label>`;
+    if (m === 'edge') return sel + ang;
+    return sel + ang + soft;
   }
-  const modeHint = () => { const m = ptMode(); return m === 'arc' ? ' (click a circular edge: its centre)' : m === 'mid' ? ' (click an edge: its midpoint)' : m === 'planes3' ? ` (click 3 faces: ${(S.ptPlanes || []).length}/3 picked)` : ''; };
+  const modeHint = () => { const m = ptMode(); return m === 'face' ? ' (click a face: its normal)' : m === 'edge' ? ' (click an edge: its direction)' : m === 'circ' ? ' (click a circular edge: the axis of its circle)' : m === 'arc' ? ' (click a circular edge: its centre)' : m === 'mid' ? ' (click an edge: its midpoint)' : m === 'planes3' ? ` (click 3 faces: ${(S.ptPlanes || []).length}/3 picked)` : ''; };
   function ptRefreshPending() {
     const base = S.tool === 'csys3' ? (S.cs3 || []).slice() : S.pending ? [S.pending] : [];
     const pts = base.concat((S.ptPlanes || []).map(q => q.c)); APP.setPending(pts.length ? pts : null);
@@ -166,8 +168,8 @@
   /** Point under the cursor for the hover preview, according to the point source. */
   function hoverPoint(hit, x, y) {
     const m = ptMode();
-    if (m === 'arc' || m === 'mid') return edgePickForFill(hit, x, y);
-    if (m === 'planes3') return APP.makePick(hit, 'face', x, y);
+    if (m === 'arc' || m === 'mid' || m === 'edge' || m === 'circ') return edgePickForFill(hit, x, y);
+    if (m === 'planes3' || m === 'face') return APP.makePick(hit, 'face', x, y);
     return APP.pointFromHit(hit, x, y);
   }
   /** Resolve a click to a point: { p } | { wait: true } (more clicks needed) | null (message shown). */
@@ -201,7 +203,7 @@
       const sp = fillSpec();
       if (sp && sp.kind === 'circlePts') h += chk('snap', 'Snap to vertices') + `<label class="muted">${(S.fillPts || []).length} point(s) picked</label><span class="btns"><button class="btn sm primary" data-act="fillDone">Done</button><button class="btn sm" data-act="fillUndo">Undo last</button></span>`;
       else if (sp && EDGE_KINDS.includes(sp.kind)) h += '<label class="muted">Sharp edges only (rims are followed automatically)</label>' + num('sharp', 'Edge angle ≥', '°') + (sp.kind === 'dirEdge' ? '' : chk('edgeSoft', 'Retry with a lower angle if the rim is open')) + '<label class="muted">Lower the angle to follow more of the continuity; raise it to stop at a fillet</label>';
-      else if (S.fill.kind === 'csys') h += ptModeHTML();
+      else if (S.fill.kind === 'csys' || S.fill.kind === 'csdef') h += ptModeHTML();
       else if (sp && sp.kind === 'normal') h += chk('coplanar', 'Whole face (coplanar triangles)') + num('coTol', 'face tolerance', '°');
       else h += chk('snap', 'Snap to vertices');
       if (sp && (sp.kind === 'circleEdge' || sp.kind === 'circlePts') && (sp.axisIdx || (sp.radIdx !== undefined && sp.radIdx !== null))) h += chk('circleAll', 'Also set ' + (sp.axisIdx ? 'the axis (circle normal) and ' : '') + 'the radius');
@@ -288,7 +290,8 @@
     let t = '';
     if (S.fill) {
       const sp = fillSpec(), one = S.fill.only !== undefined ? ' (single coordinate)' : '';
-      if (sp && sp.kind === 'circlePts') t = `Click points on the circle (${(S.fillPts || []).length} picked, at least 3) · <a href="#" data-act="fillDone">Done (Enter)</a> · <a href="#" data-act="fillUndo">Undo last</a> · <a href="#" data-act="cancelFill">Cancel (Esc)</a>`;
+      if (S.fill.kind === 'csdef') t = 'Define the coordinate system' + modeHint() + ' · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
+      else if (sp && sp.kind === 'circlePts') t = `Click points on the circle (${(S.fillPts || []).length} picked, at least 3) · <a href="#" data-act="fillDone">Done (Enter)</a> · <a href="#" data-act="fillUndo">Undo last</a> · <a href="#" data-act="cancelFill">Cancel (Esc)</a>`;
       else if (sp && sp.kind === 'circleEdge') t = 'Click a circular edge (rim): its circle gives the centre · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
       else if (sp && sp.kind === 'dirEdge') t = 'Click an edge: its normalized direction gives the vector · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
       else if (sp && sp.kind === 'radiusEdge') t = 'Click an arc edge (radius of its circle) or a straight edge (its length) · <a href="#" data-act="cancelFill">Cancel (Esc)</a>';
@@ -890,6 +893,11 @@
     APP.changed({ tree: true, right: true });
     if (narrow()) { setDrawer('left', false); setDrawer('right', true); }
   }
+  /** New coordinate system: created with an editable definition and its Definition tab opened. */
+  function newCsysEditable(parentWorldOf, parent) {
+    const c = APP.createCsysWorld(APP.csysWorld(parentWorldOf), parent !== undefined ? { parent } : undefined); if (!c) return;
+    c.def = APP.csDefNew(c); S.rtab = 'definition'; selectItem('csys', c.id);
+  }
   function groupItems(k) { const g = GROUPS_DEF.find(x => x.k === k); return g ? g.items() : []; }
   function setGroupVis(k, on) { APP.snap(); groupItems(k).forEach(o => { o.visible = on; }); APP.changed({ tree: true, csys: k === 'csys', measures: k === 'measures' }); }
 
@@ -934,7 +942,7 @@
     switch (k) {
       case 'meshes': return [{ label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() }, newGrp(k)].concat(visItems(k));
       case 'csys': return [
-        { label: 'New coordinate system (child of active)', fn: () => { const c = APP.createCsysWorld(APP.csysWorld(S.model.active || 0)); if (c) selectItem('csys', c.id); } },
+        { label: 'New coordinate system (child of active)', fn: () => newCsysEditable(S.model.active || 0, undefined) },
         { label: 'New from 3 points in the view…', fn: () => setTool('csys3') },
         { label: 'Make Global the active system', fn: () => APP.setActiveCsys(0) }, newGrp(k)].concat(visItems(k));
       case 'planes': return [
@@ -972,7 +980,7 @@
         { label: 'Create void region around this one… (experimental)', fn: () => openVoidDlg(o) }, { sep: 1 }, del];
       case 'csys': return [rename, toggle, { label: 'Set as active', fn: () => APP.setActiveCsys(o.id) },
         { label: APP.exportCs() === o.id ? 'Stop using as export coordinate system' : 'Use as export coordinate system (INP)', fn: () => APP.setExportCsys(APP.exportCs() === o.id ? 0 : o.id) },
-        { label: 'New child coordinate system', fn: () => { const c = APP.createCsysWorld(APP.csysWorld(o.id), { parent: o.id }); if (c) selectItem('csys', c.id); } },
+        { label: 'New child coordinate system', fn: () => newCsysEditable(o.id, o.id) },
         { label: o.frozen ? 'Unfreeze (follow parent)' : 'Freeze (keep world pose)', fn: () => APP.setCsysFrozen(o, !o.frozen) },
         { label: 'Section view (XY plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':xy') },
         { label: 'Section view (XZ plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':xz') },
@@ -1287,8 +1295,10 @@
       <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="cfrozen" ${c.frozen ? 'checked' : ''}>Freeze: does not follow its parent (keeps its world pose)</label></div>
       </div>
       <div class="muted" style="font-size:12px;margin:2px 0 6px">Unless frozen, this system moves with its parent. ${kids.length ? kids.length + ' child system(s) (' + kids.filter(k => k.frozen).length + ' frozen). ' : ''}${nb ? nb + ' body(ies) defined in this system.' : ''}</div></div>`;
-    const definition = `<div class="sec"><h4><span>Position and orientation</span></h4>
-      <div class="muted" style="font-size:12px">Relative to the parent system.</div><div>
+    const meth = c.def ? c.def.method : 'manual';
+    const definition = `<div class="sec"><h4><span>Definition</span></h4><div class="fields"><div class="fld full"><label>Defined by</label><select data-cd="method">${[['manual', 'Position + angles (typed)'], ['axes', 'Origin + 2 axes (X, Y or Z)'], ['pts3', 'Origin + point on X + point in XY plane']].map(([k, l]) => `<option value="${k}" ${meth === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>${c.def ? csDefHTML(c) : ''}</div>
+      <div class="sec"><h4><span>${c.def ? 'Resulting position and orientation' : 'Position and orientation'}</span></h4>
+      <div class="muted" style="font-size:12px">Relative to the parent system.${c.def ? ' Editing these values switches the definition back to typed.' : ''}</div><div>
         <div class="fld full grp"><div class="gh"><label>Position X, Y, Z (cm)</label><button class="pk${S.fill && S.fill.kind === 'csys' && S.fill.id === c.id && S.fill.only === undefined ? ' on' : ''}" data-act="pickCsysPos" title="Pick the whole origin in the 3D view" aria-label="Pick the origin">⌖</button></div><div class="g3">${[0, 1, 2].map(i => `<div class="fld"><div class="fl"><label>${'XYZ'[i]}</label><button class="pk sm${S.fill && S.fill.kind === 'csys' && S.fill.id === c.id && S.fill.only === i ? ' on' : ''}" data-act="pickCsysPos" data-i="${i}" title="Pick this coordinate only">⌖</button></div>${cf('pos', i, [m[3], m[7], m[11]][i])}</div>`).join('')}</div></div>
         ${grid3('Angles α, β, γ (°) — R = Rz(γ)·Ry(β)·Rx(α)', 'eul', e)}
         ${grid3('X axis vector', 'xa', [m[0], m[4], m[8]])}
@@ -1308,6 +1318,51 @@
       <button class="btn" data-act="dup">Duplicate</button></div>
       <div class="btns opsdel"><button class="btn danger" data-act="del" title="The children are re-attached to the parent; the bodies keep their place">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
+  }
+  const SLOT_SRC = [['xyz', 'Coordinates'], ['pick', 'Point / vertex in the view'], ['arc', 'Centre of a circular edge'], ['mid', 'Midpoint of an edge'], ['planes3', 'Intersection of 3 faces']];
+  const AX_SRC = [['vec', 'Vector (typed)'], ['pts', 'Two points'], ['face', 'Normal of a face'], ['edge', 'Direction of an edge'], ['circ', 'Axis of a circular edge']];
+  const SLOT_MODE = { pick: 'vertex', arc: 'arc', mid: 'mid', planes3: 'planes3' };
+  function slotHTML(c, label, path) {
+    const sl = APP.csSlot(c.def, path), on = S.fill && S.fill.kind === 'csdef' && S.fill.slot === path;
+    return `<div class="fld full grp csd"><div class="gh"><label>${label}</label><select class="mini" data-cd="${path}|src">${SLOT_SRC.map(([k, l]) => `<option value="${k}" ${sl.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${sl.src !== 'xyz' ? `<button class="pk${on ? ' on' : ''}" data-act="csdPick" data-path="${path}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div>
+      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${path}|p${i}" value="${fmt(sl.p[i], 6)}">`).join('')}</div></div>`;
+  }
+  function axisHTML(c, which, title) {
+    const a = c.def[which], v = APP.csAxisVec(a), pk = ['face', 'edge', 'circ'].includes(a.src), on = S.fill && S.fill.kind === 'csdef' && S.fill.ax === which;
+    return `<div class="csdax"><h5>${title}</h5><div class="fld full"><div class="row2"><label style="margin:0">This axis is</label><select class="mini" data-cd="${which}|axis">${['X', 'Y', 'Z'].map(L => `<option ${a.axis === L ? 'selected' : ''}>${L}</option>`).join('')}</select>
+<button class="btn sm" data-act="csdFlip" data-ax="${which}" title="Reverse the direction">⇄ Reverse</button></div>
+      <div class="row2" style="margin-top:4px"><select data-cd="${which}|src" style="flex:1;min-width:0">${AX_SRC.map(([k, l]) => `<option value="${k}" ${a.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${pk ? `<button class="pk${on ? ' on' : ''}" data-act="csdPickAxis" data-ax="${which}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div></div>
+      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${which}|v${i}" value="${fmt(v[i], 6)}" ${a.src === 'pts' ? 'readonly' : ''}>`).join('')}</div>
+      ${a.src === 'pts' ? slotHTML(c, 'From point', which + '.p1') + slotHTML(c, 'To point', which + '.p2') : ''}</div>`;
+  }
+  function csDefHTML(c) {
+    const d = c.def;
+    let h = `<div class="muted" style="font-size:12px">Values below are in world coordinates. Each point can be typed, picked on a vertex, taken at the centre of a circular edge, the midpoint of an edge, or the intersection of 3 faces.</div>` + slotHTML(c, 'Origin', 'o');
+    if (d.method === 'pts3') h += slotHTML(c, 'Point on the X axis', 'px') + slotHTML(c, 'Point in the XY plane (+Y side)', 'pxy');
+    else h += axisHTML(c, 'a', 'Axis 1 (kept exactly)') + axisHTML(c, 'b', 'Axis 2 (made perpendicular to axis 1)') + `<div class="muted" style="font-size:12px">The third axis is deduced (right-handed system).</div>`;
+    if (d.error) h += `<div class="msg bad">⚠ ${esc(d.error)}</div>`; else if (d.note) h += `<div class="msg">ⓘ ${esc(d.note)}</div>`;
+    return h;
+  }
+  function onCsDefField(e, t, c) {
+    if (e.type !== 'change') return;
+    const [path, field] = t.dataset.cd.split('|'), d = c.def, key = 'csdef' + c.id;
+    if (path !== 'method' && !d) return;
+    if (path === 'method') {
+      APP.snap(); if (t.value === 'manual') { c.def = null; APP.changed({ tree: true, right: true }); return; }
+      c.def = APP.csDefNew(c); c.def.method = t.value; APP.applyCsysDef(c, key); APP.changed({ tree: true, right: true }); return;
+    }
+    APP.snap(key);
+    if (path === 'a' || path === 'b') {
+      const a = d[path], o = d[path === 'a' ? 'b' : 'a'];
+      if (field === 'axis') { if (o.axis === t.value) o.axis = a.axis; a.axis = t.value; }
+      else if (field === 'src') { if (t.value === 'pts' && a.src !== 'pts') { const v = APP.csAxisVec(a); a.p2.p = V.add(a.p1.p, v); } else if (a.src === 'pts') { a.v = APP.csAxisVec(a); a.flip = false; } a.src = t.value; }
+      else { const i = +field[1], v = parseFloat(t.value); if (!isFinite(v)) return; a.v = APP.csAxisVec(a); a.flip = false; a.v[i] = v; a.src = 'vec'; }
+    } else {
+      const sl = APP.csSlot(d, path);
+      if (field === 'src') sl.src = t.value; else { const i = +field[1], v = parseFloat(t.value); if (!isFinite(v)) return; sl.p[i] = v; sl.src = 'xyz'; }
+    }
+    APP.applyCsysDef(c, key); APP.changed({ tree: true, right: true });
   }
   let csysSrc = null;
   function applyMatrixText(c, text) {
@@ -1501,7 +1556,8 @@
     if (k === 'title') { if (e.type === 'input') { APP.snap('title'); S.model.title = t.value; APP.changed({}); } return; }
     if (!it || !S.sel) return;
     const type = S.sel.t, key = type + it.id;
-    if (t.dataset.cf !== undefined) { if (S.sel.t === 'csys') onCsysField(e, t, it); return; }
+    if (t.dataset.cd !== undefined) { if (S.sel.t === 'csys') onCsDefField(e, t, it); return; }
+    if (t.dataset.cf !== undefined) { if (S.sel.t === 'csys') { if (it.def && (e.type === 'input' || e.type === 'change')) { it.def = null; } onCsysField(e, t, it); } return; }
     if (t.dataset.bf !== undefined) {
       if (e.type !== 'input') return;
       const v = parseFloat(t.value); if (!isFinite(v)) return;
@@ -1582,6 +1638,9 @@
         const inv = FK.M.inv(it.m); if (!inv || !inv.every(Number.isFinite)) { toast('This matrix cannot be inverted'); break; }
         if (APP.setCsysLocal(it, inv, null, false)) toast(`${it.name}: matrix inverted (it now maps the other way)`);
       } break;
+      case 'csdPick': if (it && S.sel.t === 'csys' && it.def) { const path = a.dataset.path, sl = APP.csSlot(it.def, path); startFill({ kind: 'csdef', id: it.id, slot: path, mode: SLOT_MODE[sl.src] || 'vertex' }); } break;
+      case 'csdPickAxis': if (it && S.sel.t === 'csys' && it.def) { const ax = a.dataset.ax, src = it.def[ax].src; startFill({ kind: 'csdef', id: it.id, ax, mode: src === 'face' ? 'face' : src === 'edge' ? 'edge' : 'circ' }); } break;
+      case 'csdFlip': if (it && S.sel.t === 'csys' && it.def) { APP.snap('csdef' + it.id); const ax = it.def[a.dataset.ax]; ax.flip = !ax.flip; APP.applyCsysDef(it, 'csdef' + it.id); APP.changed({ tree: true, right: true }); } break;
       case 'ptUndo': S.ptPlanes = (S.ptPlanes || []).slice(0, -1); ptRefreshPending(); renderToolOpts(); updateStatus(); break;
       case 'cutRegion': if (it && S.sel.t === 'region') { S.cutRid = it.id; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
       case 'regFromBodyCut': if (it && S.sel.t === 'body') { APP.snap(); const r = APP.addRegion(APP.regionNameFor(it.name), '+' + it.name, { visible: true }); S.sel = { t: 'region', id: r.id }; S.cutRid = r.id; APP.changed({ tree: true, right: true }); S.opt.cutStay = true; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
@@ -1639,7 +1698,7 @@
   /* ---- field pickers ---- */
   function fillSpec() {
     if (!S.fill) return null;
-    if (S.fill.kind === 'csys') return { kind: 'point' };
+    if (S.fill.kind === 'csys' || S.fill.kind === 'csdef') return { kind: 'point' };
     const b = APP.getBody(S.fill.id), g = b && APP.FIELD_GROUPS[b.type] && APP.FIELD_GROUPS[b.type][S.fill.g];
     return g ? (g.alts && S.fill.alt !== undefined ? g.alts[S.fill.alt] : g.pick) : null;
   }
@@ -1679,7 +1738,28 @@
     if (!S.fill) return;
     S.fill = null; S.fillPts = []; S.ptPlanes = []; APP.setPending(null); renderToolOpts(); renderRight(); updateStatus();
   }
+  function csdefPick(hit, x, y) {
+    const d = S.fill, c = APP.getCsys(d.id); if (!c || !c.def) { cancelFill(); return; }
+    APP.snap('csdef' + c.id);
+    if (d.slot) {
+      const rp = resolvePoint(hit, x, y); if (!rp || rp.wait) return;
+      const sl = APP.csSlot(c.def, d.slot); sl.p = rp.p.slice();
+    } else {
+      const a = c.def[d.ax];
+      if (d.mode === 'face') { a.v = APP.makePick(hit, 'face', x, y).normal.slice(); }
+      else {
+        const e = edgePickForFill(hit, x, y); if (e.none) { toast('No sharp edge here: click closer to an edge (or lower the edge angle)'); return; }
+        if (d.mode === 'edge') { const p = e.chain ? e.chain.a : e.a, q = e.chain ? e.chain.b : e.b; a.v = V.sub(q, p); }
+        else { if (!e.circle) { toast('This edge is not part of a circular rim: click an arc / circle edge, or adjust the edge angle'); return; } a.v = e.circle.n.slice(); }
+      }
+      a.flip = false;
+    }
+    S.fill = null; S.ptPlanes = []; APP.setPending(null);
+    APP.applyCsysDef(c, 'csdef' + c.id); renderToolOpts(); updateStatus();
+    if (narrow()) setDrawer('right', true);
+  }
   function fillFromHit(hit, x, y) {
+    if (S.fill && S.fill.kind === 'csdef') return csdefPick(hit, x, y);
     const sp = fillSpec(); if (!sp) { cancelFill(); return; }
     if (sp.kind === 'circlePts') {
       const q = APP.pointFromHit(hit, x, y); S.fillPts = (S.fillPts || []).concat([q.p]);
@@ -1726,7 +1806,7 @@
     if (!S.fill && narrow()) setDrawer('right', true);
   }
   function pickForTool(hit, x, y) {
-    if (S.fill && S.fill.kind === 'csys') return hoverPoint(hit, x, y);
+    if (S.fill && (S.fill.kind === 'csys' || S.fill.kind === 'csdef')) return hoverPoint(hit, x, y);
     if (S.fill) { const sp = fillSpec(); return sp && sp.kind === 'normal' ? APP.makePick(hit, 'face', x, y) : sp && EDGE_KINDS.includes(sp.kind) ? edgePickForFill(hit, x, y) : APP.pointFromHit(hit, x, y); }
     if (S.tool === 'select') return S.info ? APP.makePick(hit, S.filter, x, y) : null;
     if (S.tool === 'measure' || S.tool === 'rpp' || S.tool === 'csys3') return hoverPoint(hit, x, y);
@@ -1979,5 +2059,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { startFill, processHit, newCsysEditable, resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

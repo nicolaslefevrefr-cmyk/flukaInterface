@@ -208,6 +208,36 @@
     return c;
   };
   APP.csysFromPoints = (o, px, pxy) => M.fromAxes(o, V.sub(px, o), V.sub(pxy, o));
+  /* ---------- Definition of a coordinate system: an origin and two axes, each taken from a configurable source (world values) ---------- */
+  APP.csDefNew = function (c) {
+    const w = APP.csysWorld(c.id), P = (p) => ({ src: 'xyz', p: p.slice() });
+    const o = [w[3], w[7], w[11]], xa = [w[0], w[4], w[8]], ya = [w[1], w[5], w[9]];
+    const ax = (axis, v) => ({ axis, src: 'vec', v: v.slice(), flip: false, p1: P(o), p2: P(V.add(o, v)) });
+    return { method: 'axes', o: P(o), a: ax('X', xa), b: ax('Y', ya), px: P(V.add(o, xa)), pxy: P(V.add(o, ya)), error: '', note: '' };
+  };
+  APP.csSlot = (def, path) => path.split('.').reduce((o, k) => o[k], def);
+  APP.csAxisVec = function (a) { const v = a.src === 'pts' ? V.sub(a.p2.p, a.p1.p) : a.v; return a.flip ? V.mul(v, -1) : v.slice(); };
+  /** → { world: 3×4 (world frame) , note } | { error } */
+  APP.csDefSolve = function (def) {
+    const o = def.o.p; let ia, ib, va, vb;
+    if (def.method === 'pts3') { ia = 0; ib = 1; va = V.sub(def.px.p, o); vb = V.sub(def.pxy.p, o); }
+    else { ia = 'XYZ'.indexOf(def.a.axis); ib = 'XYZ'.indexOf(def.b.axis); if (ia === ib) return { error: 'Axis 1 and axis 2 must be different (X, Y or Z)' }; va = APP.csAxisVec(def.a); vb = APP.csAxisVec(def.b); }
+    if (!(V.len(va) > 1e-9)) return { error: 'The first axis has zero length' };
+    if (!(V.len(vb) > 1e-9)) return { error: 'The second axis has zero length' };
+    const ua = V.norm(va), vb2 = V.sub(vb, V.mul(ua, V.dot(vb, ua)));
+    if (V.len(vb2) < 1e-6 * V.len(vb)) return { error: 'The two axes are parallel: choose two different directions' };
+    const ub = V.norm(vb2), ic = 3 - ia - ib, s = ((ib - ia + 3) % 3 === 1) ? 1 : -1, uc = V.mul(V.cross(ua, ub), s), E = [null, null, null];
+    E[ia] = ua; E[ib] = ub; E[ic] = uc;
+    const ang = Math.acos(Math.max(-1, Math.min(1, V.dot(ua, V.norm(vb))))) * 180 / Math.PI;
+    return { world: [E[0][0], E[1][0], E[2][0], o[0], E[0][1], E[1][1], E[2][1], o[1], E[0][2], E[1][2], E[2][2], o[2]],
+      note: Math.abs(ang - 90) > 0.01 ? `The 2nd axis is not perpendicular to the 1st (angle ${+ang.toFixed(3)}°): it is projected, the 1st axis is kept exactly` : '' };
+  };
+  APP.applyCsysDef = function (c, key) {
+    const r = APP.csDefSolve(c.def); c.def.error = r.error || ''; c.def.note = r.note || '';
+    if (r.error) { APP.changed({ right: true }); return false; }
+    const loc = M.mul(M.inv(APP.csysWorld(c.parent || 0)), r.world);
+    return APP.setCsysLocal(c, loc, key || null, false, true);
+  };
   APP.csysFromNormal = function (o, n) {
     n = V.norm(n);
     const ref = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
@@ -221,12 +251,12 @@
     APP.snap(); c.name = nn; APP.changed({ tree: true }); return true;
   };
   /** Set the local matrix of c; non-frozen descendants follow, frozen ones keep their world pose. */
-  APP.setCsysLocal = function (c, m, key, soft) {
+  APP.setCsysLocal = function (c, m, key, soft, keepDef) {
     const cl = M.clean(m, 1e-4);
     if (!cl.ok) { APP.toast(cl.error); return false; }
     APP.snap(key);
     const old = new Map(S.model.csys.map(x => [x.id, APP.csysWorld(x.id)]));
-    c.m = cl.m;
+    c.m = cl.m; if (!keepDef) c.def = null;
     const order = S.model.csys.filter(x => x !== c && APP.isDescendant(x.id, c.id)).sort((a, b) => APP.csysDepth(a.id) - APP.csysDepth(b.id));
     for (const x of order) {
       if (!x.frozen) continue;

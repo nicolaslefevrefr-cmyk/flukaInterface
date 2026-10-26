@@ -359,3 +359,8 @@ dialog.devwin { width: min(400px, 94vw); z-index: 41; }
 
 
 #termBody.flash { outline: 3px solid #f2994a; outline-offset: 1px; transition: outline-color .8s; }
+/* coordinate system definition */
+.csdax { border-top: 1px solid var(--line, #dde); margin-top: 8px; padding-top: 6px; }
+.csdax h5 { margin: 0 0 4px; font-size: 12.5px; }
+.gh select.mini, .row2 select.mini { max-width: 190px; font-size: 12px; }
+.msg.bad { color: #b42318; }

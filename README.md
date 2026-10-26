@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.12.0)
+# Combinatorial Geometry Tool  (v1.13.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.13.0** — coordinate systems have a *Definition* (right panel): typed position + angles, origin + 2 axes (each axis X / Y / Z taken from a typed vector, two points, a face normal, an edge direction or the axis of a circular edge) or origin + point on X + point in XY; every point can be typed, picked, or taken at a circle centre, an edge midpoint or the intersection of 3 faces. A new coordinate system opens its Definition tab straight away. Editing the resulting values switches back to typed.
 - **1.12.0** — edge angle (and face tolerance) editable in the pick windows of cylinder / circle / radius / direction picking and of the plane, cut and look-at-face tools; option to disable the "lower angle" retry that follows a rim through a fillet; position-picking tools (coordinate system from 3 points, csys position, distance, RPP) can take the point from a vertex, the centre of a circular edge, the midpoint of an edge or the intersection of 3 faces; coordinate-system 3×4 matrix: paste from the clipboard (3×4, 4×4 or 4 lines of 3) and invert (A→B ↔ B→A).
 - **1.11.2** — "Pick in view" now only selects the clicked body / plane in the body list of the region definition (you then choose + / − / union); that list is grouped by type, each group sorted alphabetically (natural order).
 - **1.11.1** — visual formula builder removed; object names also drawn on planes; new "🖱 Pick in view…" in the region definition: click bodies / planes in the 3D view to add them (inside or outside, in every zone or one), with the list of overlapping objects when several are under the cursor.
