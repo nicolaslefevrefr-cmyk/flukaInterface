@@ -881,20 +881,16 @@
   /** What stops working when an item is no longer exported. Bodies → the regions that use them, then (chain) every region whose live link
    *  follows one of those; regions → regions linked to them. Returns [{ kind, item, depth, via }]. */
   APP.exportImpact = function (kind, item) {
-    const out = [], seen = new Set([kind + item.id]);
-    const regs = S.model.regions;
-    const usersOfBody = (b) => regs.filter(r => { try { return FK.exprNames(FK.parseExpr(r.expr || '')).has(b.name); } catch (e) { return false; } });
-    const followers = (r) => regs.filter(x => x.meta && x.meta.link && (x.meta.link.a === r.id || x.meta.link.b === r.id));
-    let frontier = [];
-    if (kind === 'body') for (const r of usersOfBody(item)) { if (!seen.has('region' + r.id)) { seen.add('region' + r.id); out.push({ kind: 'region', item: r, depth: 1, via: item.name }); frontier.push({ r, depth: 1 }); } }
-    else if (kind === 'region') frontier.push({ r: item, depth: 0 });
-    while (frontier.length) {
-      const nxt = [];
-      for (const { r, depth } of frontier) for (const f of followers(r)) { if (seen.has('region' + f.id)) continue; seen.add('region' + f.id); out.push({ kind: 'region', item: f, depth: depth + 1, via: r.name }); nxt.push({ r: f, depth: depth + 1 }); }
-      frontier = nxt;
-    }
+    // Only bodies matter: a region's expression is written with bodies, never with other regions (a live link between two regions exists only in this tool).
+    if (kind !== 'body') return [];
+    const out = [];
+    for (const r of S.model.regions) { let has = false; try { has = FK.exprNames(FK.parseExpr(r.expr || '')).has(item.name); } catch (e) { has = false; } if (has) out.push({ kind: 'region', item: r, depth: 1, via: item.name }); }
     return out;
   };
+  /** Name written in the INP file for a body or a region. */
+  APP.inpNameOf = function (kind, item) { const nm = FK.inpNames(S.model); return (kind === 'region' ? nm.regions : nm.bodies).get(item) || item.name; };
+  /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
+  APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;

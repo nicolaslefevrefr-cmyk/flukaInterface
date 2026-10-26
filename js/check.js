@@ -63,10 +63,11 @@
     for (const b of parsed.bodies) iBodies.set(b.name, FK.insideFn(b));
     // split bodies (OBOX → RPP + planes) exist in the INP only under generated names; their regions are compared as a whole
     const iRegs = new Map(parsed.regions.map(r => [r.name, r]));
+    const inm = FK.inpNames(model);          // names written in the INP file (max 8 characters)
     const pairs = [];
     for (const r of model.regions) {
       if (r.noExport) continue;
-      const ir = iRegs.get(r.name);
+      const ir = iRegs.get(inm.regions.get(r) || r.name);
       if (!ir) { out.missing.push(`Region ${r.name} is missing from the INP`); continue; }
       let a1, a2; try { a1 = FK.parseExpr(r.expr); a2 = FK.parseExpr(ir.expr); } catch (e) { out.unsupported.push(r.name); continue; }
       const names = Array.from(FK.exprNames(a1)).filter(n => !mBodies.has(n) || !mBodies.get(n)), inames = Array.from(FK.exprNames(a2)).filter(n => !iBodies.get(n));

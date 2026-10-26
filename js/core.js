@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.13.0';
+  FK.VERSION = '1.14.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1860,16 +1860,57 @@
   };
 
   /* ---------------- INP block generation ---------------- */
+  /* ---------- Names written in the INP file (max 8 characters), independent of the names used in the tool ---------- */
+  FK.INP_NAME_MAX = 8;
+  const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
+  /** { bodies: Map(item → name), regions: Map(item → name), explicit: Set(item), changed: n } — an explicit `inpName` is kept as typed;
+   *  otherwise the name itself when it fits, else its first 8 characters, made unique with a numeric suffix. */
+  FK.inpNames = function (model) {
+    const res = { bodies: new Map(), regions: new Map(), explicit: new Set(), shortened: [] };
+    const run = (list, map) => {
+      const used = new Set();
+      for (const it of list) { const x = (it.inpName || '').trim(); if (x) { map.set(it, x); used.add(x); res.explicit.add(it); } }
+      const auto = list.filter(it => !map.has(it));
+      const place = (it) => {
+        let cand = it.name.length <= FK.INP_NAME_MAX ? it.name : it.name.slice(0, FK.INP_NAME_MAX);
+        if (used.has(cand)) { for (let k = 1; k < 100000; k++) { const suf = String(k); cand = it.name.slice(0, FK.INP_NAME_MAX - suf.length) + suf; if (!used.has(cand)) break; } }
+        used.add(cand); map.set(it, cand); if (cand !== it.name) res.shortened.push(it);
+      };
+      auto.filter(it => it.name.length <= FK.INP_NAME_MAX).forEach(place);       // names that already fit keep their name first
+      auto.filter(it => it.name.length > FK.INP_NAME_MAX).forEach(place);
+    };
+    run(model.bodies, res.bodies); run(model.regions, res.regions);
+    return res;
+  };
+  /** Copy of the model carrying the INP names (bodies, regions and the body names used in the region expressions). */
+  FK.inpView = function (model) {
+    const nm = FK.inpNames(model), byName = new Map();
+    const bodies = model.bodies.map(b => { const n = nm.bodies.get(b); byName.set(b.name, n); return n === b.name ? b : Object.assign({}, b, { name: n }); });
+    const any = model.bodies.some(b => nm.bodies.get(b) !== b.name);
+    const rename = (ast) => { for (const z of ast.zones) for (const t of z) { if (t.sub) rename(t.sub); else if (byName.has(t.name)) t.name = byName.get(t.name); } };
+    const regions = model.regions.map(r => {
+      const n = nm.regions.get(r); let expr = r.expr;
+      if (any) { try { const ast = FK.parseExpr(r.expr || ''); rename(ast); expr = FK.formatExpr(ast); } catch (e) { /* kept as-is */ } }
+      return n === r.name && expr === r.expr ? r : Object.assign({}, r, { name: n, expr });
+    });
+    return Object.assign({}, model, { bodies, regions });
+  };
   FK.validate = function (model, resolve) {
     const w = [];
     if ((model.title || '').length > 60) w.push(`Title longer than 60 characters: cut to 60 on export (A60)`);
-    const bn = new Set(), rn = new Set();
-    const check = (name, kind) => {
-      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) w.push(`${kind} "${name}": invalid name (letters, digits, _ ; must start with a letter)`);
-      else if (name.length > 8) w.push(`${kind} "${name}": more than 8 characters`);
+    const bn = new Set(), rn = new Set(), inm = FK.inpNames(model);
+    const check = (it, kind, map) => {
+      if (it.noExport) return;
+      const name = map.get(it), shown = it.name === name ? `"${name}"` : `"${it.name}" (INP name "${name}")`;
+      if (!NAME_RE.test(name)) w.push(`${kind} ${shown}: invalid name (letters, digits, _ ; must start with a letter)`);
+      else if (name.length > FK.INP_NAME_MAX) w.push(`${kind} ${shown}: INP name longer than 8 characters`);
     };
+    const dupCheck = (list, map, kind) => { const seen = new Map(); for (const it of list) { if (it.noExport) continue; const n = map.get(it); if (seen.has(n)) w.push(`${kind} INP name "${n}" is used by both "${seen.get(n)}" and "${it.name}"`); else seen.set(n, it.name); } };
+    dupCheck(model.bodies, inm.bodies, 'Body'); dupCheck(model.regions, inm.regions, 'Region');
+    const autoN = inm.shortened.filter(it => !it.noExport).length;
+    if (autoN) w.push(`${autoN} name${autoN > 1 ? 's' : ''} longer than 8 characters (or in conflict) will be shortened in the INP file — see the "INP name" of the object`);
     for (const b of model.bodies) {
-      check(b.name, 'Body');
+      check(b, 'Body', inm.bodies);
       if (bn.has(b.name)) w.push(`Body "${b.name}": duplicate name`);
       bn.add(b.name);
       if (b.type === 'RAW') w.push(`Body "${b.name}" (${b.rawType}): type not displayed, kept as-is`);
@@ -1882,7 +1923,7 @@
       }
     }
     for (const r of model.regions) {
-      check(r.name, 'Region');
+      check(r, 'Region', inm.regions);
       if (rn.has(r.name)) w.push(`Region "${r.name}": duplicate name`);
       rn.add(r.name);
       if (!r.expr.trim()) { w.push(`Region "${r.name}": empty expression`); continue; }
@@ -2006,6 +2047,7 @@
    * regions A8 + I5 + expression), every line <= 132 columns. */
   FK.generateInp = function (model, opts) {
     opts = opts || {};
+    model = FK.inpView(model);
     const style = opts.style === 3 ? 3 : opts.style === 2 ? 2 : 1;
     const out = [];
     const title = (model.title || 'Geometry').replace(/\s+$/, '');

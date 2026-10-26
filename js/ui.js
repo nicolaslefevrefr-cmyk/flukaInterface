@@ -1226,9 +1226,19 @@
   }
 
   /** "Export to the INP" checkbox (+ an info sign when nothing uses the body). */
+  function inpNameHint(it, kind, eff) {
+    const list = kind === 'region' ? S.model.regions : S.model.bodies, nm = FK.inpNames(S.model), map = kind === 'region' ? nm.regions : nm.bodies;
+    if (it.noExport) return '';
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(eff)) return '<span class="bad">⚠ letters, digits and _ only; must start with a letter</span>';
+    if (eff.length > 8) return '<span class="bad">⚠ more than 8 characters</span>';
+    const dup = list.find(x => x !== it && !x.noExport && map.get(x) === eff); if (dup) return `<span class="bad">⚠ same INP name as "${esc(dup.name)}"</span>`;
+    return eff !== it.name ? `<span class="muted">Written as <b>${esc(eff)}</b> in the INP file</span>` : '';
+  }
   function exportRow(it, kind) {
     const unused = kind === 'body' && !APP.bodyUsed(it);
-    return `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="exportInp" ${it.noExport ? '' : 'checked'}>Export to the INP file</label>${unused ? ` <span class="wicon info" tabindex="0" title="Not used by any region">ⓘ not used</span>` : ''}</div>`;
+    const eff = APP.inpNameOf(kind, it), explicit = !!(it.inpName && it.inpName.trim());
+    return `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="exportInp" ${it.noExport ? '' : 'checked'}>Export to the INP file</label>${unused ? ` <span class="wicon info" tabindex="0" title="Not used by any region">ⓘ not used</span>` : ''}</div>
+      <div class="fld full"><label title="Name written in the INP file (max 8 characters). Left automatic, it is the name itself, cut to 8 characters and made unique.">INP name ${explicit ? '' : '<small class="muted">(automatic)</small>'}</label><div class="row2"><input type="text" data-k="inpName" maxlength="16" spellcheck="false" value="${esc(eff)}" ${it.noExport ? 'disabled' : ''}>${explicit ? '<button class="btn sm" data-act="inpNameReset" title="Back to the automatic name">↺ auto</button>' : ''}</div><div class="inpnhint" data-inpnhint>${inpNameHint(it, kind, eff)}</div></div>`;
   }
   /** "CAD source" select: automatic / none / one of the meshes. */
   function cadRow(it, kind) {
@@ -1590,6 +1600,14 @@
         t.checked = true;                                   // stays checked until the user decides
         askImpact(type, it, imp).then(res => { if (res === 'cancel') return; APP.snap(); it.noExport = true; if (res === 'all') imp.forEach(x => { x.item.noExport = true; }); APP.changed({ tree: true, right: true }); });
       } break;
+      case 'inpName': {
+        if (e.type !== 'input' && e.type !== 'change') break;
+        APP.snap(key + 'inpn'); const v = t.value.trim();
+        if (v) it.inpName = v; else delete it.inpName;
+        if (e.type === 'change') { APP.changed({ right: true }); break; }
+        APP.changed({}); const h = $('#rightBody [data-inpnhint]'); if (h) h.innerHTML = inpNameHint(it, type, v || APP.inpNameOf(type, it));
+        break;
+      }
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
       case 'lnkA': case 'lnkB': case 'lnkOp': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) { APP.snap(); const l = it.meta.link; if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkB') l.b = +t.value; else if (k === 'lnkOp') l.op = t.value; else l.mode = t.value; APP.changed({ tree: true, right: true }); } break;
       case 'expr': if (it.meta && it.meta.link) break; APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
@@ -1641,6 +1659,7 @@
       case 'csdPick': if (it && S.sel.t === 'csys' && it.def) { const path = a.dataset.path, sl = APP.csSlot(it.def, path); startFill({ kind: 'csdef', id: it.id, slot: path, mode: SLOT_MODE[sl.src] || 'vertex' }); } break;
       case 'csdPickAxis': if (it && S.sel.t === 'csys' && it.def) { const ax = a.dataset.ax, src = it.def[ax].src; startFill({ kind: 'csdef', id: it.id, ax, mode: src === 'face' ? 'face' : src === 'edge' ? 'edge' : 'circ' }); } break;
       case 'csdFlip': if (it && S.sel.t === 'csys' && it.def) { APP.snap('csdef' + it.id); const ax = it.def[a.dataset.ax]; ax.flip = !ax.flip; APP.applyCsysDef(it, 'csdef' + it.id); APP.changed({ tree: true, right: true }); } break;
+      case 'inpNameReset': if (it) { APP.snap(); delete it.inpName; APP.changed({ right: true }); } break;
       case 'ptUndo': S.ptPlanes = (S.ptPlanes || []).slice(0, -1); ptRefreshPending(); renderToolOpts(); updateStatus(); break;
       case 'cutRegion': if (it && S.sel.t === 'region') { S.cutRid = it.id; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
       case 'regFromBodyCut': if (it && S.sel.t === 'body') { APP.snap(); const r = APP.addRegion(APP.regionNameFor(it.name), '+' + it.name, { visible: true }); S.sel = { t: 'region', id: r.id }; S.cutRid = r.id; APP.changed({ tree: true, right: true }); S.opt.cutStay = true; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
@@ -1964,9 +1983,11 @@
     const t = APP.inpText();
     if (inpText.value !== t) inpText.value = t;
     const w = APP.warnings();
-    $('#inpWarn').innerHTML = w.map(esc).join('<br>');
+    const nun = APP.unusedBodies().length;
+    $('#inpWarn').innerHTML = w.map(esc).join('<br>') + (nun ? `${w.length ? '<br>' : ''}<button class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
     const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
   }
+  $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
   $('#inpStyle').onchange = (e) => { S.opt.style = +e.target.value; updateInp(); APP.save(); };
   $('#btnInpCopy').onclick = () => copyText(APP.inpText());
   $('#btnInpSave').onclick = () => {
