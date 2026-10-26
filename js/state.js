@@ -9,7 +9,7 @@
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
-    opt: { defV2: true, render: 'opaque', edges: true, invX: false, invY: false, names: 'off', pieceHl: true, snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSharpOnly: true, circleAll: false,
+    opt: { defV2: true, render: 'opaque', edges: true, invX: false, invY: false, names: 'off', pieceHl: true, snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSoft: true, ptMode: 'vertex', edgeSharpOnly: true, circleAll: false,
       margin: 10, style: 1, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
   };
   APP.nid = () => S.nextId++;

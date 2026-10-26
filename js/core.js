@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.11.2';
+  FK.VERSION = '1.12.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1004,6 +1004,30 @@
   };
 
   /** AST: {zones:[[{sign, name|sub}]]}; throws an Error on invalid syntax. */
+  /** Text (clipboard) → 3×4 matrix [r00 r01 r02 tx, r10 …] in row-major order.
+   *  Accepts 12 numbers (3 rows of 4), 16 numbers (4×4 homogeneous, last row ignored) or 4 lines of 3 numbers (columns R0 R1 R2 | t, transposed).
+   *  Separators: spaces, tabs, commas, semicolons, brackets; decimal comma tolerated. Returns { m, note } or { error }. */
+  FK.parseMatrix34 = function (text) {
+    const src = String(text || '').trim(); if (!src) return { error: 'The clipboard is empty' };
+    const NUM = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
+    const grab = (t) => (t.match(NUM) || []).map(Number);
+    let lines = src.split(/\r?\n/).map(l => l.trim()).filter(l => /\d/.test(l));
+    let rows = lines.map(l => grab(l));
+    let all = rows.reduce((a, r) => a.concat(r), []);
+    if (!/\./.test(src) && /\d,\d/.test(src) && all.length !== 12 && all.length !== 16) {          // decimal comma ("0,5 ; 1,2")
+      const alt = lines.map(l => grab(l.replace(/,/g, '.'))); const n2 = alt.reduce((a, r) => a + r.length, 0);
+      if (n2 === 12 || n2 === 16) { rows = alt; all = alt.reduce((a, r) => a.concat(r), []); }
+    }
+    if (all.length === 12) {
+      if (rows.length === 4 && rows.every(r => r.length === 3)) return { m: [0, 1, 2].map(r => [0, 1, 2, 3].map(q => rows[q][r])).reduce((a, r) => a.concat(r), []), note: 'read as 4 lines of 3 values (columns R0, R1, R2, translation): transposed' };
+      return { m: all.slice(), note: '' };
+    }
+    if (all.length === 16) {
+      const last = all.slice(12); if (Math.abs(last[0]) + Math.abs(last[1]) + Math.abs(last[2]) > 1e-9 || Math.abs(last[3] - 1) > 1e-9) return { error: 'This 4×4 matrix is not homogeneous (the last row must be 0 0 0 1)' };
+      return { m: all.slice(0, 12), note: '4×4 matrix: last row (0 0 0 1) ignored' };
+    }
+    return { error: `Expected a 3×4 matrix (12 numbers) but found ${all.length} number${all.length > 1 ? 's' : ''}` };
+  };
   FK.parseExpr = function (s) {
     const toks = FK.tokenizeExpr(s);
     let i = 0;

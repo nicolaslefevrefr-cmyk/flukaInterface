@@ -747,7 +747,7 @@
         const tryLoop = (k) => {
           const x = topo.vid[tri * 3 + k], y = topo.vid[tri * 3 + (k + 1) % 3];
           let lp = FK.edgeLoop(topo, x, y, S.opt.sharp);
-          if (!lp.closed && lp.segments < 6) { const alt = FK.edgeLoop(topo, x, y, Math.max(3, S.opt.sharp / 4)); if (alt.segments > lp.segments) lp = alt; }   // softer rim: lower the threshold
+          if (!lp.closed && lp.segments < 6 && S.opt.edgeSoft !== false) { const alt = FK.edgeLoop(topo, x, y, Math.max(3, S.opt.sharp / 4)); if (alt.segments > lp.segments) lp = alt; }   // softer rim: lower the threshold
           return { lp, circle: lp.segments >= 3 ? FK.fitCircle3D(lp.pts) : null, k };
         };
         let r = tryLoop(best);
