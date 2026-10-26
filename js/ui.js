@@ -58,6 +58,9 @@
     grip.addEventListener('dblclick', () => { delete S.opt.sheetH; sheet.style.height = ''; APP.save(); });
   }
 
+  /* ---------- Project name (= title line of the INP file, base name of the saved files) ---------- */
+  function syncProjName() { const i = $('#projName'); if (i && document.activeElement !== i && i.value !== (S.model.title || '')) i.value = S.model.title || ''; document.title = (S.model.title ? S.model.title + ' — ' : '') + 'Combinatorial Geometry Tool'; }
+  $('#projName').addEventListener('input', e => { APP.snap('title'); S.model.title = e.target.value; document.title = (e.target.value ? e.target.value + ' — ' : '') + 'Combinatorial Geometry Tool'; APP.changed({}); });
   /* ---------- Deferred updates ---------- */
   let flags = {}, scheduled = false, saveT = 0;
   APP.hooks.changed = (fl) => { Object.assign(flags, fl); if (!scheduled) { scheduled = true; setTimeout(flush, 30); } };
@@ -66,7 +69,7 @@
     const fl = flags; flags = {};
     try {
       if (S.pick && S.pick.ownerKind !== 'stl' && !fl.keepPick) { S.pick = null; APP.drawHighlight(APP.gSel, null); }
-      APP.sync();
+      APP.sync(); syncProjName();
       if (fl.tree || fl.right || fl.csys) APP.rebuildCsys();
       if (fl.measures) APP.rebuildMeasures();
       if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
@@ -87,11 +90,39 @@
   $('#btnRedo').onclick = () => APP.redo();
 
   /* ---------- Toolbar ---------- */
+  /* ---------- Resizable side panels (the viewport follows) ---------- */
+  const PW = { min: 220, left: 310, right: 340 };
+  const maxPW = () => Math.max(PW.min, Math.round(window.innerWidth * 0.6));
+  function applyPanelW() {
+    const r = document.documentElement.style;
+    r.setProperty('--lw', Math.min(maxPW(), Math.max(PW.min, +S.opt.lw || PW.left)) + 'px'); r.setProperty('--rw', Math.min(maxPW(), Math.max(PW.min, +S.opt.rw || PW.right)) + 'px');
+  }
+  (function () {
+    $$('.rsz').forEach(h => {
+      const side = h.dataset.rsz, drawer = side === 'left' ? dL : dR;
+      h.addEventListener('pointerdown', e => {
+        if (narrow()) return; e.preventDefault(); h.setPointerCapture(e.pointerId); document.body.classList.add('rszing'); h.classList.add('on');
+        const x0 = e.clientX, w0 = drawer.getBoundingClientRect().width;
+        const mv = ev => { const dx = ev.clientX - x0, w = Math.round(Math.min(maxPW(), Math.max(PW.min, w0 + (side === 'left' ? dx : -dx)))); S.opt[side === 'left' ? 'lw' : 'rw'] = w; applyPanelW(); };
+        const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); document.body.classList.remove('rszing'); h.classList.remove('on'); APP.save(); };
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      });
+      h.addEventListener('dblclick', () => {
+        if (side === 'left') {                       // fit the longest name of the tree
+          let extra = 0; $$('#leftBody .item .nm').forEach(n => { extra = Math.max(extra, n.scrollWidth - n.clientWidth); });
+          if (extra > 0) S.opt.lw = Math.min(maxPW(), Math.round(drawer.getBoundingClientRect().width + extra + 14)); else S.opt.lw = PW.left;
+        } else S.opt.rw = PW.right;
+        applyPanelW(); APP.save();
+      });
+    });
+    window.addEventListener('resize', applyPanelW);
+  })();
   function syncToolbar() {
+    applyPanelW();
     $$('#grpFilter button').forEach(b => b.classList.toggle('on', S.tool === 'select' && !!S.info && b.dataset.filter === S.filter));
     $$('#grpProj button[data-proj]').forEach(b => b.classList.toggle('on', b.dataset.proj === (S.opt.proj || 'persp')));
     $$('#grpRender button[data-render]').forEach(b => b.classList.toggle('on', b.dataset.render === (S.opt.render || 'shaded')));
-    $('#btnEdges').classList.toggle('on', S.opt.edges !== false);
+    $('#btnEdges').classList.toggle('on', S.opt.edges !== false); $('#btnOnlyExp').classList.toggle('on', !!S.opt.onlyExp);
     { const nm = S.opt.names || 'off', b = $('#btnNames'); b.classList.toggle('on', nm !== 'off'); b.title = 'Object names in the viewport: ' + nm + ' (click: off → regions → bodies → all)'; }
     $('#btnInvX').classList.toggle('on', !!S.opt.invX); $('#btnInvY').classList.toggle('on', !!S.opt.invY);
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
@@ -117,6 +148,7 @@
   });
   $$('#grpProj button[data-proj]').forEach(b => b.onclick = () => { APP.setProjection(b.dataset.proj); syncToolbar(); APP.save(); });
   $$('#grpRender button[data-render]').forEach(b => b.onclick = () => { S.opt.render = b.dataset.render; APP.applyStyles(); syncToolbar(); APP.save(); });
+  $('#btnOnlyExp').onclick = () => { S.opt.onlyExp = !S.opt.onlyExp; APP.applyStyles(); APP.refreshNames(); APP.changed({}); syncToolbar(); APP.save(); toast(S.opt.onlyExp ? 'Showing only the objects written in the INP file' : 'Showing all visible objects'); };
   $('#btnNames').onclick = () => { const order = ['off', 'regions', 'bodies', 'all']; S.opt.names = order[(order.indexOf(S.opt.names || 'off') + 1) % order.length]; APP.refreshNames(); APP.changed({}); syncToolbar(); APP.save(); toast('Names: ' + S.opt.names); };
   $('#btnEdges').onclick = () => { S.opt.edges = S.opt.edges === false; APP.applyStyles(); syncToolbar(); APP.save(); };
   { // global tessellation resolution (display + section + region booleans use the same facets)
@@ -543,7 +575,7 @@
   function devRegionCheck(preId) {
     const cad = +$('#devCad').value, box = $('#devRegs');
     const regs = S.model.regions.filter(r => r.expr && r.expr.trim());
-    box.innerHTML = regs.length ? regs.map(r => `<label><input type="checkbox" data-r="${r.id}" ${(preId ? r.id === preId : APP.cadId(r, 'region') === cad) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('') : '<span class="muted">No region</span>';
+    box.innerHTML = regs.length ? regs.map(r => `<label><input type="checkbox" data-r="${r.id}" ${(preId ? r.id === preId : !r.noExport) ? 'checked' : ''}> ${esc(r.name)}${r.noExport ? ' <small class="muted">(not exported)</small>' : ''}</label>`).join('') : '<span class="muted">No region</span>';
   }
   function openDevDlg(pre) {
     pre = pre || {};
@@ -773,7 +805,7 @@
         <div class="row2"><span class="muted" style="flex:1">Length tolerance (mm)</span><input type="number" step="0.05" min="0" style="width:80px" data-opt="snapTol" value="${o.snapTol === undefined ? 0.2 : o.snapTol}"></div>
         <div class="row2"><span class="muted" style="flex:1">Angle tolerance (°)</span><input type="number" step="0.1" min="0" style="width:80px" data-opt="snapAng" value="${o.snapAng === undefined ? 0.5 : o.snapAng}"></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
-        <div class="fld"><label>Title (line after GEOBEGIN)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
+        <div class="fld"><label>Project name (title line of the INP, name of the saved files)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
         <div class="fld" style="margin-top:6px"><label title="All INP coordinates and directions are written in this frame">Export coordinate system ⓘ</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div class="fld" style="margin-top:6px"><label title="Name-based geometry (COMBNAME): free format, names ≤ 8 characters, lines ≤ 132 columns. Fixed columns: GEOBEGIN (A8,2X,6E10.0,A8), title (2I5,10X,A60).">Output format ⓘ</label><select data-opt="style">
           <option value="1" ${o.style == 1 ? 'selected' : ''}>Multi-line style (REGION + line)</option>
@@ -1238,7 +1270,7 @@
     const unused = kind === 'body' && !APP.bodyUsed(it);
     const eff = APP.inpNameOf(kind, it), explicit = !!(it.inpName && it.inpName.trim());
     return `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="exportInp" ${it.noExport ? '' : 'checked'}>Export to the INP file</label>${unused ? ` <span class="wicon info" tabindex="0" title="Not used by any region">ⓘ not used</span>` : ''}</div>
-      <div class="fld full"><label title="Name written in the INP file (max 8 characters). Left automatic, it is the name itself, cut to 8 characters and made unique.">INP name ${explicit ? '' : '<small class="muted">(automatic)</small>'}</label><div class="row2"><input type="text" data-k="inpName" maxlength="16" spellcheck="false" value="${esc(eff)}" ${it.noExport ? 'disabled' : ''}>${explicit ? '<button class="btn sm" data-act="inpNameReset" title="Back to the automatic name">↺ auto</button>' : ''}</div><div class="inpnhint" data-inpnhint>${inpNameHint(it, kind, eff)}</div></div>`;
+      <div class="fld full"><label title="Name written in the INP file (max 8 characters). Left automatic, it is the name itself, cut to 8 characters and made unique.">INP name ${explicit ? '' : '<small class="muted">(automatic)</small>'}</label><div class="row2"><input type="text" data-k="inpName" maxlength="16" spellcheck="false" value="${esc(eff)}" ${it.noExport ? 'disabled' : ''}><button class="btn sm" data-act="inpNameAuto" title="Best short name for this object: its own name if it fits, else its first letters followed by 2 digits (kept unique)">Auto</button></div><div class="inpnhint" data-inpnhint>${inpNameHint(it, kind, eff)}</div></div>`;
   }
   /** "CAD source" select: automatic / none / one of the meshes. */
   function cadRow(it, kind) {
@@ -1659,7 +1691,7 @@
       case 'csdPick': if (it && S.sel.t === 'csys' && it.def) { const path = a.dataset.path, sl = APP.csSlot(it.def, path); startFill({ kind: 'csdef', id: it.id, slot: path, mode: SLOT_MODE[sl.src] || 'vertex' }); } break;
       case 'csdPickAxis': if (it && S.sel.t === 'csys' && it.def) { const ax = a.dataset.ax, src = it.def[ax].src; startFill({ kind: 'csdef', id: it.id, ax, mode: src === 'face' ? 'face' : src === 'edge' ? 'edge' : 'circ' }); } break;
       case 'csdFlip': if (it && S.sel.t === 'csys' && it.def) { APP.snap('csdef' + it.id); const ax = it.def[a.dataset.ax]; ax.flip = !ax.flip; APP.applyCsysDef(it, 'csdef' + it.id); APP.changed({ tree: true, right: true }); } break;
-      case 'inpNameReset': if (it) { APP.snap(); delete it.inpName; APP.changed({ right: true }); } break;
+      case 'inpNameAuto': if (it && (S.sel.t === 'body' || S.sel.t === 'region')) { APP.snap(); const n = APP.setSmartInpName(S.sel.t, it); APP.changed({ right: true }); toast(`INP name: ${n}`); } break;
       case 'ptUndo': S.ptPlanes = (S.ptPlanes || []).slice(0, -1); ptRefreshPending(); renderToolOpts(); updateStatus(); break;
       case 'cutRegion': if (it && S.sel.t === 'region') { S.cutRid = it.id; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
       case 'regFromBodyCut': if (it && S.sel.t === 'body') { APP.snap(); const r = APP.addRegion(APP.regionNameFor(it.name), '+' + it.name, { visible: true }); S.sel = { t: 'region', id: r.id }; S.cutRid = r.id; APP.changed({ tree: true, right: true }); S.opt.cutStay = true; setTool('regcut'); if (narrow()) setDrawer('right', false); } break;
@@ -1983,11 +2015,11 @@
     const t = APP.inpText();
     if (inpText.value !== t) inpText.value = t;
     const w = APP.warnings();
-    const nun = APP.unusedBodies().length;
-    $('#inpWarn').innerHTML = w.map(esc).join('<br>') + (nun ? `${w.length ? '<br>' : ''}<button class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
+    const nun = APP.unusedBodies().length, nsh = FK.inpNames(S.model).shortened.filter(x => !x.noExport).length;
+    $('#inpWarn').innerHTML = w.map(esc).join('<br>') + (nsh ? `${w.length ? '<br>' : ''}<button class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + (nun ?  `${w.length ? '<br>' : ''}<button class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
     const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
   }
-  $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
+  $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
   $('#inpStyle').onchange = (e) => { S.opt.style = +e.target.value; updateInp(); APP.save(); };
   $('#btnInpCopy').onclick = () => copyText(APP.inpText());
   $('#btnInpSave').onclick = () => {

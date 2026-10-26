@@ -889,6 +889,26 @@
   };
   /** Name written in the INP file for a body or a region. */
   APP.inpNameOf = function (kind, item) { const nm = FK.inpNames(S.model); return (kind === 'region' ? nm.regions : nm.bodies).get(item) || item.name; };
+  /** Best short INP name for an item: its own name when it fits and is free; else its trailing number (≤ 2 digits) kept, or the first letters + 2 digits. */
+  APP.smartInpName = function (kind, item) {
+    const list = kind === 'region' ? S.model.regions : S.model.bodies, map = (kind === 'region' ? FK.inpNames(S.model).regions : FK.inpNames(S.model).bodies);
+    const taken = new Set(list.filter(x => x !== item).map(x => map.get(x)));
+    if (/^[A-Za-z][A-Za-z0-9_]{0,7}$/.test(item.name) && !taken.has(item.name)) return item.name;
+    let base = item.name.replace(/[^A-Za-z0-9]/g, ''); if (!/^[A-Za-z]/.test(base)) base = (kind === 'region' ? 'R' : 'B') + base;
+    const stem0 = base.replace(/\d+$/, '') || base, tm = base.match(/(\d{1,2})$/);
+    if (tm) { const c = stem0.slice(0, 8 - tm[1].length) + tm[1]; if (stem0 && !taken.has(c)) return c; }
+    const stem = stem0.slice(0, 6);
+    for (let k = 1; k < 100; k++) { const c = stem + String(k).padStart(2, '0'); if (!taken.has(c)) return c; }
+    return base.slice(0, 8);
+  };
+  APP.setSmartInpName = function (kind, item) { const n = APP.smartInpName(kind, item); if (n === item.name) delete item.inpName; else item.inpName = n; return n; };
+  /** Gives a proper short name to every exported object whose INP name differs from its name. Returns the count. */
+  APP.autoInpAll = function () {
+    const nm = FK.inpNames(S.model), todo = [];
+    for (const b of nm.shortened) todo.push([S.model.regions.includes(b) ? 'region' : 'body', b]);
+    const todoN = todo.filter(([, it]) => !it.noExport); if (!todoN.length) return 0;
+    APP.snap(); todoN.forEach(([k, it]) => APP.setSmartInpName(k, it)); APP.changed({ tree: true, right: true }); return todoN.length;
+  };
   /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });

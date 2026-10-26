@@ -62,11 +62,12 @@
   };
   Object.defineProperty(APP, 'camera', { get: () => camera });
   /** Bounding box of what is currently displayed (visible meshes, bodies, regions); falls back to the render zone. */
+  const shown = (it) => !!it.visible && !(S.opt.onlyExp && it.noExport);       // "only what the INP file contains" filter
   APP.visibleBox = function () {
     const sb = [], bodies = [];
     for (const m of S.stls) if (m.visible && m.stats && m.stats.bbox) sb.push(m.stats.bbox);
-    for (const b of S.model.bodies) if (b.visible && b.type !== 'RAW' && !FK.isPlaneType(b.type) && !FK.isInfiniteType(b.type)) bodies.push(APP.wbody(b));
-    for (const r of S.model.regions) { const c = regC.get(r.id); if (r.visible && c && c.bbox) sb.push(c.bbox); }
+    for (const b of S.model.bodies) if (shown(b) && b.type !== 'RAW' && !FK.isPlaneType(b.type) && !FK.isInfiniteType(b.type)) bodies.push(APP.wbody(b));
+    for (const r of S.model.regions) { const c = regC.get(r.id); if (shown(r) && c && c.bbox) sb.push(c.bbox); }
     if (!sb.length && !bodies.length) return S.W;
     return FK.computeWorldBox(sb, bodies, 0);
   };
@@ -406,13 +407,13 @@
       el.style.color = '#' + darker(color, 0.7).getHexString(); olabels.appendChild(el);
       nameItems.push({ el, c: FK.boxCenter(bb), color });
     };
-    if (mode === 'bodies' || mode === 'all') for (const b of S.model.bodies) { if (!b.visible || b.type === 'RAW') continue;
+    if (mode === 'bodies' || mode === 'all') for (const b of S.model.bodies) { if (!shown(b) || b.type === 'RAW') continue;
       let bb = null;
       if (FK.isPlaneType(b.type)) { const c = bodyC.get(b.id); if (c && c.group) { const bx = new THREE.Box3().setFromObject(c.group); if (!bx.isEmpty()) bb = { min: bx.min.toArray(), max: bx.max.toArray() }; } }
       else { try { bb = FK.bodyBBox(APP.wbody(b)); } catch (e) { bb = null; } if (bb && ![...bb.min, ...bb.max].every(Number.isFinite)) bb = null; }
       add(b.name, b.color, bb); }
     if (mode === 'regions' || mode === 'all') for (const r of S.model.regions) {
-      if (!r.visible) continue; const c = regC.get(r.id); if (!c || !c.polys || !c.polys.length) continue;
+      if (!shown(r)) continue; const c = regC.get(r.id); if (!c || !c.polys || !c.polys.length) continue;
       let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
       for (const pl of c.polys) for (const v of pl.v) for (let k = 0; k < 3; k++) { if (v[k] < mn[k]) mn[k] = v[k]; if (v[k] > mx[k]) mx[k] = v[k]; }
       add(r.name, r.color, { min: mn, max: mx });
@@ -513,7 +514,7 @@
     };
     const style = (c, item, plane, isSel, col) => {
       const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
-      c.group.visible = !!item.visible;
+      c.group.visible = shown(item);
       c.mesh.visible = item.opacity > 0.004;
       m.color.set(item.color); m.opacity = o;
       const solid = o >= 0.995 && !plane; m.transparent = !solid; m.depthWrite = solid;
@@ -660,8 +661,8 @@
   function pickMeshes() {
     const out = [];
     for (const s of S.stls) if (s.mesh && s.visible && s.opacity > 0.004) out.push(s.mesh);
-    for (const b of S.model.bodies) { const c = bodyC.get(b.id); if (c && c.mesh && b.visible && b.opacity > 0.004) out.push(c.mesh); }
-    for (const r of S.model.regions) { const c = regC.get(r.id); if (c && c.mesh && r.visible && r.opacity > 0.004) out.push(c.mesh); }
+    for (const b of S.model.bodies) { const c = bodyC.get(b.id); if (c && c.mesh && shown(b) && b.opacity > 0.004) out.push(c.mesh); }
+    for (const r of S.model.regions) { const c = regC.get(r.id); if (c && c.mesh && shown(r) && r.opacity > 0.004) out.push(c.mesh); }
     return out;
   }
   APP.totalTris = () => pickMeshes().reduce((a, m) => a + m.geometry.attributes.position.count / 3, 0);
