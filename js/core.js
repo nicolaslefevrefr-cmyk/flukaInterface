@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.17.0';
+  FK.VERSION = '1.18.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -308,6 +308,27 @@
     return V.dot(triNormal(topo, t), triNormal(topo, nb)) < cosA;
   }
   FK.isSharpEdge = isSharpEdge;
+  /** "Important" vertices: corners, ends of sharp edges and places where a sharp-edge chain changes direction by more than sharpDeg
+   *  (the vertices along a smooth curve such as a cylinder rim are not). Returns { ids: Int32Array } cached on the topology. */
+  FK.featureVertices = function (topo, sharpDeg) {
+    if (topo.feat && topo.feat.sharp === sharpDeg) return topo.feat;
+    const cosA = Math.cos(sharpDeg * Math.PI / 180), dirs = new Map(), seen = new Set();
+    const add = (v, w) => { let l = dirs.get(v); if (!l) dirs.set(v, l = []); const a = vpt(topo, v), b = vpt(topo, w), d = V.sub(b, a), n = V.len(d); if (n > 0) l.push([d[0] / n, d[1] / n, d[2] / n, w]); };
+    for (let t = 0; t < topo.nTri; t++) for (let k = 0; k < 3; k++) {
+      const a = topo.vid[t * 3 + k], b = topo.vid[t * 3 + (k + 1) % 3]; if (a === b) continue;
+      const key = a < b ? a * topo.nV + b : b * topo.nV + a; if (seen.has(key)) continue;
+      if (!isSharpEdge(topo, t, k, cosA)) continue;
+      seen.add(key); add(a, b); add(b, a);
+    }
+    const ids = [];
+    for (const [v, l] of dirs) {
+      if (l.length !== 2) { ids.push(v); continue; }
+      // straight continuation = the two directions are opposite; a bend larger than the sharp angle is a corner
+      if (V.dot(l[0], l[1]) > -cosA) ids.push(v);
+    }
+    topo.feat = { sharp: sharpDeg, ids: Int32Array.from(ids) };
+    return topo.feat;
+  };
 
   function vpt(topo, v) { return [topo.vpos[v * 3], topo.vpos[v * 3 + 1], topo.vpos[v * 3 + 2]]; }
 

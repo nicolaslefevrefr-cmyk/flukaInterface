@@ -14,6 +14,7 @@
   el.innerHTML = `
     <div class="cw-h"><span>Section view</span>
       <button class="ib" data-cw="fit" title="Fit the section to the window">⤢</button>
+      <button class="ib" data-cw="dock" title="Dock as a side panel / float">⇥</button>
       <button class="ib" data-cw="close" title="Close">✕</button></div>
     <div class="cw-opts">
       <label>Plane <select id="cwSrc"></select></label>
@@ -267,6 +268,7 @@
     const b = e.target.closest('[data-cw]'); if (!b) return;
     if (b.dataset.cw === 'close') APP.cutSetOpen(false);
     else if (b.dataset.cw === 'fit') { fitView(); draw(); }
+    else if (b.dataset.cw === 'dock') { if (APP.dockToggle) APP.dockToggle('cut'); setTimeout(() => { fitView(); draw(); }, 60); }
   });
   new ResizeObserver(() => { if (C.open) draw(); }).observe(cv);
 
@@ -314,7 +316,7 @@
   rs.addEventListener('pointerdown', e => { rs.setPointerCapture(e.pointerId); rsd = { x: e.clientX, y: e.clientY, w: el.offsetWidth, h: cv.clientHeight }; e.preventDefault(); });
   rs.addEventListener('pointermove', e => {
     if (!rsd) return;
-    const maxW = vp.clientWidth - 16, maxH = Math.max(vp.clientHeight - 150, 120);
+    const maxW = vp.clientWidth - 16, maxH = Math.max(vp.clientHeight - 110, 120);
     el.style.width = Math.min(Math.max(rsd.w + (e.clientX - rsd.x), 260), maxW) + 'px';
     cv.parentElement.style.height = Math.min(Math.max(rsd.h - (e.clientY - rsd.y), 120), maxH) + 'px';
   });

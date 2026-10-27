@@ -176,7 +176,12 @@
   });
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
-    cam.dist = Math.max(0.01, cam.dist * Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)));
+    let f = Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));
+    if (cam.dist * f < 0.005) f = 0.005 / cam.dist;
+    // zoom towards the point under the cursor (not only towards the rotation centre): the surface you look at stays pickable
+    const hit = S.opt.zoomCursor !== false ? APP.raycast(e.clientX, e.clientY) : null;
+    if (hit) cam.target.set(hit.point.x + f * (cam.target.x - hit.point.x), hit.point.y + f * (cam.target.y - hit.point.y), hit.point.z + f * (cam.target.z - hit.point.z));
+    cam.dist *= f;
     applyCam();
   }, { passive: false });
 
@@ -190,6 +195,45 @@
     if (o.parent) o.parent.remove(o);
   }
   function darker(hex, k) { return new THREE.Color(hex).multiplyScalar(k); }
+  /** Edge lines of a region mesh. Like THREE.EdgesGeometry (angle threshold), but an edge that only one triangle owns because of a T-junction
+   *  (the neighbour face is split differently) is NOT drawn when a coplanar triangle covers it: this removes the radial "fan" lines that
+   *  the CSG triangulation leaves on flat and curved faces. True open boundaries and real creases are still drawn. */
+  function edgesSmart(g, thrDeg) {
+    const pos = g.attributes.position.array, topo = FK.buildTopology(pos), nT = topo.nTri, cosT = Math.cos(thrDeg * Math.PI / 180);
+    const em = new Map(), nrm = topo.nrm, vp = topo.vpos, vid = topo.vid;
+    for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) {
+      const a = vid[t * 3 + k], b = vid[t * 3 + (k + 1) % 3]; if (a === b) continue;
+      const key = a < b ? a * topo.nV + b : b * topo.nV + a; let e = em.get(key);
+      if (!e) em.set(key, e = { a, b, ts: [] }); e.ts.push(t);
+    }
+    const out = [], un = [], push = (a, b) => out.push(vp[a * 3], vp[a * 3 + 1], vp[a * 3 + 2], vp[b * 3], vp[b * 3 + 1], vp[b * 3 + 2]);
+    const dot = (t, u) => nrm[t * 3] * nrm[u * 3] + nrm[t * 3 + 1] * nrm[u * 3 + 1] + nrm[t * 3 + 2] * nrm[u * 3 + 2];
+    for (const e of em.values()) { if (e.ts.length >= 2) { if (dot(e.ts[0], e.ts[1]) < cosT) push(e.a, e.b); } else un.push(e); }
+    const st = FK.meshStats(pos), diag = st.bbox ? FK.boxDiag(st.bbox) : 1, eps = diag * 1e-5;
+    const test = un.length * nT <= 6e7;
+    for (const e of un) {
+      let covered = false;
+      if (test) {
+        const t = e.ts[0], m = [(vp[e.a * 3] + vp[e.b * 3]) / 2, (vp[e.a * 3 + 1] + vp[e.b * 3 + 1]) / 2, (vp[e.a * 3 + 2] + vp[e.b * 3 + 2]) / 2];
+        for (let u = 0; u < nT && !covered; u++) {
+          if (u === t || dot(t, u) < 0.999) continue;
+          const o = u * 9, nx = nrm[u * 3], ny = nrm[u * 3 + 1], nz = nrm[u * 3 + 2];
+          if (Math.abs(nx * (m[0] - pos[o]) + ny * (m[1] - pos[o + 1]) + nz * (m[2] - pos[o + 2])) > eps) continue;
+          // point in triangle (tolerant): the three sub-areas must have the orientation of the normal
+          let inside = true;
+          for (let k = 0; k < 3 && inside; k++) {
+            const p = o + k * 3, q = o + ((k + 1) % 3) * 3, ex = pos[q] - pos[p], ey = pos[q + 1] - pos[p + 1], ez = pos[q + 2] - pos[p + 2];
+            const wx = m[0] - pos[p], wy = m[1] - pos[p + 1], wz = m[2] - pos[p + 2];
+            const c = (ey * wz - ez * wy) * nx + (ez * wx - ex * wz) * ny + (ex * wy - ey * wx) * nz;
+            if (c < -eps * Math.hypot(ex, ey, ez)) inside = false;
+          }
+          if (inside) covered = true;
+        }
+      }
+      if (!covered) push(e.a, e.b);
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(out, 3)); return geo;
+  }
   function makeSolidGroup(positions, colorHex, opacity, kind, id) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -197,7 +241,7 @@
     const mat = new THREE.MeshPhongMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, shininess: 25 });
     const mesh = new THREE.Mesh(g, mat);
     mesh.userData = { kind, id };
-    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(g, 28), new THREE.LineBasicMaterial({ color: darker(colorHex, 0.55) }));
+    const lines = new THREE.LineSegments(kind === 'region' ? edgesSmart(g, 28) : new THREE.EdgesGeometry(g, 28), new THREE.LineBasicMaterial({ color: darker(colorHex, 0.55) }));
     lines.raycast = () => {};
     const grp = new THREE.Group(); grp.add(mesh, lines);
     return { group: grp, mesh, lines };
@@ -709,7 +753,17 @@
     const mesh = hit.object, topo = topoOf(mesh), tv = FK.triVerts(topo, hit.faceIndex);
     const hp = [hit.point.x, hit.point.y, hit.point.z];
     const owner = ownerOf(mesh);
-    if (S.opt.snap || forceSnap) {
+    if ((S.opt.snap || forceSnap) && S.opt.snapFeat !== false) {   // corner points only
+      const ft = FK.featureVertices(topo, S.opt.sharp || 20), cam = camera.position, H = canvas.getBoundingClientRect().height || 600;
+      const wpp = camera.isOrthographicCamera ? (camera.top - camera.bottom) / camera.zoom / H : Math.hypot(hp[0] - cam.x, hp[1] - cam.y, hp[2] - cam.z) * 2 * Math.tan(camera.fov * Math.PI / 360) / H;
+      let best = null, bd = 1e9;
+      for (let i = 0; i < ft.ids.length; i++) {
+        const o = ft.ids[i] * 3, v = [topo.vpos[o], topo.vpos[o + 1], topo.vpos[o + 2]];
+        if (Math.hypot(v[0] - hp[0], v[1] - hp[1], v[2] - hp[2]) > 45 * wpp) continue;       // behind the surface / far away
+        const s = toScreen(v), d = Math.hypot(s[0] - cx, s[1] - cy); if (d < bd) { bd = d; best = v; }
+      }
+      if (best && bd <= 30) return { kind: 'point', p: best, snapped: true, ownerKind: owner.kind, ownerId: owner.id, ownerName: owner.name };
+    } else if (S.opt.snap || forceSnap) {
       let best = null, bd = 1e9;
       for (const v of tv) { const s = toScreen(v); const d = Math.hypot(s[0] - cx, s[1] - cy); if (d < bd) { bd = d; best = v; } }
       if (best && bd <= 30) return { kind: 'point', p: best, snapped: true, ownerKind: owner.kind, ownerId: owner.id, ownerName: owner.name };

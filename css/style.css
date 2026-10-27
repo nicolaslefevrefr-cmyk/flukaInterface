@@ -65,12 +65,12 @@ code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 12p
 .drawer { flex: none; width: 0; overflow: hidden; background: var(--panel); display: flex; flex-direction: column; transition: width .18s; }
 .drawer.left { border-right: 1px solid var(--line); } .drawer.right { border-left: 1px solid var(--line); }
 .drawer { position: relative; }
-:root { --lw: 310px; --rw: 340px; }
-.drawer.open.left { width: var(--lw); } .drawer.open.right { width: var(--rw); }
+:root { --lw: 310px; --rw: 340px; --dw: 440px; }
+.drawer.open.left { width: var(--lw); } .drawer.open.right { width: var(--rw); } .drawer.open.dock { width: var(--dw); }
 .drawer.left .dhead, .drawer.left .dbody { min-width: var(--lw); } .drawer.right .dhead, .drawer.right .dbody { min-width: var(--rw); }
 body.rszing .drawer { transition: none; } body.rszing { cursor: col-resize; user-select: none; }
 .rsz { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 5; cursor: col-resize; touch-action: none; }
-.drawer.left .rsz { right: -3px; } .drawer.right .rsz { left: -3px; }
+.drawer.left .rsz { right: -3px; } .drawer.right .rsz, .drawer.dock .rsz { left: -3px; }
 .rsz:hover, body.rszing .rsz.on { background: rgba(47,111,237,.28); }
 @media (max-width: 899px) { .rsz { display: none; } .drawer.left .dhead, .drawer.left .dbody, .drawer.right .dhead, .drawer.right .dbody { min-width: 0; } }
 .dhead { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 4px 14px; border-bottom: 1px solid var(--line); flex: none; min-width: 300px; height: 44px; }
@@ -379,7 +379,7 @@ dialog.devwin { width: min(400px, 94vw); z-index: 41; }
 @media (max-width: 899px) { #projName.pname { width: 110px; } }
 
 /* dependency diagram */
-dialog.graphwin { width: min(860px, 96vw); height: min(560px, 78vh); min-width: 360px; min-height: 260px; resize: both; overflow: hidden; z-index: 41; padding: 0; }
+dialog.graphwin { width: min(860px, 96vw); height: min(560px, 78vh); min-width: 360px; min-height: 260px; overflow: hidden; z-index: 41; padding: 0; }
 dialog.graphwin[open] { display: block; }
 dialog.graphwin form { display: flex; flex-direction: column; height: 100%; }
 .graphwin .fw-h { flex: none; } .gr-opts { flex: none; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 12px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
@@ -395,3 +395,15 @@ dialog.graphwin form { display: flex; flex-direction: column; height: 100%; }
 .gr-leg { flex: none; display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 5px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); }
 .gr-leg .lg { display: inline-block; width: 18px; height: 3px; margin-right: 5px; vertical-align: middle; } .gr-leg .lg.dash { height: 0; border-top: 3px dotted #64748b; background: none !important; }
 .graphwin .fw-h { padding: 8px 8px 8px 12px; display: flex; align-items: center; justify-content: space-between; cursor: move; } .graphwin .fw-h .ib:focus { outline: none; }
+
+/* docked windows (section view, dependency diagram) */
+.drawer.dock { border-left: 1px solid var(--line); } .drawer.dock .dbody { min-width: var(--dw); overflow: hidden; }
+#dockBody { display: flex; flex-direction: column; min-height: 0; }
+#dockBody > .docked { position: static !important; flex: 1 1 0; min-height: 170px; width: auto !important; max-width: none !important; height: auto !important; max-height: none !important; margin: 0 !important; border-radius: 0; box-shadow: none; border: 0; border-bottom: 1px solid var(--line); resize: none; }
+#dockBody > dialog.docked[open] { display: flex; flex-direction: column; overflow: hidden; }
+#dockBody > dialog.docked form { flex: 1; min-height: 0; }
+#cutwin.docked { display: flex; } #cutwin.docked[hidden] { display: none; }
+#cutwin.docked .cw-cv { flex: 1; height: auto !important; min-height: 100px; } #cutwin.docked .cw-rs { display: none; }
+.fw-rs { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; z-index: 2; background: linear-gradient(315deg, #9aa5b5 0 2px, transparent 2px 5px, #9aa5b5 5px 7px, transparent 7px); opacity: .8; }
+.docked .fw-rs { display: none; }
+@media (max-width: 899px) { .drawer.dock { display: none; } }

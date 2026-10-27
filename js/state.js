@@ -810,7 +810,7 @@
       const key = 'b:' + bd.role; keep.add(key);
       let b = APP.getBody(c.items[key]);
       if (!b) {
-        b = APP.addBody(bd.type, bd.p.slice(), { cs: c.cs, name: FK.uniqueName(compName(c, bd.role), bodyNames(), 40), meta: { comp: { id: c.id, role: bd.role } }, visible: c.visible !== false });
+        b = APP.addBody(bd.type, bd.p.slice(), { cs: c.cs, name: FK.uniqueName(compName(c, bd.role), bodyNames(), 40), meta: { comp: { id: c.id, role: bd.role } }, visible: false });
         c.items[key] = b.id;
       } else { b.type = bd.type; b.p = bd.p.slice(); b.cs = c.cs; }
       names[bd.role] = b.name;
@@ -820,7 +820,7 @@
       const expr = rg.expr.replace(/\{(\w+)\}/g, (m, k) => names[k] || m);
       let r = APP.getRegion(c.items[key]);
       if (!r) {
-        r = APP.addRegion(FK.uniqueName(compName(c, rg.role), regionNames(), 40), expr, { visible: false });
+        r = APP.addRegion(FK.uniqueName(compName(c, rg.role), regionNames(), 40), expr, { visible: c.visible !== false });
         r.meta = Object.assign(r.meta || {}, { comp: { id: c.id, role: rg.role } });
         c.items[key] = r.id;
       } else r.expr = expr;
@@ -852,10 +852,10 @@
     APP.changed({ tree: true, right: true });
     return c;
   };
-  APP.compSetParam = function (c, k, v) {
+  APP.compSetParam = function (c, k, v, soft) {
     c.params[k] = v;
     APP.compRegen(c);
-    APP.changed({ tree: true, right: true });
+    APP.changed({ tree: true, right: !soft });
   };
   APP.compSetPrefix = function (c, np) {
     np = (np || '').trim().replace(/\s+/g, '_');
@@ -887,19 +887,20 @@
     S.model.regions = S.model.regions.filter(r => !it.regions.includes(r));
     S.model.bodies = S.model.bodies.filter(b => !it.bodies.includes(b));
     S.model.components = S.model.components.filter(x => x !== c);
+    // the placement csys goes too when it only served this component
+    const cs = APP.getCsys(c.cs);
+    if (cs && !S.model.bodies.some(b => b.cs === cs.id) && !S.model.csys.some(x => x.parent === cs.id) && S.model.active !== cs.id && S.model.exportCs !== cs.id && !S.model.components.some(x => x.cs === cs.id)) S.model.csys = S.model.csys.filter(x => x !== cs);
     if (S.sel && S.sel.t === 'comp') S.sel = null;
     const broken = S.model.regions.filter(r => r.meta && r.meta.link && (it.regions.some(g => g.id === r.meta.link.a || g.id === r.meta.link.b))).map(r => r.name);
     if (broken.length) APP.toast('⚠ ' + broken.join(', ') + ' used a deleted region');
     APP.changed({ tree: true, right: true });
   };
-  /** Propagate component visibility to its objects (called on every change). */
+  /** Propagate the component toggle to its regions (called on every change). */
   APP.syncComps = function () {
     for (const c of S.model.components || []) {
       if (c.visApplied === c.visible) continue;
       c.visApplied = c.visible;
-      const it = APP.compItems(c);
-      for (const b of it.bodies) b.visible = c.visible;
-      if (!c.visible) for (const r of it.regions) r.visible = false;
+      for (const r of APP.compItems(c).regions) r.visible = c.visible !== false;   // the component toggle drives its regions (the bodies keep their own state)
     }
   };
 

@@ -91,19 +91,19 @@
 
   /* ---------- Toolbar ---------- */
   /* ---------- Resizable side panels (the viewport follows) ---------- */
-  const PW = { min: 220, left: 310, right: 340 };
+  const PW = { min: 220, left: 310, right: 340, dock: 440 };
   const maxPW = () => Math.max(PW.min, Math.round(window.innerWidth * 0.6));
   function applyPanelW() {
     const r = document.documentElement.style;
-    r.setProperty('--lw', Math.min(maxPW(), Math.max(PW.min, +S.opt.lw || PW.left)) + 'px'); r.setProperty('--rw', Math.min(maxPW(), Math.max(PW.min, +S.opt.rw || PW.right)) + 'px');
+    r.setProperty('--lw', Math.min(maxPW(), Math.max(PW.min, +S.opt.lw || PW.left)) + 'px'); r.setProperty('--rw', Math.min(maxPW(), Math.max(PW.min, +S.opt.rw || PW.right)) + 'px'); r.setProperty('--dw', Math.min(maxPW(), Math.max(PW.min, +S.opt.dw || PW.dock)) + 'px');
   }
   (function () {
     $$('.rsz').forEach(h => {
-      const side = h.dataset.rsz, drawer = side === 'left' ? dL : dR;
+      const side = h.dataset.rsz, drawer = side === 'left' ? dL : side === 'dock' ? $('#drawerDock') : dR, optK = { left: 'lw', right: 'rw', dock: 'dw' }[side];
       h.addEventListener('pointerdown', e => {
         if (narrow()) return; e.preventDefault(); h.setPointerCapture(e.pointerId); document.body.classList.add('rszing'); h.classList.add('on');
         const x0 = e.clientX, w0 = drawer.getBoundingClientRect().width;
-        const mv = ev => { const dx = ev.clientX - x0, w = Math.round(Math.min(maxPW(), Math.max(PW.min, w0 + (side === 'left' ? dx : -dx)))); S.opt[side === 'left' ? 'lw' : 'rw'] = w; applyPanelW(); };
+        const mv = ev => { const dx = ev.clientX - x0, w = Math.round(Math.min(maxPW(), Math.max(PW.min, w0 + (side === 'left' ? dx : -dx)))); S.opt[optK] = w; applyPanelW(); };
         const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); document.body.classList.remove('rszing'); h.classList.remove('on'); APP.save(); };
         h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
       });
@@ -111,11 +111,43 @@
         if (side === 'left') {                       // fit the longest name of the tree
           let extra = 0; $$('#leftBody .item .nm').forEach(n => { extra = Math.max(extra, n.scrollWidth - n.clientWidth); });
           if (extra > 0) S.opt.lw = Math.min(maxPW(), Math.round(drawer.getBoundingClientRect().width + extra + 14)); else S.opt.lw = PW.left;
-        } else S.opt.rw = PW.right;
+        } else S.opt[optK] = PW[side];
         applyPanelW(); APP.save();
       });
     });
     window.addEventListener('resize', applyPanelW);
+  })();
+
+  /* ---------- Docking of the section view and of the dependency diagram as a side panel ---------- */
+  const DOCKS = { cut: { el: () => document.getElementById('cutwin'), home: () => $('#viewport') }, graph: { el: () => $('#dlgGraph'), home: () => document.body } };
+  function dockApply(key) {
+    const d = DOCKS[key], el = d.el(); if (!el) return;
+    const want = !!(S.opt.docked || {})[key] && !narrow();
+    el.classList.toggle('docked', want);
+    if (want && el.parentNode !== $('#dockBody')) $('#dockBody').appendChild(el);
+    else if (!want && el.parentNode === $('#dockBody')) d.home().appendChild(el);
+    const b = key === 'graph' ? $('[data-dock=graph]') : el.querySelector('[data-cw=dock]'); if (b) b.classList.toggle('on', want);
+    dockSync();
+  }
+  function dockSync() {
+    const box = $('#dockBody'), any = Array.from(box.children).some(c => c.hidden === false && !(c.tagName === 'DIALOG' && !c.open));
+    $('#drawerDock').classList.toggle('open', any);
+    applyPanelW();
+  }
+  APP.dockToggle = function (key) {
+    if (narrow()) { toast('Docking needs a wider window'); return; }
+    S.opt.docked = S.opt.docked || {}; S.opt.docked[key] = !S.opt.docked[key]; dockApply(key); APP.save();
+  };
+  (function () {
+    new MutationObserver(dockSync).observe($('#dockBody'), { childList: true, attributes: true, subtree: true, attributeFilter: ['hidden', 'open'] });
+    $('[data-dock=graph]').addEventListener('click', () => { APP.dockToggle('graph'); setTimeout(() => { grDraw(true); grFit(); }, 80); });
+    window.addEventListener('resize', () => { for (const k of Object.keys(DOCKS)) dockApply(k); });
+    for (const k of Object.keys(DOCKS)) dockApply(k);
+    // free resizing of the floating diagram window (bottom-right corner)
+    const d = $('#dlgGraph'), h = d.querySelector('.fw-rs'); let rz = null;
+    h.addEventListener('pointerdown', e => { const r = d.getBoundingClientRect(); rz = { x: e.clientX, y: e.clientY, w: r.width, h: r.height }; try { h.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    h.addEventListener('pointermove', e => { if (!rz) return; d.style.width = Math.round(Math.min(window.innerWidth - 20, Math.max(360, rz.w + e.clientX - rz.x))) + 'px'; d.style.height = Math.round(Math.min(window.innerHeight - 70, Math.max(260, rz.h + e.clientY - rz.y))) + 'px'; });
+    const end = () => { rz = null; }; h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
   })();
   function syncToolbar() {
     applyPanelW();
@@ -186,7 +218,7 @@
   function ptModeHTML() {
     const o = S.opt, m = ptMode(), sel = csd() ? '' : `<label>Point from <select data-opt="ptMode">${PT_MODES.map(([k, l]) => `<option value="${k}" ${m === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
     const ang = `<label>Edge angle ≥ <input type="number" step="any" data-opt="sharp" value="${o.sharp}">°</label>`, soft = `<label><input type="checkbox" data-opt="edgeSoft" ${o.edgeSoft !== false ? 'checked' : ''}>Retry with a lower angle if the rim is open</label>`;
-    if (m === 'vertex') return sel + `<label><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}>Snap to vertices</label>`;
+    if (m === 'vertex') return sel + `<label><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}>Snap to vertices</label>` + (o.snap ? `<label title="Snap only to corners and ends of sharp edges (the edge angle below decides), not to every mesh vertex"><input type="checkbox" data-opt="snapFeat" ${o.snapFeat !== false ? 'checked' : ''}>Corner points only</label>` + (o.snapFeat !== false ? `<label>Edge angle ≥ <input type="number" step="any" data-opt="sharp" value="${o.sharp}">°</label>` : '') : '');
     if (m === 'planes3') return sel + `<label class="muted">Click 3 faces (meshes or plane bodies): the point is where their planes meet${(S.ptPlanes || []).length ? ' — ' + S.ptPlanes.length + '/3 picked' : ''}</label><span class="btns"><button class="btn sm" data-act="ptUndo">Undo last face</button></span>`;
     if (m === 'face') return sel + `<label><input type="checkbox" data-opt="coplanar" ${o.coplanar ? 'checked' : ''}>Whole face (coplanar triangles)</label><label>Face tolerance <input type="number" step="any" data-opt="coTol" value="${o.coTol}">°</label>`;
     if (m === 'edge') return sel + ang;
@@ -295,6 +327,7 @@
     else v = t.value;
     S.opt[k] = v;
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly', 'edgeSoft'].includes(k)) { clearPick(); APP.clearHover(); }
+    if (k === 'snapFeat') renderToolOpts();
     if (k === 'ptMode') { S.ptPlanes = []; ptRefreshPending(); renderToolOpts(); updateStatus(); }
     if (k === 'margin' || k === 'axes') APP.changed({});
     if (k === 'invX' || k === 'invY') syncToolbar();
@@ -634,7 +667,7 @@
     const d = $('#dlgGraph'); if (!d) return;
     d.querySelector('[value=close]').onclick = () => d.close();
     let drag = null; const hh = d.querySelector('.fw-h');
-    hh.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { hh.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    hh.addEventListener('pointerdown', e => { if (e.target.closest('button') || d.classList.contains('docked')) return; const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { hh.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
     hh.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
     hh.addEventListener('pointerup', () => { drag = null; });
     const view = $('#grView');
@@ -651,6 +684,7 @@
     ['grScope', 'grPlanes', 'grCad', 'grNoExp'].forEach(id => $('#' + id).addEventListener('change', upd));
     $('#grFit').onclick = () => grFit();
     d.addEventListener('close', () => { syncToolbar(); });
+    if (window.ResizeObserver) { let lw = 0, lh = 0; new ResizeObserver(() => { const r = view.getBoundingClientRect(); if (d.open && r.width && (Math.abs(r.width - lw) > 8 || Math.abs(r.height - lh) > 8)) { lw = r.width; lh = r.height; grFit(); } }).observe(view); }   // keep the diagram in view when its window is resized or docked
     $('#btnGraph').onclick = () => { if (d.open) { d.close(); return; } d.show(); if (typeof d._x === 'number') { d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; } else { d.style.left = 'auto'; d.style.right = '12px'; d.style.top = '64px'; } GR.fit = true; syncToolbar(); requestAnimationFrame(() => grDraw(true)); };
   })();
   /* ---------- CAD <-> CG comparison window ---------- */
@@ -919,7 +953,7 @@
     return `<div class="item${sel ? ' sel' : ''}${ex.ne ? ' ne' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
       <div class="top"><button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>
       ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span>${warn}${info}<span class="ty">${ex.ne ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span>${look}<button class="mn" data-act="imenu" title="Actions">⋮</button></div>
-      ${o.opacity !== undefined ? `<div class="op"><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-act="op" aria-label="Opacity"><small>${Math.round(o.opacity * 100)}%</small></div>` : ''}</div>`;
+      </div>`;
   }
   /** Warnings shown next to a region in the tree (empty, quality check). */
   function regionWarns(r) {
@@ -1621,6 +1655,9 @@
   }
 
   /* ---------- Components ---------- */
+  function compMsgHTML(c) {
+    return (c.error ? `<div class="bad" style="margin:4px 0">⚠ ${esc(c.error)}</div>` : '') + (c.info || []).map(x => `<div class="muted" style="font-size:12px">${esc(x)}</div>`).join('');
+  }
   function compProps(c) {
     const T = FK.TEMPLATES[c.tpl] || { name: c.tpl, params: [], desc: '' }, it = APP.compItems(c);
     const csn = (APP.getCsys(c.cs) || {}).name || '—';
@@ -1634,8 +1671,7 @@
       ? `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-cp="${q.k}" ${+c.params[q.k] ? 'checked' : ''}>${esc(q.l)}</label></div>`
       : `<div class="fld"><label>${esc(q.l)}</label><input type="number" step="0.1" data-cp="${q.k}" value="${esc(String(c.params[q.k]))}"></div>`).join('');
     const definition = `<div class="sec"><h4><span>Parameters</span></h4>
-      ${c.error ? `<div class="bad" style="margin:4px 0">⚠ ${esc(c.error)}</div>` : ''}<div class="fields">${params}</div>
-      ${(c.info || []).map(x => `<div class="muted" style="font-size:12px">${esc(x)}</div>`).join('')}
+      <div class="fields">${params}</div><div id="compMsg">${compMsgHTML(c)}</div>
       <div class="muted" style="font-size:12px">Objects are regenerated in place: their names, colors and links to other regions are kept.</div></div>`;
     const row = (t, o, label) => `<button class="btn sm" data-act="compSel" data-t="${t}" data-id="${o.id}" style="margin:2px 4px 2px 0">${esc(o.name)}</button>`;
     const operations = `<div class="sec"><h4><span>Generated objects</span></h4>
@@ -1721,12 +1757,15 @@
       APP.save(); return;
     }
     if (t.dataset.cp !== undefined || t.dataset.cpPrefix !== undefined) {
-      if (e.type !== 'change' || !it || S.sel.t !== 'comp') return;
-      if (t.dataset.cpPrefix !== undefined) { if (!APP.compSetPrefix(it, t.value)) t.value = it.prefix; return; }
+      if (!it || S.sel.t !== 'comp') return;
+      if (t.dataset.cpPrefix !== undefined) { if (e.type !== 'change') return; if (!APP.compSetPrefix(it, t.value)) t.value = it.prefix; return; }
       const q = (FK.TEMPLATES[it.tpl].params.find(x => x.k === t.dataset.cp)) || {};
       const v = q.bool ? (t.checked ? 1 : 0) : parseFloat(t.value);
       if (!isFinite(v)) return;
-      APP.snap('comp' + it.id + t.dataset.cp); APP.compSetParam(it, t.dataset.cp, v); return;
+      APP.snap('comp' + it.id + t.dataset.cp);
+      if (e.type === 'input') { APP.compSetParam(it, t.dataset.cp, v, true); const m = $('#compMsg'); if (m) m.innerHTML = compMsgHTML(it); }   // live: no re-render, the field keeps the focus
+      else APP.compSetParam(it, t.dataset.cp, v);
+      return;
     }
     const k = t.dataset.k;
     if (k === 'title') { if (e.type === 'input') { APP.snap('title'); S.model.title = t.value; APP.changed({}); } return; }
