@@ -69,7 +69,7 @@
     const fl = flags; flags = {};
     try {
       if (S.pick && S.pick.ownerKind !== 'stl' && !fl.keepPick) { S.pick = null; APP.drawHighlight(APP.gSel, null); }
-      APP.sync(); syncProjName();
+      APP.sync(); syncProjName(); if (fl.tree || fl.right) grSchedule();
       if (fl.tree || fl.right || fl.csys) APP.rebuildCsys();
       if (fl.measures) APP.rebuildMeasures();
       if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
@@ -122,7 +122,7 @@
     $$('#grpFilter button').forEach(b => b.classList.toggle('on', S.tool === 'select' && !!S.info && b.dataset.filter === S.filter));
     $$('#grpProj button[data-proj]').forEach(b => b.classList.toggle('on', b.dataset.proj === (S.opt.proj || 'persp')));
     $$('#grpRender button[data-render]').forEach(b => b.classList.toggle('on', b.dataset.render === (S.opt.render || 'shaded')));
-    $('#btnEdges').classList.toggle('on', S.opt.edges !== false); $('#btnOnlyExp').classList.toggle('on', !!S.opt.onlyExp);
+    $('#btnEdges').classList.toggle('on', S.opt.edges !== false); $('#btnOnlyExp').classList.toggle('on', !!S.opt.onlyExp); { const gd = $('#dlgGraph'); $('#btnGraph').classList.toggle('on', !!(gd && gd.open)); }
     { const nm = S.opt.names || 'off', b = $('#btnNames'); b.classList.toggle('on', nm !== 'off'); b.title = 'Object names in the viewport: ' + nm + ' (click: off → regions → bodies → all)'; }
     $('#btnInvX').classList.toggle('on', !!S.opt.invX); $('#btnInvY').classList.toggle('on', !!S.opt.invY);
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
@@ -570,6 +570,89 @@
     h.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
     h.addEventListener('pointerup', () => { drag = null; });
   })();
+  /* ---------- Dependency diagram (experimental) ---------- */
+  const GR = { x: 20, y: 20, k: 1, tm: 0, fit: true, hover: null };
+  const grOpt = () => Object.assign({ scope: 'all', planes: true, cad: false, noexp: true }, S.opt.graph || {});
+  const grSelId = () => !S.sel ? null : S.sel.t === 'body' ? 'b' + S.sel.id : S.sel.t === 'region' ? 'r' + S.sel.id : S.sel.t === 'stl' ? 'm' + S.sel.id : null;
+  function grData() {
+    const o = grOpt();
+    let g = FK.depGraph(S.model, { planes: o.planes, cad: o.cad ? S.stls.map(m => ({ id: m.id, name: m.name, color: m.color })) : null, cadOf: (it, k) => APP.cadId(it, k) });
+    const keepIf = (keep) => { g = { nodes: g.nodes.filter(n => keep.has(n.id)), edges: g.edges.filter(e => keep.has(e.from) && keep.has(e.to)) }; };
+    if (!o.noexp) keepIf(new Set(g.nodes.filter(n => !n.noExport).map(n => n.id)));
+    const sel = grSelId();
+    if (o.scope !== 'all' && sel && g.nodes.some(n => n.id === sel)) keepIf(FK.depScope(g, [sel], o.scope));
+    return g;
+  }
+  const EDGE_COL = { 1: '#16a34a', '-1': '#dc2626', 0: '#9333ea' };
+  const NW = 168, NH = 34;
+  function grLayout(g) { return FK.layoutDepGraph(g, { colW: 250, rowH: 46 }); }
+  function grDraw(refit) {
+    const d = $('#dlgGraph'); if (!d || !d.open) return;
+    const g = grData(), L = grLayout(g), sel = grSelId(), svg = $('#grSvg');
+    GR.g = g; GR.L = L;
+    let h = '<defs>' + [['u1', '#16a34a'], ['u-1', '#dc2626'], ['u0', '#9333ea'], ['lk', '#1d4ed8'], ['dv', '#6b7280'], ['cd', '#64748b']].map(([id, c]) => `<marker id="ar${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L10 5L0 9z" fill="${c}"/></marker>`).join('') + '</defs><g id="grPan">';
+    for (const e of g.edges) {
+      const a = L.pos.get(e.from), b = L.pos.get(e.to), x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, dx = Math.max(30, (x2 - x1) / 2);
+      const st = e.kind === 'use' ? { c: EDGE_COL[e.sign], m: 'u' + e.sign, w: 1.6, d: '' } : e.kind === 'link' ? { c: '#1d4ed8', m: 'lk', w: 2.6, d: '' } : e.kind === 'derived' ? { c: '#6b7280', m: 'dv', w: 1.6, d: '6 4' } : { c: '#64748b', m: 'cd', w: 1.4, d: '2 4' };
+      h += `<g class="ge" data-f="${e.from}" data-t="${e.to}"><path d="M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}" fill="none" stroke="${st.c}" stroke-width="${st.w}" ${st.d ? `stroke-dasharray="${st.d}"` : ''} marker-end="url(#ar${st.m})"/>`
+        + (e.role ? `<text x="${x2 - 14}" y="${y2 - 5}" class="gel" fill="${st.c}" text-anchor="end">${e.role}${e.op ? ' ' + (e.op === 'sub' ? '−' : e.op === 'int' ? '∩' : '∪') : ''}</text>` : '') + '</g>';
+    }
+    for (const n of g.nodes) {
+      const p = L.pos.get(n.id), cls = ['gn', n.kind, n.id === sel ? 'sel' : '', n.noExport ? 'ne' : '', n.unused ? 'un' : ''].join(' ');
+      const r = n.kind === 'region' ? S.model.regions.find(x => x.id === n.ref.id) : null, lk = r && r.meta && r.meta.link;
+      const sub = lk ? `${esc(APP.getRegion(lk.a) ? APP.getRegion(lk.a).name : '?')} ${lk.op === 'sub' ? '−' : lk.op === 'int' ? '∩' : '∪'} ${esc(APP.getRegion(lk.b) ? APP.getRegion(lk.b).name : '?')}` : n.type;
+      const tip = n.kind === 'region' ? `${n.name}: ${n.expr}` : `${n.name} (${n.type})`;
+      h += `<g class="${cls}" data-id="${n.id}" transform="translate(${p.x} ${p.y})"><title>${esc(tip)}${n.unused ? ' — not used by any exported region' : ''}${n.noExport ? ' — not exported' : ''}</title>
+        <rect width="${NW}" height="${NH}" rx="${n.kind === 'region' ? 8 : n.kind === 'cad' ? 3 : 14}" class="gr"/><rect width="6" height="${NH}" rx="3" fill="${esc(n.color || '#888')}"/>
+        <text x="14" y="14" class="gt">${esc(n.name.length > 22 ? n.name.slice(0, 21) + '…' : n.name)}</text><text x="14" y="27" class="gs">${sub}${n.unused ? ' · unused' : ''}</text></g>`;
+    }
+    svg.innerHTML = h + '</g>';
+    if (refit || GR.fit) { grFit(); GR.fit = false; } else grApplyView();
+    $('#grView').dataset.empty = g.nodes.length ? '' : 'Nothing to show';
+  }
+  function grApplyView() { const p = $('#grPan'); if (p) p.setAttribute('transform', `translate(${GR.x} ${GR.y}) scale(${GR.k})`); }
+  function grFit() {
+    const L = GR.L, box = $('#grView').getBoundingClientRect(); if (!L || !box.width) return;
+    const w = L.w + NW + 40, h = L.h + NH + 40, k = Math.min(1.4, box.width / w, box.height / h);
+    GR.k = k; GR.x = (box.width - (L.w + NW) * k) / 2; GR.y = (box.height - (L.h + NH) * k) / 2; grApplyView();
+  }
+  function grSchedule() { clearTimeout(GR.tm); GR.tm = setTimeout(() => grDraw(false), 80); }
+  function grHover(id) {
+    const svg = $('#grSvg'); if (!svg) return;
+    const near = new Set(id ? [id] : []); if (id) for (const e of GR.g.edges) { if (e.from === id) near.add(e.to); if (e.to === id) near.add(e.from); }
+    svg.classList.toggle('hov', !!id);
+    svg.querySelectorAll('.gn').forEach(n => n.classList.toggle('near', near.has(n.dataset.id)));
+    svg.querySelectorAll('.ge').forEach(e => e.classList.toggle('near', !!id && (e.dataset.f === id || e.dataset.t === id)));
+  }
+  function grSelect(id) {
+    const n = GR.g.nodes.find(x => x.id === id); if (!n) return;
+    S.sel = { t: n.ref.t, id: n.ref.id }; APP.changed({ tree: true, right: true });
+    if (!narrow() && !dL.classList.contains('open')) setDrawer('left', true);
+    setTimeout(() => { const it = $('#leftBody .item.sel'); if (it && it.scrollIntoView) it.scrollIntoView({ block: 'nearest' }); }, 90);
+  }
+  (function () {
+    const d = $('#dlgGraph'); if (!d) return;
+    d.querySelector('[value=close]').onclick = () => d.close();
+    let drag = null; const hh = d.querySelector('.fw-h');
+    hh.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { hh.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    hh.addEventListener('pointermove', e => { if (!drag) return; d._x = Math.max(0, e.clientX - drag.dx); d._y = Math.max(0, e.clientY - drag.dy); d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; d.style.right = 'auto'; });
+    hh.addEventListener('pointerup', () => { drag = null; });
+    const view = $('#grView');
+    let pan = null;
+    view.addEventListener('pointerdown', e => { if (e.target.closest('.gn')) return; pan = { x: e.clientX - GR.x, y: e.clientY - GR.y }; try { view.setPointerCapture(e.pointerId); } catch (_) {} });
+    view.addEventListener('pointermove', e => { if (pan) { GR.x = e.clientX - pan.x; GR.y = e.clientY - pan.y; grApplyView(); } });
+    view.addEventListener('pointerup', () => { pan = null; });
+    view.addEventListener('wheel', e => { e.preventDefault(); const r = view.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k2 = Math.min(4, Math.max(0.15, GR.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12))); GR.x = mx - (mx - GR.x) * k2 / GR.k; GR.y = my - (my - GR.y) * k2 / GR.k; GR.k = k2; grApplyView(); }, { passive: false });
+    view.addEventListener('click', e => { const n = e.target.closest('.gn'); if (n) grSelect(n.dataset.id); });
+    view.addEventListener('mouseover', e => { const n = e.target.closest('.gn'); grHover(n ? n.dataset.id : null); });
+    view.addEventListener('mouseleave', () => grHover(null));
+    const o = grOpt(); $('#grScope').value = o.scope; $('#grPlanes').checked = o.planes; $('#grCad').checked = o.cad; $('#grNoExp').checked = o.noexp;
+    const upd = () => { S.opt.graph = { scope: $('#grScope').value, planes: $('#grPlanes').checked, cad: $('#grCad').checked, noexp: $('#grNoExp').checked }; APP.save(); grDraw(true); };
+    ['grScope', 'grPlanes', 'grCad', 'grNoExp'].forEach(id => $('#' + id).addEventListener('change', upd));
+    $('#grFit').onclick = () => grFit();
+    d.addEventListener('close', () => { syncToolbar(); });
+    $('#btnGraph').onclick = () => { if (d.open) { d.close(); return; } d.show(); if (typeof d._x === 'number') { d.style.left = d._x + 'px'; d.style.top = d._y + 'px'; } else { d.style.left = 'auto'; d.style.right = '12px'; d.style.top = '64px'; } GR.fit = true; syncToolbar(); requestAnimationFrame(() => grDraw(true)); };
+  })();
   /* ---------- CAD <-> CG comparison window ---------- */
   const DEV = { last: null };
   function devRegionCheck(preId) {
@@ -851,6 +934,7 @@
   const isOpen = (k) => treeState()[k] !== false;
   const GROUPS_DEF = [
     { k: 'meshes', title: 'Meshes (STL / OBJ)', items: () => S.stls },
+    { k: 'comps', title: 'Components', items: () => S.model.components || [] },
     { k: 'csys', title: 'Coordinate systems', items: () => S.model.csys },
     { k: 'planes', title: 'Planes', items: () => S.model.bodies.filter(b => FK.isPlaneType(b.type)) },
     { k: 'bodies', title: 'Bodies', items: () => S.model.bodies.filter(b => !FK.isPlaneType(b.type)) },
@@ -877,6 +961,7 @@
       case 'planes': case 'bodies': return itemHTML('body', { id: o.id, name: o.name, type: o.type === 'RAW' ? o.rawType : o.type, color: o.color, visible: o.visible, opacity: o.type === 'RAW' ? undefined : o.opacity },
         { ne: !!o.noExport, look: o.type === 'RAW' ? undefined : (o.look || ''), info: !o.noExport && UNUSED.has(o.id) ? 'Not used by any exported region' : '' });
       case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity }, { ne: !!o.noExport, look: o.look || '', warn: o.noExport ? [] : regionWarns(o), info: o.meta && o.meta.link ? 'Strong link (formula follows its parent regions)' : '' });
+      case 'comps': return itemHTML('comp', { id: o.id, name: o.name, type: (FK.TEMPLATES[o.tpl] || {}).prefix || 'comp', color: '#7a5af8', visible: o.visible !== false }, { warn: o.error ? [o.error] : [] });
       case 'measures': return itemHTML('measure', { id: o.id, name: `M${S.measures.indexOf(o) + 1} · ${f(V.dist(o.a, o.b), 3)} cm`, type: 'DIST', visible: o.visible });
     }
     return '';
@@ -973,6 +1058,7 @@
   function groupMenu(k) {
     switch (k) {
       case 'meshes': return [{ label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() }, newGrp(k)].concat(visItems(k));
+      case 'comps': return Object.keys(FK.TEMPLATES).map(id => ({ label: 'New ' + FK.TEMPLATES[id].name.toLowerCase(), fn: () => { const c = APP.compCreate(id); if (c) { S.rtab = 'definition'; APP.changed({ tree: true, right: true }); } } }));
       case 'csys': return [
         { label: 'New coordinate system (child of active)', fn: () => newCsysEditable(S.model.active || 0, undefined) },
         { label: 'New from 3 points in the view…', fn: () => setTool('csys3') },
@@ -1019,6 +1105,10 @@
         { label: 'Section view (YZ plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':yz') },
         { label: 'Duplicate', fn: () => APP.duplicateCsys(o) }, { sep: 1 }, del];
       case 'stl': return [rename, toggle, { label: 'Detect features… (experimental)', fn: () => openFeatDlg(o) }, { label: 'Bounding RPP', fn: () => { if (o.stats && o.stats.bbox) APP.rppFromBox(o.stats.bbox); } }, { sep: 1 }, del];
+      case 'comp': return [rename, toggle, { label: 'Regenerate', fn: () => { APP.snap(); APP.compRegen(o); APP.changed({ tree: true, right: true }); } },
+        { label: 'Select its placement coordinate system', fn: () => selectItem('csys', o.cs) },
+        { label: 'Detach (keep objects as ordinary bodies / regions)', fn: () => APP.compDetach(o) }, { sep: 1 },
+        { label: 'Delete component and its objects', danger: true, fn: () => APP.deleteComp(o.id, false) }];
       case 'measure': return [toggle, { label: 'RPP from these 2 points', fn: () => APP.createRpp(o.a, o.b) }, { sep: 1 }, del];
     }
     return [];
@@ -1109,7 +1199,7 @@
   });
   $('#leftBody').addEventListener('dragend', () => { dragItem = null; clearDrop(); $$('#leftBody .dragging').forEach(n => n.classList.remove('dragging')); });
 
-  function findItem(t, id) { return { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: APP.getCsys }[t](id); }
+  function findItem(t, id) { return { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: APP.getCsys, comp: APP.getComp }[t](id); }
 
   /* ---------- Right panel ---------- */
   const loc = (p) => APP.toLocal(p);
@@ -1529,15 +1619,51 @@
     const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="rppMeasure">RPP from these 2 points</button></div><div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
     return tabbed({ general, operations });
   }
+
+  /* ---------- Components ---------- */
+  function compProps(c) {
+    const T = FK.TEMPLATES[c.tpl] || { name: c.tpl, params: [], desc: '' }, it = APP.compItems(c);
+    const csn = (APP.getCsys(c.cs) || {}).name || '—';
+    const general = `<div class="sec"><h4><span>Component</span></h4><div class="fields">
+      <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(c.name)}"></div>
+      <div class="fld full"><label title="Generated objects are named prefix_role">Name prefix of the objects</label><input type="text" data-cp-prefix value="${esc(c.prefix)}" maxlength="20"></div>
+      <div class="fld full"><label>Template</label><div>${esc(T.name)}</div></div>
+      <div class="fld full"><label>Placement</label><div class="btns"><button class="btn sm" data-act="compSel" data-t="csys" data-id="${c.cs}">Coordinate system ${esc(csn)}</button></div></div></div>
+      <div class="muted" style="font-size:12px">Move or rotate this coordinate system to place the component. Z is the axis; the base lies on the XY plane.</div></div>`;
+    const params = T.params.map(q => q.bool
+      ? `<div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-cp="${q.k}" ${+c.params[q.k] ? 'checked' : ''}>${esc(q.l)}</label></div>`
+      : `<div class="fld"><label>${esc(q.l)}</label><input type="number" step="0.1" data-cp="${q.k}" value="${esc(String(c.params[q.k]))}"></div>`).join('');
+    const definition = `<div class="sec"><h4><span>Parameters</span></h4>
+      ${c.error ? `<div class="bad" style="margin:4px 0">⚠ ${esc(c.error)}</div>` : ''}<div class="fields">${params}</div>
+      ${(c.info || []).map(x => `<div class="muted" style="font-size:12px">${esc(x)}</div>`).join('')}
+      <div class="muted" style="font-size:12px">Objects are regenerated in place: their names, colors and links to other regions are kept.</div></div>`;
+    const row = (t, o, label) => `<button class="btn sm" data-act="compSel" data-t="${t}" data-id="${o.id}" style="margin:2px 4px 2px 0">${esc(o.name)}</button>`;
+    const operations = `<div class="sec"><h4><span>Generated objects</span></h4>
+      <div class="muted" style="font-size:12px">Regions (usable in other regions' booleans):</div><div>${it.regions.map(o => row('region', o)).join('') || '—'}</div>
+      <div class="muted" style="font-size:12px">Bodies:</div><div>${it.bodies.map(o => row('body', o)).join('') || '—'}</div></div>
+      <div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="compRegen">Regenerate</button>
+      <button class="btn" data-act="compDetach" title="Remove the component link; its bodies and regions become ordinary, fully editable objects">Detach (make objects editable)</button></div>
+      <div class="btns opsdel"><button class="btn danger" data-act="compDel">Delete component and objects</button></div></div>`;
+    return tabbed({ general, definition, operations });
+  }
+  /** Objects generated by a component: geometry is read-only (edit the component parameters instead). */
+  function lockGenerated(it) {
+    if (!it || !S.sel || !(S.sel.t === 'body' || S.sel.t === 'region') || !it.meta || !it.meta.comp) return;
+    const c = APP.compOf(it), root = $('#rightBody'); if (!c) return;
+    const first = root.querySelector('.rpane') || root;
+    first.insertAdjacentHTML('afterbegin', `<div class="muted" style="margin:4px 0 8px">⚠ Generated by component <b>${esc(c.name)}</b>: geometry is read-only. <button class="btn sm" data-act="compOwner">Open component</button></div>`);
+    root.querySelectorAll('[data-bf],[data-k=bcs],#exprArea,.exprbtns button,[data-act=pickField],.pk').forEach(el => { el.disabled = true; });
+  }
   function renderRight() {
     let h = '';
     const it = APP.selItem();
     if (it && S.sel) {
-      h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps })[S.sel.t](it);
+      h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps, comp: compProps })[S.sel.t](it);
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
     updateLive();
     if (it && S.sel && S.sel.t === 'region') initExprEditor();
+    lockGenerated(it);
     renderToolWin();
   }
 
@@ -1594,6 +1720,14 @@
       if (k === 'mode') { const u = $('[data-sc=unit]'); if (u) u.disabled = t.value === 'pct'; if (t.value === 'pct' && sc.val === 20) { sc.val = 120; $('[data-sc=val]').value = 120; } if (t.value === 'margin' && sc.val === 120) { sc.val = 20; $('[data-sc=val]').value = 20; } }
       APP.save(); return;
     }
+    if (t.dataset.cp !== undefined || t.dataset.cpPrefix !== undefined) {
+      if (e.type !== 'change' || !it || S.sel.t !== 'comp') return;
+      if (t.dataset.cpPrefix !== undefined) { if (!APP.compSetPrefix(it, t.value)) t.value = it.prefix; return; }
+      const q = (FK.TEMPLATES[it.tpl].params.find(x => x.k === t.dataset.cp)) || {};
+      const v = q.bool ? (t.checked ? 1 : 0) : parseFloat(t.value);
+      if (!isFinite(v)) return;
+      APP.snap('comp' + it.id + t.dataset.cp); APP.compSetParam(it, t.dataset.cp, v); return;
+    }
     const k = t.dataset.k;
     if (k === 'title') { if (e.type === 'input') { APP.snap('title'); S.model.title = t.value; APP.changed({}); } return; }
     if (!it || !S.sel) return;
@@ -1620,6 +1754,7 @@
         else if (type === 'region') { if (!APP.renameRegion(it, t.value)) t.value = it.name; }
         else if (type === 'stl') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         else if (type === 'csys') { if (!APP.renameCsys(it, t.value)) t.value = it.name; }
+        else if (type === 'comp') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         break;
       case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
@@ -1702,6 +1837,11 @@
       case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
       case 'csysCut': if (it && S.sel.t === 'csys') APP.cutUseSrc('cs:' + it.id + ':' + a.dataset.pl); break;
       case 'csysExport': if (it && S.sel.t === 'csys') { APP.setExportCsys(APP.exportCs() === it.id ? 0 : it.id); renderRight(); } break;
+      case 'compRegen': if (it && S.sel.t === 'comp') { APP.snap(); APP.compRegen(it); APP.changed({ tree: true, right: true }); } break;
+      case 'compDetach': if (it && S.sel.t === 'comp') APP.compDetach(it); break;
+      case 'compDel': if (it && S.sel.t === 'comp') APP.deleteComp(it.id, false); break;
+      case 'compSel': selectItem(a.dataset.t, +a.dataset.id); break;
+      case 'compOwner': { const c = APP.compOf(it); if (c) selectItem('comp', c.id); break; }
       case 'csysActivate': if (it && S.sel.t === 'csys') { APP.setActiveCsys(it.id); renderRight(); } break;
       case 'pickCsysPoint': if (pk) { const c = APP.createCsysWorld(FK.M.fromPosEuler(pk.p, [0, 0, 0])); if (c) toast('Coordinate system ' + c.name + ' created (axes parallel to world)'); } break;
       case 'pickCsysFace': if (pk && pk.kind === 'face') { const c = APP.createCsysWorld(APP.csysFromNormal(pk.centroid, pk.normal)); if (c) toast('Coordinate system ' + c.name + ' created: Z = face normal'); } break;
@@ -2112,5 +2252,5 @@
     if (!narrow()) { dL.classList.add('open'); dR.classList.add('open'); }
   }
   init();
-  window.APP_DEBUG = { startFill, processHit, newCsysEditable, resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+  window.APP_DEBUG = { grDraw, grSelect, GR, startFill, processHit, newCsysEditable, resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
 })();

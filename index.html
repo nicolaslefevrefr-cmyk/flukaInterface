@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.15.0">
+<link rel="stylesheet" href="css/style.css?v=1.17.0">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.15.0</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.17.0</i></b></div>
     <input id="projName" class="pname" type="text" maxlength="60" spellcheck="false" placeholder="Project name" title="Project name: also the title line of the INP file and the name of the saved files" aria-label="Project name">
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
@@ -48,8 +48,8 @@
             <button data-filter="object" title="Select objects"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="grpTool" role="group" aria-label="Tools">
-            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.15.0"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
-            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.15.0" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.17.0"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.17.0" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           </div>
           <div class="grp" id="grpProj" role="group" aria-label="Projection">
             <button data-proj="persp" title="Perspective view"><svg viewBox="0 0 24 24"><path d="M3 19l4-11h10l4 11z M7 8l2 11M17 8l-2 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
@@ -65,14 +65,15 @@
             <button data-render="cgop" title="CG objects opaque, meshes slightly transparent"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="11" height="11" rx="1.5" fill="currentColor" opacity=".18" stroke="currentColor" stroke-width="1.3"/><rect x="10" y="4" width="11" height="11" rx="1.5" fill="currentColor" stroke="currentColor" stroke-width="1.3"/></svg></button>
             <button id="btnNames" title="Object names in the viewport: off / regions / bodies / all"><svg viewBox="0 0 24 24"><path d="M5 17l4-10h2l4 10M6.8 13h6.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><rect x="15.5" y="14" width="6" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></button>
             <button id="btnOnlyExp" title="Show only the objects written in the INP file"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 13l2.2 2.2L15.5 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnGraph" title="Dependency diagram of the bodies and regions (experimental)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="3" y="15" width="6" height="5" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="15" y="9.5" width="6" height="5" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 6.5h2.5c1.6 0 2-.3 3.5 3M9 17.5h2.5c1.6 0 2-.3 3.5-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
             <button id="btnEdges" title="Show / hide edge lines"><svg viewBox="0 0 24 24"><path d="M4 18L12 5l8 13z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 11.5l8 0" stroke="currentColor" stroke-width="1" opacity=".5"/></svg></button>
           </div>
           <div class="grp" id="grpRes" role="group" aria-label="Resolution">
             <button id="btnRes" title="Resolution of curved surfaces (number of facets of cylinders / spheres)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7" stroke="currentColor" stroke-width="1" opacity=".7"/></svg></button>
           </div>
           <div class="grp" id="grpRot" role="group" aria-label="Mouse rotation">
-            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.15.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.15.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.17.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.17.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="viewBtns" role="group" aria-label="View">
             <button data-view="fit" title="Fit the view to what is displayed">⤢</button>
@@ -190,6 +191,20 @@
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="boolOk">Create region</button></div>
   </form>
 </dialog>
+<dialog id="dlgGraph" class="featwin graphwin">
+  <form method="dialog">
+    <div class="fw-h"><b>Dependency diagram <small class="muted">experimental</small></b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
+    <div class="gr-opts">
+      <label>Show <select id="grScope"><option value="all">everything</option><option value="up">the selection and what it uses</option><option value="down">the selection and what uses it</option><option value="both">the selection, both ways</option></select></label>
+      <label class="chk"><input type="checkbox" id="grPlanes" checked>Planes</label>
+      <label class="chk"><input type="checkbox" id="grCad">CAD meshes</label>
+      <label class="chk"><input type="checkbox" id="grNoExp" checked>Not exported</label>
+      <button type="button" class="pill" id="grFit">Fit</button>
+    </div>
+    <div id="grView"><svg id="grSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div class="gr-leg"><span><i class="lg" style="background:#16a34a"></i>inside (+)</span><span><i class="lg" style="background:#dc2626"></i>outside (−)</span><span><i class="lg" style="background:#9333ea"></i>both</span><span><i class="lg" style="background:#1d4ed8"></i>live link (A / B)</span><span><i class="lg dash" style="background:#6b7280"></i>derived once</span><span><i class="lg dash" style="background:#64748b"></i>CAD link</span><span>Click: select · wheel: zoom · drag: move</span></div>
+  </form>
+</dialog>
 <dialog id="dlgDev" class="featwin devwin">
   <form method="dialog">
     <div class="fw-h"><b>CAD ↔ CG comparison</b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
@@ -239,15 +254,17 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.15.0"></script>
-<script src="js/core.js?v=1.15.0"></script>
-<script src="js/state.js?v=1.15.0"></script>
-<script src="js/scene.js?v=1.15.0"></script>
-<script src="js/cut.js?v=1.15.0"></script>
-<script src="js/compare.js?v=1.15.0"></script>
-<script src="js/check.js?v=1.15.0"></script>
-<script src="js/snap.js?v=1.15.0"></script>
-<script src="js/ui.js?v=1.15.0"></script>
-<script src="js/pwa.js?v=1.15.0"></script>
+<script src="js/lib/three.min.js?v=1.17.0"></script>
+<script src="js/core.js?v=1.17.0"></script>
+<script src="js/state.js?v=1.17.0"></script>
+<script src="js/scene.js?v=1.17.0"></script>
+<script src="js/cut.js?v=1.17.0"></script>
+<script src="js/compare.js?v=1.17.0"></script>
+<script src="js/check.js?v=1.17.0"></script>
+<script src="js/snap.js?v=1.17.0"></script>
+<script src="js/graph.js?v=1.17.0"></script>
+<script src="js/tpl.js?v=1.17.0"></script>
+<script src="js/ui.js?v=1.17.0"></script>
+<script src="js/pwa.js?v=1.17.0"></script>
 </body>
 </html>

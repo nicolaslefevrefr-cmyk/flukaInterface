@@ -5,7 +5,7 @@
   const V = FK.V, fmt = FK.fmt;
 
   const S = APP.S = {
-    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [] },
+    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [] },
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
@@ -15,14 +15,15 @@
   APP.nid = () => S.nextId++;
   APP.getBody = (id) => S.model.bodies.find(b => b.id === id);
   APP.getRegion = (id) => S.model.regions.find(r => r.id === id);
+  APP.getComp = (id) => (S.model.components || []).find(c => c.id === id);
   APP.getStl = (id) => S.stls.find(s => s.id === id);
   APP.getMeasure = (id) => S.measures.find(m => m.id === id);
   APP.selItem = function () {
     if (!S.sel) return null;
-    const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id) }[S.sel.t];
+    const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id), comp: APP.getComp }[S.sel.t];
     return g ? g(S.sel.id) || null : null;
   };
-  APP.changed = (f) => { if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
+  APP.changed = (f) => { if (APP.syncComps) APP.syncComps(); if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
   APP.toast = (m) => { if (APP.hooks.toast) APP.hooks.toast(m); };
   const color = (i) => FK.PALETTE[i % FK.PALETTE.length];
 
@@ -40,7 +41,7 @@
   function restore(str) {
     const o = JSON.parse(str);
     S.model = o.model; S.measures = o.measures;
-    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || [];
+    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
     if (S.sel && !APP.selItem() && S.sel.t !== 'stl') S.sel = null;
     APP.changed({ tree: true, right: true, measures: true });
   }
@@ -58,7 +59,7 @@
       const raw = localStorage.getItem(KEY); if (!raw) return false;
       const o = JSON.parse(raw);
       if (o.model && Array.isArray(o.model.bodies)) {
-        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || [];
+        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
         S.measures = o.measures || []; S.nextId = o.nextId || 1000;
         Object.assign(S.opt, o.opt || {});
         if (!(o.opt && o.opt.defV2)) { S.opt.render = 'opaque'; S.opt.edges = true; S.opt.invX = false; S.opt.invY = false; S.opt.defV2 = true; }   // new defaults, applied once
@@ -465,7 +466,7 @@
     APP.snap();
     for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m);
     S.stls = stls; for (const m of stls) APP.buildStl(m);
-    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || [];
+    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
     S.measures = o.measures || [];
     if (o.opt) Object.assign(S.opt, o.opt);
     if (o.filter) S.filter = o.filter;
@@ -710,7 +711,7 @@
     bodies: () => S.model.bodies.filter(b => !FK.isPlaneType(b.type)), regions: () => S.model.regions, measures: () => S.measures
   };
   APP.catItems = (k) => CAT_ITEMS[k]();
-  APP.catOf = (t, o) => t === 'stl' ? 'meshes' : t === 'csys' ? 'csys' : t === 'region' ? 'regions' : t === 'measure' ? 'measures' : (FK.isPlaneType(o.type) ? 'planes' : 'bodies');
+  APP.catOf = (t, o) => t === 'comp' ? 'comps' : t === 'stl' ? 'meshes' : t === 'csys' ? 'csys' : t === 'region' ? 'regions' : t === 'measure' ? 'measures' : (FK.isPlaneType(o.type) ? 'planes' : 'bodies');
   APP.groups = () => S.model.groups || (S.model.groups = []);
   APP.getGroup = (id) => APP.groups().find(g => g.id === id);
   APP.groupMembers = (g) => CAT_ITEMS[g.k]().filter(o => o.grp === g.id);
@@ -756,6 +757,7 @@
     if (!S.sel) return;
     const { t, id } = S.sel;
     if (t === 'csys') { APP.deleteCsys(id); return; }
+    if (t === 'comp') { APP.deleteComp(id, false); return; }
     APP.snap();
     if (t === 'body') S.model.bodies = S.model.bodies.filter(b => b.id !== id);
     else if (t === 'region') S.model.regions = S.model.regions.filter(r => r.id !== id);
@@ -780,6 +782,125 @@
     if (S.model.regions.some(x => x !== r && x.name === nn)) { APP.toast('A region with this name already exists'); return false; }
     APP.snap(); r.name = nn; APP.changed({ tree: true });
     return true;
+  };
+
+
+  /* ---------- Parametric components (see tpl.js) ---------- */
+  // A component owns ordinary bodies and regions (found again through meta.comp.role) and regenerates them when a parameter changes.
+  const linkedTo = (r) => S.model.regions.filter(x => x !== r && x.meta && x.meta.link && (x.meta.link.a === r.id || x.meta.link.b === r.id));
+  const compName = (c, role) => c.prefix + '_' + role;
+  APP.compItems = function (c) {
+    const out = { bodies: [], regions: [] };
+    for (const k of Object.keys(c.items || {})) {
+      if (k[0] === 'b') { const b = APP.getBody(c.items[k]); if (b) out.bodies.push(b); }
+      else { const r = APP.getRegion(c.items[k]); if (r) out.regions.push(r); }
+    }
+    return out;
+  };
+  APP.compOf = (o) => o && o.meta && o.meta.comp ? APP.getComp(o.meta.comp.id) || null : null;
+  /** Rebuild the generated bodies/regions from the parameters. Returns false (and sets c.error) when the parameters are invalid. */
+  APP.compRegen = function (c) {
+    const res = FK.tplBuild(c.tpl, c.params);
+    if (res.error) { c.error = res.error; return false; }
+    c.error = ''; c.info = res.info || [];
+    if (!APP.getCsys(c.cs)) c.cs = APP.addCsys(M.id(), { parent: S.model.active || 0, name: FK.uniqueName(c.prefix + '_cs', csysNames(), 40) }).id;
+    c.items = c.items || {};
+    const names = {}, keep = new Set();
+    for (const bd of res.bodies) {
+      const key = 'b:' + bd.role; keep.add(key);
+      let b = APP.getBody(c.items[key]);
+      if (!b) {
+        b = APP.addBody(bd.type, bd.p.slice(), { cs: c.cs, name: FK.uniqueName(compName(c, bd.role), bodyNames(), 40), meta: { comp: { id: c.id, role: bd.role } }, visible: c.visible !== false });
+        c.items[key] = b.id;
+      } else { b.type = bd.type; b.p = bd.p.slice(); b.cs = c.cs; }
+      names[bd.role] = b.name;
+    }
+    for (const rg of res.regions) {
+      const key = 'r:' + rg.role; keep.add(key);
+      const expr = rg.expr.replace(/\{(\w+)\}/g, (m, k) => names[k] || m);
+      let r = APP.getRegion(c.items[key]);
+      if (!r) {
+        r = APP.addRegion(FK.uniqueName(compName(c, rg.role), regionNames(), 40), expr, { visible: false });
+        r.meta = Object.assign(r.meta || {}, { comp: { id: c.id, role: rg.role } });
+        c.items[key] = r.id;
+      } else r.expr = expr;
+    }
+    for (const key of Object.keys(c.items)) if (!keep.has(key)) {
+      const id = c.items[key]; delete c.items[key];
+      if (key[0] === 'r') {
+        const r = APP.getRegion(id); if (!r) continue;
+        const used = linkedTo(r).length > 0;
+        if (used) { delete r.meta.comp; APP.toast('Region "' + r.name + '" is used elsewhere: kept as a normal region'); }
+        else S.model.regions = S.model.regions.filter(x => x !== r);
+      } else {
+        const b = APP.getBody(id); if (!b) continue;
+        S.model.bodies = S.model.bodies.filter(x => x !== b);
+      }
+    }
+    return true;
+  };
+  APP.compCreate = function (tpl) {
+    const t = FK.TEMPLATES[tpl]; if (!t) return null;
+    APP.snap();
+    const comps = S.model.components = S.model.components || [];
+    const prefix = FK.uniqueName(t.prefix + '1', new Set(comps.map(x => x.prefix)), 20);
+    const c = { id: APP.nid(), name: prefix, prefix, tpl, params: FK.tplDefaults(tpl), cs: 0, items: {}, visible: true, visApplied: true, error: '', info: [] };
+    c.cs = APP.addCsys(M.id(), { parent: S.model.active || 0, name: FK.uniqueName(prefix + '_cs', csysNames(), 40) }).id;
+    comps.push(c);
+    APP.compRegen(c);
+    S.sel = { t: 'comp', id: c.id };
+    APP.changed({ tree: true, right: true });
+    return c;
+  };
+  APP.compSetParam = function (c, k, v) {
+    c.params[k] = v;
+    APP.compRegen(c);
+    APP.changed({ tree: true, right: true });
+  };
+  APP.compSetPrefix = function (c, np) {
+    np = (np || '').trim().replace(/\s+/g, '_');
+    if (!np || np === c.prefix) return false;
+    if (S.model.components.some(x => x !== c && x.prefix === np)) { APP.toast('Another component already uses this prefix'); return false; }
+    APP.snap();
+    const old = c.prefix; c.prefix = np;
+    for (const k of Object.keys(c.items)) {
+      const role = k.slice(2);
+      if (k[0] === 'b') { const b = APP.getBody(c.items[k]); if (b && b.name === old + '_' + role) APP.renameBody(b, FK.uniqueName(np + '_' + role, bodyNames(), 40)); }
+      else { const r = APP.getRegion(c.items[k]); if (r && r.name === old + '_' + role) APP.renameRegion(r, FK.uniqueName(np + '_' + role, regionNames(), 40)); }
+    }
+    APP.changed({ tree: true, right: true });
+    return true;
+  };
+  /** Remove the component but keep its objects as ordinary (editable) bodies and regions. */
+  APP.compDetach = function (c) {
+    APP.snap();
+    for (const o of APP.compItems(c).bodies.concat(APP.compItems(c).regions)) delete o.meta.comp;
+    S.model.components = S.model.components.filter(x => x !== c);
+    if (S.sel && S.sel.t === 'comp') S.sel = null;
+    APP.changed({ tree: true, right: true });
+  };
+  APP.deleteComp = function (id, keepItems) {
+    const c = APP.getComp(id); if (!c) return;
+    if (keepItems) { APP.compDetach(c); return; }
+    APP.snap();
+    const it = APP.compItems(c);
+    S.model.regions = S.model.regions.filter(r => !it.regions.includes(r));
+    S.model.bodies = S.model.bodies.filter(b => !it.bodies.includes(b));
+    S.model.components = S.model.components.filter(x => x !== c);
+    if (S.sel && S.sel.t === 'comp') S.sel = null;
+    const broken = S.model.regions.filter(r => r.meta && r.meta.link && (it.regions.some(g => g.id === r.meta.link.a || g.id === r.meta.link.b))).map(r => r.name);
+    if (broken.length) APP.toast('⚠ ' + broken.join(', ') + ' used a deleted region');
+    APP.changed({ tree: true, right: true });
+  };
+  /** Propagate component visibility to its objects (called on every change). */
+  APP.syncComps = function () {
+    for (const c of S.model.components || []) {
+      if (c.visApplied === c.visible) continue;
+      c.visApplied = c.visible;
+      const it = APP.compItems(c);
+      for (const b of it.bodies) b.visible = c.visible;
+      if (!c.visible) for (const r of it.regions) r.visible = false;
+    }
   };
 
   /* ---------- Scale / margin ---------- */
@@ -864,7 +985,7 @@
   APP.newModel = function (all) {
     APP.snap();
     if (all) { for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m); S.stls = []; }
-    S.model = { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [] };
+    S.model = { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [] };
     S.measures = []; S.sel = null; S.pick = null; S.pending = null; S.fill = null;
     APP.changed({ tree: true, right: true, measures: true, fit: !!all });
   };
