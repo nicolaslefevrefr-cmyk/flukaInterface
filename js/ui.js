@@ -89,6 +89,15 @@
   $('#btnUndo').onclick = () => APP.undo();
   $('#btnRedo').onclick = () => APP.redo();
 
+  /* ---------- Colour theme (light by default) ---------- */
+  function applyTheme() {
+    const dark = S.opt.theme === 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = dark ? '#151a22' : '#ffffff';
+    const b = document.getElementById('btnTheme'); if (b) { b.textContent = dark ? '☀' : '☾'; b.title = dark ? 'Switch to the light theme' : 'Switch to the dark theme'; }
+    if (APP.cutRefresh) APP.cutRefresh();
+  }
+  { const b = document.getElementById('btnTheme'); if (b) b.onclick = () => { S.opt.theme = S.opt.theme === 'dark' ? 'light' : 'dark'; applyTheme(); APP.save(); }; applyTheme(); }
   /* ---------- Toolbar ---------- */
   /* ---------- Resizable side panels (the viewport follows) ---------- */
   const PW = { min: 220, left: 310, right: 340, dock: 440 };
@@ -327,6 +336,7 @@
     else v = t.value;
     S.opt[k] = v;
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly', 'edgeSoft'].includes(k)) { clearPick(); APP.clearHover(); }
+    if (k === 'theme') applyTheme();
     if (k === 'snapFeat') renderToolOpts();
     if (k === 'ptMode') { S.ptPlanes = []; ptRefreshPending(); renderToolOpts(); updateStatus(); }
     if (k === 'margin' || k === 'axes') APP.changed({});
@@ -902,6 +912,7 @@
       { label: 'Open project (.json)…', fn: () => $('#fileProj').click() },
       { label: 'Save project (.json) — with meshes', fn: saveProject },
       { sep: 1 },
+      { label: 'Load dummy example', fn: () => { if (S.model.bodies.length || S.model.regions.length) { if (!confirm('Replace the current model with the dummy example?')) return; } APP.loadExample(); } },
       { label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() },
       { label: 'Import INP block…', fn: openImport },
       { label: 'Export .inp file', fn: () => $('#btnInpSave').click() },
@@ -921,6 +932,8 @@
         <label class="chk" title="After a detected feature, a plane from a face or a picked cylinder / box is created, propose exact values: axis on X / Y / Z, parallel / coaxial with other cylinders, equal radii, faces and ends coincident with other objects"><input type="checkbox" data-opt="snapOn" ${o.snapOn !== false ? 'checked' : ''}>Propose corrected values for new objects</label>
         <div class="row2"><span class="muted" style="flex:1">Length tolerance (mm)</span><input type="number" step="0.05" min="0" style="width:80px" data-opt="snapTol" value="${o.snapTol === undefined ? 0.2 : o.snapTol}"></div>
         <div class="row2"><span class="muted" style="flex:1">Angle tolerance (°)</span><input type="number" step="0.1" min="0" style="width:80px" data-opt="snapAng" value="${o.snapAng === undefined ? 0.5 : o.snapAng}"></div></div></details>
+      <details class="fold" open><summary>Theme</summary><div>
+        <div class="row2"><span class="muted" style="flex:1">Colour theme</span><select data-opt="theme"><option value="light" ${o.theme !== 'dark' ? 'selected' : ''}>Light</option><option value="dark" ${o.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div></details>
       <details class="fold" open><summary>INP block</summary><div>
         <div class="fld"><label>Project name (title line of the INP, name of the saved files)</label><input type="text" data-k="title" value="${esc(S.model.title)}"></div>
         <div class="fld" style="margin-top:6px"><label title="All INP coordinates and directions are written in this frame">Export coordinate system ⓘ</label><select data-k="exportCs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${APP.exportCs() === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
@@ -951,7 +964,7 @@
     const info = ex.info ? `<span class="wicon info" tabindex="0" title="${esc(ex.info)}">ⓘ</span>` : '';
     const look = ex.look !== undefined ? `<button class="lk${ex.look ? ' on' : ''}" data-act="look" title="${ex.look === 'opaque' ? 'Always opaque (click: always transparent)' : ex.look === 'transparent' ? 'Always transparent (click: follow the global mode)' : 'Follows the global mode (click: always opaque)'}">${ex.look === 'opaque' ? '●' : ex.look === 'transparent' ? '○' : '◐'}</button>` : '';
     return `<div class="item${sel ? ' sel' : ''}${ex.ne ? ' ne' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
-      <div class="top"><button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>
+      <div class="top">${ex.novis ? '<span class="chev"></span>' : `<button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>`}
       ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span>${warn}${info}<span class="ty">${ex.ne ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span>${look}<button class="mn" data-act="imenu" title="Actions">⋮</button></div>
       </div>`;
   }
@@ -961,6 +974,7 @@
     if (c && c.diag && c.diag.length) w.push('Empty: ' + brief(String(c.diag[0].text)));
     if (c && c.quality) for (const q of c.quality) w.push(q.text);
     if (c && c.err) w.push(c.err);
+    if (S.model.materials && !r.noExport && !APP.getMaterial(r.mat)) w.push('No material assigned');
     return w;
   }
   let UNUSED = new Set();
@@ -973,6 +987,7 @@
     { k: 'planes', title: 'Planes', items: () => S.model.bodies.filter(b => FK.isPlaneType(b.type)) },
     { k: 'bodies', title: 'Bodies', items: () => S.model.bodies.filter(b => !FK.isPlaneType(b.type)) },
     { k: 'regions', title: 'Regions', items: () => S.model.regions },
+    { k: 'materials', title: 'Materials', items: () => S.model.materials || [] },
     { k: 'measures', title: 'Measures', items: () => S.measures }
   ];
   /** Coordinate systems of `list` as a tree; a parent outside the list counts as "root" inside it. */
@@ -995,6 +1010,7 @@
       case 'planes': case 'bodies': return itemHTML('body', { id: o.id, name: o.name, type: o.type === 'RAW' ? o.rawType : o.type, color: o.color, visible: o.visible, opacity: o.type === 'RAW' ? undefined : o.opacity },
         { ne: !!o.noExport, look: o.type === 'RAW' ? undefined : (o.look || ''), info: !o.noExport && UNUSED.has(o.id) ? 'Not used by any exported region' : '' });
       case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity }, { ne: !!o.noExport, look: o.look || '', warn: o.noExport ? [] : regionWarns(o), info: o.meta && o.meta.link ? 'Strong link (formula follows its parent regions)' : '' });
+      case 'materials': return itemHTML('material', { id: o.id, name: o.name, type: APP.regionsOfMaterial(o.id).length + ' reg.', visible: true }, { novis: true });
       case 'comps': return itemHTML('comp', { id: o.id, name: o.name, type: (FK.TEMPLATES[o.tpl] || {}).prefix || 'comp', color: '#7a5af8', visible: o.visible !== false }, { warn: o.error ? [o.error] : [] });
       case 'measures': return itemHTML('measure', { id: o.id, name: `M${S.measures.indexOf(o) + 1} · ${f(V.dist(o.a, o.b), 3)} cm`, type: 'DIST', visible: o.visible });
     }
@@ -1028,7 +1044,7 @@
     for (const g of GROUPS_DEF) {
       const list = g.items(), open = isOpen(g.k), anyVis = list.some(o => o.visible);
       h += `<div class="tg" data-k="${g.k}"><div class="th" data-g="${g.k}"><button class="chev" data-act="fold" data-k="${g.k}" aria-label="Expand / collapse">${open ? '▾' : '▸'}</button><span class="tt">${g.title}</span><span class="cnt">${list.length}</span>` +
-        (g.k !== 'csys' && g.k !== 'measures' || list.length ? `<button class="vis${anyVis ? '' : ' off'}" data-act="gvis" data-g="${g.k}" title="Show / hide all">${anyVis ? ICON.eye : ICON.eyeOff}</button>` : '') +
+        (g.k !== 'materials' && (g.k !== 'csys' && g.k !== 'measures' || list.length) ? `<button class="vis${anyVis ? '' : ' off'}" data-act="gvis" data-g="${g.k}" title="Show / hide all">${anyVis ? ICON.eye : ICON.eyeOff}</button>` : '') +
         `<button class="mn" data-act="gmenu" data-g="${g.k}" title="Create / actions (or right-click)">＋</button></div>`;
       if (open) h += `<div class="tb">${catBody(g) || '<div class="empty">Empty — right-click the header to create</div>'}</div>`;
       h += '</div>';
@@ -1092,6 +1108,7 @@
   function groupMenu(k) {
     switch (k) {
       case 'meshes': return [{ label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() }, newGrp(k)].concat(visItems(k));
+      case 'materials': return FK.DEFAULT_MATERIALS.filter(n => !APP.materialByName(n)).map(n => ({ label: 'Add ' + n, fn: () => APP.addMaterial(n) })).concat([{ label: 'New material…', fn: () => { const m = APP.addMaterial('MAT1'); S.rtab = 'general'; APP.changed({ tree: true, right: true }); setTimeout(() => { const i = $('#rightBody [data-k=name]'); if (i) { i.focus(); i.select(); } }, 60); } }]);
       case 'comps': return Object.keys(FK.TEMPLATES).map(id => ({ label: 'New ' + FK.TEMPLATES[id].name.toLowerCase(), fn: () => { const c = APP.compCreate(id); if (c) { S.rtab = 'definition'; APP.changed({ tree: true, right: true }); } } }));
       case 'csys': return [
         { label: 'New coordinate system (child of active)', fn: () => newCsysEditable(S.model.active || 0, undefined) },
@@ -1139,6 +1156,7 @@
         { label: 'Section view (YZ plane)', fn: () => APP.cutUseSrc('cs:' + o.id + ':yz') },
         { label: 'Duplicate', fn: () => APP.duplicateCsys(o) }, { sep: 1 }, del];
       case 'stl': return [rename, toggle, { label: 'Detect features… (experimental)', fn: () => openFeatDlg(o) }, { label: 'Bounding RPP', fn: () => { if (o.stats && o.stats.bbox) APP.rppFromBox(o.stats.bbox); } }, { sep: 1 }, del];
+      case 'material': return [rename, { sep: 1 }, del];
       case 'comp': return [rename, toggle, { label: 'Regenerate', fn: () => { APP.snap(); APP.compRegen(o); APP.changed({ tree: true, right: true }); } },
         { label: 'Select its placement coordinate system', fn: () => selectItem('csys', o.cs) },
         { label: 'Detach (keep objects as ordinary bodies / regions)', fn: () => APP.compDetach(o) }, { sep: 1 },
@@ -1233,7 +1251,7 @@
   });
   $('#leftBody').addEventListener('dragend', () => { dragItem = null; clearDrop(); $$('#leftBody .dragging').forEach(n => n.classList.remove('dragging')); });
 
-  function findItem(t, id) { return { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: APP.getCsys, comp: APP.getComp }[t](id); }
+  function findItem(t, id) { return { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: APP.getCsys, comp: APP.getComp, material: APP.getMaterial }[t](id); }
 
   /* ---------- Right panel ---------- */
   const loc = (p) => APP.toLocal(p);
@@ -1582,7 +1600,8 @@
     const opts = [...byType.keys()].sort(collate.compare).map(t => `<optgroup label="${esc(t)}">${byType.get(t).sort((x, y) => collate.compare(x.name, y.name)).map(b => `<option value="${esc(b.name)}"${S.termSel === b.name ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</optgroup>`).join('');
     const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
       <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
-      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
+      <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>
+      <div class="fld"><label title="Material assigned to this region (ASSIGNMA card)">Material</label><select data-k="mat"><option value="0">— none —</option>${(S.model.materials || []).map(m => `<option value="${m.id}" ${r.mat === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const lk = r.meta && r.meta.link, others = S.model.regions.filter(x => x.id !== r.id);
     const regOpts = (sel) => others.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
@@ -1655,6 +1674,15 @@
   }
 
   /* ---------- Components ---------- */
+  function matProps(m) {
+    const rs = APP.regionsOfMaterial(m.id);
+    const general = `<div class="sec"><h4><span>Material</span></h4><div class="fields">
+      <div class="fld full"><label title="Name written in the ASSIGNMA cards (upper case, at most 8 characters)">Name</label><input type="text" data-k="name" maxlength="8" value="${esc(m.name)}"></div></div>
+      <div class="muted" style="font-size:12px">Only the name is stored: the material itself (MATERIAL / COMPOUND cards) is defined elsewhere in the input file.</div></div>
+      <div class="sec"><h4><span>Regions using it (${rs.length})</span></h4><div>${rs.map(r => `<button class="btn sm" data-act="compSel" data-t="region" data-id="${r.id}" style="margin:2px 4px 2px 0">${esc(r.name)}</button>`).join('') || '<span class="muted">none</span>'}</div></div>
+      <div class="sec"><div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
+    return tabbed({ general });
+  }
   function compMsgHTML(c) {
     return (c.error ? `<div class="bad" style="margin:4px 0">⚠ ${esc(c.error)}</div>` : '') + (c.info || []).map(x => `<div class="muted" style="font-size:12px">${esc(x)}</div>`).join('');
   }
@@ -1694,7 +1722,7 @@
     let h = '';
     const it = APP.selItem();
     if (it && S.sel) {
-      h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps, comp: compProps })[S.sel.t](it);
+      h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps, comp: compProps, material: matProps })[S.sel.t](it);
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
     updateLive();
@@ -1793,8 +1821,10 @@
         else if (type === 'region') { if (!APP.renameRegion(it, t.value)) t.value = it.name; }
         else if (type === 'stl') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         else if (type === 'csys') { if (!APP.renameCsys(it, t.value)) t.value = it.name; }
+        else if (type === 'material') { if (!APP.renameMaterial(it, t.value)) t.value = it.name; else t.value = it.name; }
         else if (type === 'comp') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         break;
+      case 'mat': if (e.type === 'change' && type === 'region') APP.setRegionMaterial(it, +t.value); break;
       case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
       case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
       case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
@@ -2199,6 +2229,7 @@
     const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
   }
   $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
+  $('#inpFull').onchange = (e) => { S.opt.inpFull = e.target.checked; updateInp(); APP.save(); };
   $('#inpStyle').onchange = (e) => { S.opt.style = +e.target.value; updateInp(); APP.save(); };
   $('#btnInpCopy').onclick = () => copyText(APP.inpText());
   $('#btnInpSave').onclick = () => {
@@ -2282,7 +2313,7 @@
   /* ---------- Start-up ---------- */
   function init() {
     APP.load();
-    $('#inpStyle').value = String(S.opt.style || 1);
+    $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false;
     APP.startLoop();
     APP.sync(); APP.rebuildMeasures(); APP.rebuildCsys();
     renderLeft(); renderToolOpts(); renderRight(); updateInp(); updateStatus(); syncToolbar();

@@ -5,22 +5,23 @@
   const V = FK.V, fmt = FK.fmt;
 
   const S = APP.S = {
-    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [] },
+    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [], materials: FK.defaultMaterials() },
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
     opt: { defV2: true, render: 'opaque', edges: true, invX: false, invY: false, names: 'off', pieceHl: true, snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSoft: true, ptMode: 'vertex', edgeSharpOnly: true, circleAll: false,
-      margin: 10, style: 1, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
+      margin: 10, style: 2, theme: 'light', inpFull: true, v118: true, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
   };
   APP.nid = () => S.nextId++;
   APP.getBody = (id) => S.model.bodies.find(b => b.id === id);
   APP.getRegion = (id) => S.model.regions.find(r => r.id === id);
+  APP.getMaterial = (id) => (S.model.materials || []).find(m => m.id === id);
   APP.getComp = (id) => (S.model.components || []).find(c => c.id === id);
   APP.getStl = (id) => S.stls.find(s => s.id === id);
   APP.getMeasure = (id) => S.measures.find(m => m.id === id);
   APP.selItem = function () {
     if (!S.sel) return null;
-    const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id), comp: APP.getComp }[S.sel.t];
+    const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id), comp: APP.getComp, material: APP.getMaterial }[S.sel.t];
     return g ? g(S.sel.id) || null : null;
   };
   APP.changed = (f) => { if (APP.syncComps) APP.syncComps(); if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
@@ -41,7 +42,7 @@
   function restore(str) {
     const o = JSON.parse(str);
     S.model = o.model; S.measures = o.measures;
-    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
+    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
     if (S.sel && !APP.selItem() && S.sel.t !== 'stl') S.sel = null;
     APP.changed({ tree: true, right: true, measures: true });
   }
@@ -59,10 +60,11 @@
       const raw = localStorage.getItem(KEY); if (!raw) return false;
       const o = JSON.parse(raw);
       if (o.model && Array.isArray(o.model.bodies)) {
-        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
+        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
         S.measures = o.measures || []; S.nextId = o.nextId || 1000;
         Object.assign(S.opt, o.opt || {});
         if (!(o.opt && o.opt.defV2)) { S.opt.render = 'opaque'; S.opt.edges = true; S.opt.invX = false; S.opt.invY = false; S.opt.defV2 = true; }   // new defaults, applied once
+        if (!(o.opt && o.opt.v118)) { S.opt.style = 2; S.opt.inpFull = true; S.opt.v118 = true; }   // new defaults (compact aligned style, complete input file), applied once
         S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
         if (o.filter) S.filter = o.filter;
         let mx = S.nextId; for (const a of [S.model.bodies, S.model.regions, S.measures, S.model.csys]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
@@ -466,7 +468,7 @@
     APP.snap();
     for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m);
     S.stls = stls; for (const m of stls) APP.buildStl(m);
-    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || [];
+    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
     S.measures = o.measures || [];
     if (o.opt) Object.assign(S.opt, o.opt);
     if (o.filter) S.filter = o.filter;
@@ -546,6 +548,7 @@
     const body = APP.addBody('RPP', pl.p, { name: pl.boxName, cs: 0, visible: false, color: '#9aa0a6', meta: { voidOf: r.name } });
     const reg = APP.addRegion(pl.regName, pl.expr, { visible: false, nvois: r.nvois });
     reg.meta = { voidOf: r.name };
+    { const bh = APP.materialByName('BLCKHOLE'); if (bh) reg.mat = bh.id; }
     S.sel = { t: 'region', id: reg.id };
     APP.changed({ tree: true, right: true });
     APP.toast(`Void region ${reg.name} created with RPP ${body.name} (hidden; show it from the tree)`);
@@ -711,7 +714,7 @@
     bodies: () => S.model.bodies.filter(b => !FK.isPlaneType(b.type)), regions: () => S.model.regions, measures: () => S.measures
   };
   APP.catItems = (k) => CAT_ITEMS[k]();
-  APP.catOf = (t, o) => t === 'comp' ? 'comps' : t === 'stl' ? 'meshes' : t === 'csys' ? 'csys' : t === 'region' ? 'regions' : t === 'measure' ? 'measures' : (FK.isPlaneType(o.type) ? 'planes' : 'bodies');
+  APP.catOf = (t, o) => t === 'material' ? 'materials' : t === 'comp' ? 'comps' : t === 'stl' ? 'meshes' : t === 'csys' ? 'csys' : t === 'region' ? 'regions' : t === 'measure' ? 'measures' : (FK.isPlaneType(o.type) ? 'planes' : 'bodies');
   APP.groups = () => S.model.groups || (S.model.groups = []);
   APP.getGroup = (id) => APP.groups().find(g => g.id === id);
   APP.groupMembers = (g) => CAT_ITEMS[g.k]().filter(o => o.grp === g.id);
@@ -758,6 +761,7 @@
     const { t, id } = S.sel;
     if (t === 'csys') { APP.deleteCsys(id); return; }
     if (t === 'comp') { APP.deleteComp(id, false); return; }
+    if (t === 'material') { APP.deleteMaterial(id); return; }
     APP.snap();
     if (t === 'body') S.model.bodies = S.model.bodies.filter(b => b.id !== id);
     else if (t === 'region') S.model.regions = S.model.regions.filter(r => r.id !== id);
@@ -842,7 +846,7 @@
   APP.compCreate = function (tpl) {
     const t = FK.TEMPLATES[tpl]; if (!t) return null;
     APP.snap();
-    const comps = S.model.components = S.model.components || [];
+    const comps = S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
     const prefix = FK.uniqueName(t.prefix + '1', new Set(comps.map(x => x.prefix)), 20);
     const c = { id: APP.nid(), name: prefix, prefix, tpl, params: FK.tplDefaults(tpl), cs: 0, items: {}, visible: true, visApplied: true, error: '', info: [] };
     c.cs = APP.addCsys(M.id(), { parent: S.model.active || 0, name: FK.uniqueName(prefix + '_cs', csysNames(), 40) }).id;
@@ -904,6 +908,59 @@
     }
   };
 
+
+  /* ---------- Materials (names only; they are written as ASSIGNMA cards) ---------- */
+  /** Material with this name (created when `create` is set and it does not exist yet). */
+  APP.materialByName = function (name, create) {
+    const nm = FK.cleanMaterialName(name); if (!nm) return null;
+    const list = S.model.materials = S.model.materials || FK.defaultMaterials();
+    let m = list.find(x => x.name === nm);
+    if (!m && create) { m = { id: list.reduce((a, x) => Math.max(a, x.id), 0) + 1, name: nm }; list.push(m); }
+    return m || null;
+  };
+  APP.addMaterial = function (name) {
+    const list = S.model.materials = S.model.materials || FK.defaultMaterials();
+    let nm = FK.cleanMaterialName(name || 'MAT1') || 'MAT1';
+    if (list.some(x => x.name === nm)) nm = FK.uniqueName(nm, new Set(list.map(x => x.name)));
+    APP.snap();
+    const m = APP.materialByName(nm, true);
+    S.sel = { t: 'material', id: m.id };
+    APP.changed({ tree: true, right: true });
+    return m;
+  };
+  APP.renameMaterial = function (m, nn) {
+    nn = FK.cleanMaterialName(nn);
+    if (!nn || nn === m.name) return false;
+    if (S.model.materials.some(x => x !== m && x.name === nn)) { APP.toast('This material already exists'); return false; }
+    APP.snap(); m.name = nn; APP.changed({ tree: true, right: true }); return true;
+  };
+  APP.deleteMaterial = function (id) {
+    const m = APP.getMaterial(id); if (!m) return;
+    APP.snap();
+    let n = 0; for (const r of S.model.regions) if (r.mat === id) { delete r.mat; n++; }
+    S.model.materials = S.model.materials.filter(x => x !== m);
+    if (S.sel && S.sel.t === 'material') S.sel = null;
+    if (n) APP.toast(`⚠ ${n} region${n > 1 ? 's' : ''} lost ${m.name}`);
+    APP.changed({ tree: true, right: true });
+  };
+  APP.setRegionMaterial = function (r, id) {
+    APP.snap('mat' + r.id);
+    if (id) r.mat = id; else delete r.mat;
+    APP.changed({ tree: true, right: true });
+  };
+  APP.regionsOfMaterial = (id) => S.model.regions.filter(r => r.mat === id);
+  /** Small example matching the usual structure of an input file (black body, void, target). */
+  APP.loadExample = function () {
+    APP.newModel(false);
+    S.model.title = 'Dummy example';
+    const bb = APP.addBody('SPH', [0, 0, 0, 100000], { name: 'blkbody', cs: 0, visible: false });
+    const vd = APP.addBody('SPH', [0, 0, 0, 10000], { name: 'void', cs: 0, visible: false });
+    const tg = APP.addBody('RCC', [0, 0, 0, 0, 0, 10, 5], { name: 'target', cs: 0 });
+    const mk = (n, e, mat) => { const r = APP.addRegion(n, e, { visible: n === 'TARGET' }); r.mat = APP.materialByName(mat, true).id; return r; };
+    mk('BLKBODY', `+${bb.name} -${vd.name}`, 'BLCKHOLE'); mk('VOID', `+${vd.name} -${tg.name}`, 'VACUUM'); mk('TARGET', `+${tg.name}`, 'COPPER');
+    APP.changed({ tree: true, right: true, fit: true });
+  };
+
   /* ---------- Scale / margin ---------- */
   APP.scaleBody = function (b, mode, val, unit, dup) {
     let target = b;
@@ -929,9 +986,11 @@
     const bh = APP.addBody('SPH', [c[0], c[1], c[2], +(R * 1.2).toFixed(3)], { name: FK.uniqueName('blkbody', used), visible: false });
     used.add(bh.name);
     const vd = APP.addBody('SPH', [c[0], c[1], c[2], +R.toFixed(3)], { name: FK.uniqueName('void', used), visible: false });
-    APP.addRegion(FK.uniqueName('BB_void', regionNames()), `+${bh.name} -${vd.name}`, { visible: false });
+    const rbb = APP.addRegion(FK.uniqueName('BB_void', regionNames()), `+${bh.name} -${vd.name}`, { visible: false });
+    { const m = APP.materialByName('BLCKHOLE'); if (m) rbb.mat = m.id; }
     const inner = S.model.bodies.filter(b => b !== bh && b !== vd && !FK.isPlaneType(b.type) && !FK.isInfiniteType(b.type) && b.type !== 'RAW');
-    APP.addRegion(FK.uniqueName('rOut', regionNames()), `+${vd.name}` + inner.map(b => ' -' + b.name).join(''), { visible: false });
+    const rout = APP.addRegion(FK.uniqueName('rOut', regionNames()), `+${vd.name}` + inner.map(b => ' -' + b.name).join(''), { visible: false });
+    { const m = APP.materialByName('VACUUM'); if (m) rout.mat = m.id; }
     APP.changed({ tree: true, right: true });
     APP.toast('Envelope added: adjust it (rOut = void minus all finite bodies)');
   };
@@ -942,7 +1001,7 @@
     const imp = res.model;
     if (!imp.bodies.length && !imp.regions.length) { APP.toast('No body or region found in this text'); return res; }
     APP.snap();
-    if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], exportCs: S.model.exportCs || 0 }; S.sel = null; }
+    if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], components: [], materials: S.model.materials || FK.defaultMaterials(), exportCs: S.model.exportCs || 0 }; S.sel = null; }
     const used = bodyNames(), map = new Map();
     for (const b of imp.bodies) {
       let nm = b.name;
@@ -951,15 +1010,16 @@
       b.name = nm; b.id = APP.nid(); b.cs = APP.exportCs(); // INP coordinates are in the export frame
       S.model.bodies.push(b);
     }
-    const rused = regionNames();
+    const rused = regionNames(), rByOrig = new Map();
     for (const r of imp.regions) {
       try {
         const ast = FK.parseExpr(r.expr);
         (function walk(a) { for (const z of a.zones) for (const t of z) { if (t.name && map.has(t.name)) t.name = map.get(t.name); else if (t.sub) walk(t.sub); } })(ast);
         r.expr = FK.formatExpr(ast);
       } catch (e) { /* garder */ }
+      const origName = r.name;
       if (rused.has(r.name)) r.name = FK.uniqueName(r.name, rused);
-      rused.add(r.name); r.id = APP.nid(); S.model.regions.push(r);
+      rused.add(r.name); rByOrig.set(origName, r); r.id = APP.nid(); S.model.regions.push(r);
     }
     // hide the "envelope" bodies (very large compared to the rest) and the regions that depend on them by default
     const stlBoxes = S.stls.filter(s => s.stats && s.stats.bbox).map(s => s.stats.bbox);
@@ -978,6 +1038,7 @@
         r.visible = !dep;
       } catch (e) { r.visible = false; }
     }
+    for (const a of res.assign || []) { const r = rByOrig.get(a.region); if (r) { const m = APP.materialByName(a.material, true); if (m) r.mat = m.id; } }   // ASSIGNMA cards after GEOEND
     S.opt.style = S.opt.style || 1;
     APP.changed({ tree: true, right: true, fit: true });
     return res;
@@ -986,7 +1047,7 @@
   APP.newModel = function (all) {
     APP.snap();
     if (all) { for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m); S.stls = []; }
-    S.model = { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [] };
+    S.model = { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [], materials: FK.defaultMaterials() };
     S.measures = []; S.sel = null; S.pick = null; S.pending = null; S.fill = null;
     APP.changed({ tree: true, right: true, measures: true, fit: !!all });
   };
@@ -1033,7 +1094,7 @@
   };
   /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
-  APP.inpText = () => FK.generateInp(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
+  APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);

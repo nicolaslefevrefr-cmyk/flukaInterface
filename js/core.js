@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.18.0';
+  FK.VERSION = '1.19.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1947,6 +1947,7 @@
       check(r, 'Region', inm.regions);
       if (rn.has(r.name)) w.push(`Region "${r.name}": duplicate name`);
       rn.add(r.name);
+      if (model.materials && !r.noExport && !FK.materialName(model, r)) w.push(`Region "${r.name}": no material assigned (no ASSIGNMA card)`);
       if (!r.expr.trim()) { w.push(`Region "${r.name}": empty expression`); continue; }
       try {
         const names = FK.exprNames(FK.parseExpr(r.expr));
@@ -2109,6 +2110,41 @@
     return out.join('\n') + '\n';
   };
 
+
+  /* ---------------- Materials (names only) and the complete input file ---------------- */
+  FK.DEFAULT_MATERIALS = ['BLCKHOLE', 'VACUUM', 'STEEL', 'COPPER'];
+  FK.defaultMaterials = () => FK.DEFAULT_MATERIALS.map((n, i) => ({ id: i + 1, name: n }));
+  FK.materialName = (model, r) => { const m = r && r.mat ? (model.materials || []).find(x => x.id === r.mat) : null; return m ? m.name : ''; };
+  /** FLUKA material names: upper case, letters / digits / _, at most 8 characters, first character a letter. */
+  FK.cleanMaterialName = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 8);
+  FK.RULER = '*..+....1....+....2....+....3....+....4....+....5....+....6....+....7..';
+  /** Cards before GEOBEGIN: TITLE (study title), DEFAULTS, BEAM, BEAMPOS. */
+  FK.inpPreamble = function (model) {
+    return ['TITLE', String(model.title || '').replace(/\s+$/, '').slice(0, 80),
+      '*Set the defaults for precision simulations', FK.fixedCard('DEFAULTS', [], 'PRECISIO'),
+      '*Define the beam characteristics', 'BEAM', '*Define the beam position', 'BEAMPOS'];
+  };
+  /** ASSIGNMA cards (material, region) for the exported regions that have a material: one 10-column field each, right-aligned. */
+  FK.materialCards = function (model) {
+    const v = FK.inpView(model), out = [];
+    for (const r of v.regions) {
+      if (r.noExport) continue;
+      const mn = FK.materialName(model, r); if (!mn) continue;
+      out.push('ASSIGNMA'.padEnd(10) + mn.padStart(10) + r.name.padStart(10));
+    }
+    return out;
+  };
+  /** Cards after the material assignments. */
+  FK.inpEpilogue = () => ['*Set the random number seed', 'RANDOMIZ         1.0', '*Set the number of primary histories to be simulated in the run', 'START', 'STOP'];
+  /** Complete input file: preamble + geometry (GEOBEGIN … GEOEND) + material assignments + run cards. */
+  FK.generateFullInp = function (model, opts) {
+    const out = FK.inpPreamble(model).concat(FK.generateInp(model, opts).replace(/\n$/, '').split('\n'));
+    out.push(FK.RULER);
+    for (const l of FK.materialCards(model)) out.push(l);
+    for (const l of FK.inpEpilogue()) out.push(l);
+    return out.join('\n') + '\n';
+  };
+
   /* ---------------- Lecture d'un bloc INP ---------------- */
   FK.parseInp = function (text) {
     const lines = text.split(/\r?\n/);
@@ -2183,11 +2219,17 @@
       if (/^\s*GEOEND\b/i.test(lines[i])) break;
       if (lines[i].trim()) model.tail.push(lines[i].replace(/\s+$/, ''));
     }
+    // --- cards after GEOEND: ASSIGNMA (material / region), the others are not read ---
+    const assign = [];
+    for (i++; i < lines.length; i++) {
+      const t = lines[i].trim().split(/\s+/);
+      if (/^ASSIGNMA$/i.test(t[0]) && t.length >= 3) assign.push({ material: t[1].toUpperCase(), region: t[2] });
+    }
     if (model.tail.length) warnings.push('Lines after the regions block (LATTICE / volumes…) kept without processing.');
     for (const r of model.regions) {
       try { r.expr = FK.formatExpr(FK.parseExpr(r.expr)); } catch (e) { warnings.push(`Region ${r.name}: ${e.message}`); }
     }
-    return { model, warnings };
+    return { model, warnings, assign };
   };
 
   root.FK = FK;

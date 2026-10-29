@@ -190,7 +190,7 @@
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
     ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx2.clearRect(0, 0, w, h);
-    ctx2.fillStyle = '#fff'; ctx2.fillRect(0, 0, w, h);
+    const dk = document.documentElement.dataset.theme === 'dark'; ctx2.fillStyle = dk ? '#151a22' : '#fff'; ctx2.fillRect(0, 0, w, h);
     const f = C.frame; if (!f) return;
     // axes through the plane origin
     const o = toS([0, 0]);
@@ -216,8 +216,8 @@
     if (!C.res.owners.length) { ctx2.fillStyle = '#6b7686'; ctx2.textBaseline = 'middle'; ctx2.textAlign = 'center'; ctx2.fillText('The plane does not cut any displayed object', w / 2, h / 2); ctx2.textAlign = 'left'; }
     // scale bar
     const L = niceLen(80 / C.view.s), px = L * C.view.s;
-    ctx2.strokeStyle = '#26303d'; ctx2.lineWidth = 2; ctx2.beginPath(); ctx2.moveTo(10, h - 14); ctx2.lineTo(10 + px, h - 14); ctx2.moveTo(10, h - 18); ctx2.lineTo(10, h - 10); ctx2.moveTo(10 + px, h - 18); ctx2.lineTo(10 + px, h - 10); ctx2.stroke();
-    ctx2.fillStyle = '#26303d'; ctx2.textBaseline = 'bottom'; ctx2.fillText(fmt(L, 4) + ' cm', 14 + px, h - 8);
+    ctx2.strokeStyle = dk ? '#cfd8e6' : '#26303d'; ctx2.lineWidth = 2; ctx2.beginPath(); ctx2.moveTo(10, h - 14); ctx2.lineTo(10 + px, h - 14); ctx2.moveTo(10, h - 18); ctx2.lineTo(10, h - 10); ctx2.moveTo(10 + px, h - 18); ctx2.lineTo(10 + px, h - 10); ctx2.stroke();
+    ctx2.fillStyle = dk ? '#cfd8e6' : '#26303d'; ctx2.textBaseline = 'bottom'; ctx2.fillText(fmt(L, 4) + ' cm', 14 + px, h - 8);
   }
 
   /* ---------- Refresh ---------- */
