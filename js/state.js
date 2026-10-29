@@ -1095,6 +1095,19 @@
   /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
+  /** The checks as records { sev: 'e' | 'w' | 'i', text, t, id } — t / id point to the geometry concerned (body / region) when it can be found. */
+  const ERR_RE = /duplicate name|invalid name|unknown body|empty expression|non-numeric|is used by|unexpected|expected|unbalanced|syntax|cannot|unreadable/i;
+  const INFO_RE = /not used by any exported region|written in coordinate system|will be shortened|type not displayed|exported as|cut to 60/i;
+  APP.issues = () => APP.warnings().map(text => {
+    const sev = ERR_RE.test(text) ? 'e' : INFO_RE.test(text) ? 'i' : 'w';
+    const regFirst = /^Region\b/.test(text), rec = { sev, text };
+    for (const m of text.matchAll(/"([^"]+)"/g)) {
+      const r = S.model.regions.find(x => x.name === m[1]), b = S.model.bodies.find(x => x.name === m[1]);
+      const hit = regFirst ? (r ? ['region', r] : b ? ['body', b] : null) : (b ? ['body', b] : r ? ['region', r] : null);
+      if (hit) { rec.t = hit[0]; rec.id = hit[1].id; break; }
+    }
+    return rec;
+  });
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);

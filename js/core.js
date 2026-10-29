@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.19.0';
+  FK.VERSION = '1.20.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2064,7 +2064,7 @@
     return out;
   };
 
-  /** style 1: "REGION name n" + expression line (multi-line type); style 2: compact aligned;
+  /** style 1: "name n" + indented expression lines (multi-line type); style 2: compact aligned;
    * style 3: fixed Fortran-like columns (GEOBEGIN card (A8,2X,6E10.0,A8), title (2I5,10X,A60), bodies A3/A8/19-col numbers,
    * regions A8 + I5 + expression), every line <= 132 columns. */
   FK.generateInp = function (model, opts) {
@@ -2092,7 +2092,7 @@
       } catch (e) { /* garder tel quel */ }
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
       if (style === 1) {
-        out.push(`REGION ${r.name} ${nv}`);
+        out.push(`${r.name} ${nv}`);
         for (const l of wrapTerms(expr, 100, '\t')) out.push(l[0] === '\t' ? l : '\t' + l);
       } else if (style === 3) {
         const head = r.name.padEnd(8) + ' ' + String(nv).padStart(5) + ' ';

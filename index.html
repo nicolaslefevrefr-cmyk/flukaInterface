@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.19.0">
+<link rel="stylesheet" href="css/style.css?v=1.20.0">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.19.0</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.20.0</i></b></div>
     <input id="projName" class="pname" type="text" maxlength="60" spellcheck="false" placeholder="Project name" title="Project name: also the title line of the INP file and the name of the saved files" aria-label="Project name">
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
@@ -49,8 +49,8 @@
             <button data-filter="object" title="Select objects"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="grpTool" role="group" aria-label="Tools">
-            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.19.0"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
-            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.19.0" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+            <button data-tool="select" title="Selection / information"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.20.0"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+            <button data-tool="measure" title="Measure a distance between two points"><svg viewBox="0 0 24 24"><path d="M3 15L15 3l6 6L9 21z" fill="none" stroke="currentColor" stroke-width="1.20.0" stroke-linejoin="round"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           </div>
           <div class="grp" id="grpProj" role="group" aria-label="Projection">
             <button data-proj="persp" title="Perspective view"><svg viewBox="0 0 24 24"><path d="M3 19l4-11h10l4 11z M7 8l2 11M17 8l-2 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
@@ -73,8 +73,8 @@
             <button id="btnRes" title="Resolution of curved surfaces (number of facets of cylinders / spheres)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7" stroke="currentColor" stroke-width="1" opacity=".7"/></svg></button>
           </div>
           <div class="grp" id="grpRot" role="group" aria-label="Mouse rotation">
-            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.19.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.19.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvX" title="Invert left / right mouse rotation"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4" fill="none" stroke="currentColor" stroke-width="1.20.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="btnInvY" title="Invert up / down mouse rotation"><svg viewBox="0 0 24 24"><path d="M12 4v16M12 4L8 8M12 4l4 4M12 20l-4-4M12 20l4-4" fill="none" stroke="currentColor" stroke-width="1.20.0" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="grp" id="viewBtns" role="group" aria-label="View">
             <button data-view="fit" title="Fit the view to what is displayed">⤢</button>
@@ -101,7 +101,7 @@
         <div class="sheetHead">
           <b>Geometry block</b>
           <select id="inpStyle" title="Output style">
-            <option value="1">Multi-line style (REGION + line)</option>
+            <option value="1">Multi-line style (name + indented lines)</option>
             <option value="2">Compact aligned style</option>
             <option value="3">Fixed columns (Fortran-like, ≤132 col)</option>
           </select>
@@ -113,8 +113,13 @@
           <button id="btnInpSave" class="pill">.inp</button>
           <button class="ib" id="btnInpClose">✕</button>
         </div>
-        <div id="inpWarn"></div>
-        <textarea id="inpText" readonly spellcheck="false"></textarea>
+        <div class="sheetMain">
+          <textarea id="inpText" readonly spellcheck="false"></textarea>
+          <aside id="inpIssues" aria-label="Warnings and errors">
+            <div class="isHead"><b>Checks</b><span id="isCount"></span></div>
+            <div id="inpWarn"></div>
+          </aside>
+        </div>
       </section>
     </main>
 
@@ -262,17 +267,17 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.19.0"></script>
-<script src="js/core.js?v=1.19.0"></script>
-<script src="js/state.js?v=1.19.0"></script>
-<script src="js/scene.js?v=1.19.0"></script>
-<script src="js/cut.js?v=1.19.0"></script>
-<script src="js/compare.js?v=1.19.0"></script>
-<script src="js/check.js?v=1.19.0"></script>
-<script src="js/snap.js?v=1.19.0"></script>
-<script src="js/graph.js?v=1.19.0"></script>
-<script src="js/tpl.js?v=1.19.0"></script>
-<script src="js/ui.js?v=1.19.0"></script>
-<script src="js/pwa.js?v=1.19.0"></script>
+<script src="js/lib/three.min.js?v=1.20.0"></script>
+<script src="js/core.js?v=1.20.0"></script>
+<script src="js/state.js?v=1.20.0"></script>
+<script src="js/scene.js?v=1.20.0"></script>
+<script src="js/cut.js?v=1.20.0"></script>
+<script src="js/compare.js?v=1.20.0"></script>
+<script src="js/check.js?v=1.20.0"></script>
+<script src="js/snap.js?v=1.20.0"></script>
+<script src="js/graph.js?v=1.20.0"></script>
+<script src="js/tpl.js?v=1.20.0"></script>
+<script src="js/ui.js?v=1.20.0"></script>
+<script src="js/pwa.js?v=1.20.0"></script>
 </body>
 </html>
