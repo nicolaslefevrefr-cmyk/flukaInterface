@@ -1108,6 +1108,36 @@
     }
     return rec;
   });
+  /* ---------- Temporary isolation of objects (used by the surface check) ---------- */
+  APP.isolate = function (spec) {
+    const snap = S.isoSnap || (S.isoSnap = { b: {}, r: {}, s: {} });
+    for (const b of S.model.bodies) { if (!(b.id in snap.b)) snap.b[b.id] = b.visible; b.visible = (spec.bodies || []).includes(b.name); }
+    for (const r of S.model.regions) { if (!(r.id in snap.r)) snap.r[r.id] = r.visible; r.visible = (spec.regions || []).includes(r.name); }
+    for (const m of S.stls) { if (!(m.id in snap.s)) snap.s[m.id] = m.visible; m.visible = !!spec.meshes; }
+    APP.changed({ tree: true });
+  };
+  APP.restoreIsolation = function () {
+    const snap = S.isoSnap; if (!snap) return false;
+    for (const b of S.model.bodies) if (b.id in snap.b) b.visible = snap.b[b.id];
+    for (const r of S.model.regions) if (r.id in snap.r) r.visible = snap.r[r.id];
+    for (const m of S.stls) if (m.id in snap.s) m.visible = snap.s[m.id];
+    S.isoSnap = null; APP.changed({ tree: true }); return true;
+  };
+  /** "Only what the INP file contains": every exported body / region is shown (even if it was hidden), the others are hidden; the previous visibility comes back when the mode is left. */
+  APP.setOnlyExported = function (on) {
+    if (on) {
+      S.opt.onlyExpSnap = { b: {}, r: {} };
+      for (const b of S.model.bodies) { S.opt.onlyExpSnap.b[b.id] = b.visible; b.visible = !b.noExport; }
+      for (const r of S.model.regions) { S.opt.onlyExpSnap.r[r.id] = r.visible; r.visible = !r.noExport; }
+    } else if (S.opt.onlyExpSnap) {
+      const sn = S.opt.onlyExpSnap;
+      for (const b of S.model.bodies) if (b.id in sn.b) b.visible = sn.b[b.id];
+      for (const r of S.model.regions) if (r.id in sn.r) r.visible = sn.r[r.id];
+      delete S.opt.onlyExpSnap;
+    }
+    S.opt.onlyExp = !!on;
+    APP.changed({ tree: true });
+  };
   APP.warnings = () => {
     const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);

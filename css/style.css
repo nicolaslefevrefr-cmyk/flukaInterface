@@ -449,3 +449,21 @@ dialog.graphwin form { display: flex; flex-direction: column; height: 100%; }
 #inpWarn .isok { color: var(--ok); padding: 6px 4px; }
 #inpWarn .pill { height: auto; padding: 5px 10px; white-space: normal; text-align: left; border-radius: 10px; }
 @media (max-width: 899px) { .sheetMain { flex-direction: column; } #inpIssues { width: auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--line); } }
+
+/* surface consistency check window */
+dialog.surfwin { width: min(560px, 96vw); height: min(640px, 84vh); min-width: 340px; }
+.sf-opts { flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; overflow: auto; max-height: 48%; }
+.sf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; margin-bottom: 4px; }
+.sf-grid label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.sf-grid input, .sf-grid select { height: 28px; border: 1px solid var(--line); border-radius: 7px; padding: 0 6px; background: var(--surface); color: var(--text); min-width: 0; width: 100%; }
+.sf-opts .chk { display: flex; margin: 2px 0; }
+.sf-sum { flex: none; padding: 6px 12px; font-size: 12.5px; border-bottom: 1px solid var(--line); min-height: 18px; }
+.sf-sum .good { color: var(--ok); } .sf-sum .bad { color: var(--danger); } .sf-sum .muted { font-size: 11.5px; }
+#sfList { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+#sfList .sfi { display: block; text-align: left; width: 100%; border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 7px; background: var(--surface); color: var(--text); padding: 5px 8px; font-size: 12px; line-height: 1.35; cursor: pointer; }
+#sfList .sfi:hover { background: var(--hover); } #sfList .sfi.on { outline: 2px solid var(--accent); }
+#sfList .sfi.overlap { border-left-color: var(--danger); } #sfList .sfi.gap { border-left-color: var(--warn); }
+#sfList .sfi .k { font-weight: 700; } #sfList .sfi.overlap .k { color: var(--danger); } #sfList .sfi.gap .k { color: var(--warn); }
+#sfList .sfi .n { float: right; color: var(--muted); font-size: 11px; } #sfList .sfi code { font-size: 11.5px; }
+#sfList .sfi .xyz { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+@media (max-width: 599px) { .sf-grid { grid-template-columns: repeat(2, 1fr); } }
