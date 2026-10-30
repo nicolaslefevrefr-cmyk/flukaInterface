@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.21.0';
+  FK.VERSION = '1.21.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -812,6 +812,11 @@
   /** Equivalent body expressed in the world frame (m = world matrix of the body's csys).
    * Returned types: usual CG types, plus 'OBOX' (rotated RPP → bounding RPP + planes) and 'ICC' (oblique infinite cylinder → QUA). */
   FK.worldBody = function (b, m) {
+    const r = worldBody0(b, m);
+    if (r !== b && !M.isTranslation(m, 1e-9)) r.prec = 9;   // rotated frame: write more decimals so that coincident faces stay coincident
+    return r;
+  };
+  function worldBody0(b, m) {
     if (b.type === 'RAW' || !m || M.isIdentity(m)) return b;
     const p = b.p, tr = M.isTranslation(m, 1e-9), perm = M.signedPerm(m);
     switch (b.type) {
@@ -848,7 +853,7 @@
       }
     }
     return b;
-  };
+  }
 
   /** Texte de la (des) ligne(s) de carte d'un corps (monde). opts.arbInward inverse l'ordre des sommets des faces ARB. */
   FK.exportBodyText = function (wb, name, style, opts) {
@@ -880,8 +885,8 @@
       const co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[0][2], 2 * P[1][2], -2 * Pc[0], -2 * Pc[1], -2 * Pc[2], V.dot(c, Pc) - R * R];
       return lines('QUA', co.map(x => fmt(x)));
     }
-    if (style === 3) return lines(wb.type, wb.p.map(x => fmt(x)));
-    return head(wb.type) + wb.p.map(x => fmt(x)).join(' ');
+    if (style === 3) return lines(wb.type, wb.p.map(x => fmt(x, wb.prec)));
+    return head(wb.type) + wb.p.map(x => fmt(x, wb.prec)).join(' ');
   };
 
   /** Render zone: encloses the mesh and the "reasonable" finite bodies. */
@@ -1963,28 +1968,39 @@
   FK.splitObox = function (model, opts) {
     const res = new Map();
     if (!opts || !opts.resolve || opts.arb) return res;
-    const used = new Set(model.bodies.map(b => b.name));
+    const used = new Set(model.bodies.map(b => b.name.toLowerCase()));
+    const shared = [];                         // planes already written: {n, d, name}  (n outward unit normal, d = n·point)
+    const TN = 1e-7, TD = 1e-6, TA = 1e-6;     // same plane within TN (normal), TD cm (offset); "axis aligned" within TA
     for (const b of model.bodies) {
-      if (b.type === 'RAW') continue;
+      if (b.type === 'RAW' || b.noExport) continue;
       const wb = opts.resolve(b);
       if (wb.type !== 'OBOX') continue;
       const bb = FK.bodyBBox(wb), c = [wb.p[0], wb.p[1], wb.p[2]];
-      const planes = [];
+      const planes = [], refs = [];
       let k = 0;
       for (const hv of [[3, 4, 5], [6, 7, 8], [9, 10, 11]]) {
         const h = [wb.p[hv[0]], wb.p[hv[1]], wb.p[hv[2]]], L = V.len(h);
         if (L < 1e-12) continue;
         const n = V.mul(h, 1 / L);
-        if (n.filter(x => Math.abs(x) < 1e-9).length === 2) continue; // face aligned with an axis: already provided by the RPP
+        if (n.filter(x => Math.abs(x) < TA).length === 2) continue; // face aligned with an axis: already provided by the RPP
         for (const sg of [1, -1]) {
-          const nn = V.mul(n, sg), pt = V.add(c, V.mul(h, sg));
+          const nn = V.mul(n, sg), pt = V.add(c, V.mul(h, sg)), d = V.dot(nn, pt);
+          // same plane (or the same plane seen from the other side) already written by another body → reuse it: shared faces stay exactly shared
+          let hit = null;
+          for (const q of shared) {
+            if (Math.abs(q.n[0] - nn[0]) < TN && Math.abs(q.n[1] - nn[1]) < TN && Math.abs(q.n[2] - nn[2]) < TN && Math.abs(q.d - d) < TD) { hit = { name: q.name, sign: 1 }; break; }
+            if (Math.abs(q.n[0] + nn[0]) < TN && Math.abs(q.n[1] + nn[1]) < TN && Math.abs(q.n[2] + nn[2]) < TN && Math.abs(q.d + d) < TD) { hit = { name: q.name, sign: -1 }; break; }
+          }
+          if (hit) { refs.push(hit); continue; }
           let nm;
-          do { k++; nm = b.name.slice(0, 8 - String(k).length - 1) + 'p' + k; } while (used.has(nm));
-          used.add(nm);
-          planes.push({ name: nm, body: { type: 'PLA', p: [nn[0], nn[1], nn[2], pt[0], pt[1], pt[2]] } });
+          do { k++; nm = b.name.slice(0, 8 - String(k).length - 1) + 'p' + k; } while (used.has(nm.toLowerCase()));
+          used.add(nm.toLowerCase());
+          shared.push({ n: nn, d, name: nm });
+          planes.push({ name: nm, body: { type: 'PLA', p: [nn[0], nn[1], nn[2], pt[0], pt[1], pt[2]], prec: 9 } });
+          refs.push({ name: nm, sign: 1 });
         }
       }
-      res.set(b.name, { rpp: { type: 'RPP', p: [bb.min[0], bb.max[0], bb.min[1], bb.max[1], bb.min[2], bb.max[2]] }, planes });
+      res.set(b.name, { rpp: { type: 'RPP', p: [bb.min[0], bb.max[0], bb.min[1], bb.max[1], bb.min[2], bb.max[2]], prec: 9 }, planes, refs });
     }
     return res;
   };
@@ -1995,8 +2011,8 @@
         const t = z[i];
         if (t.sub) { FK.expandSplitTerms(t.sub, split); continue; }
         const sp = split.get(t.name);
-        if (!sp || !sp.planes.length) continue;
-        const group = [{ sign: 1, name: t.name }].concat(sp.planes.map(p => ({ sign: 1, name: p.name })));
+        if (!sp || !sp.refs.length) continue;
+        const group = [{ sign: 1, name: t.name }].concat(sp.refs.map(p => ({ sign: p.sign, name: p.name })));
         if (t.sign >= 0) { z.splice(i, 1, ...group); i += group.length - 1; }
         else z[i] = { sign: -1, sub: { zones: [group] } };
       }
