@@ -604,7 +604,16 @@
     APP.toast(`⚠ ${reg.name}: ${ev.quality[0].text}` + (ev.quality.length > 1 ? ` (+${ev.quality.length - 1})` : ''));
     return ev;
   };
-  /** Strong (live) links: region.meta.link = { a, b, op, mode } (region ids). The expression is recomputed whenever the parents change. */
+  /** Operations of a live link, in order: the first is { op, id: b }, the following ones are in link.more. Result = ((A op1 B1) op2 B2) op3 B3 … */
+  APP.linkOps = (l) => [{ op: l.op, id: l.b }].concat(l.more || []);
+  APP.linkIds = (l) => [l.a].concat(APP.linkOps(l).map(x => x.id));
+  /** Regions that (directly or through other links) are computed from region `id`. */
+  APP.linkDependents = function (id) {
+    const out = new Set(), todo = [id];
+    while (todo.length) { const cur = todo.pop(); for (const x of S.model.regions) if (x.meta && x.meta.link && !out.has(x.id) && APP.linkIds(x.meta.link).includes(cur)) { out.add(x.id); todo.push(x.id); } }
+    return out;
+  };
+  /** Strong (live) links: region.meta.link = { a, b, op, more: [{ op, id }], mode } (region ids). The expression is recomputed whenever the parents change. */
   APP.syncLinks = function () {
     const regs = S.model && S.model.regions; if (!regs) return false;
     let any = false, changed = false;
@@ -613,18 +622,26 @@
     const byId = new Map(regs.map(r => [r.id, r]));
     for (const r of regs) {                                  // parents that no longer exist: the link is dropped, the formula stays
       const l = r.meta && r.meta.link; if (!l) continue;
+      if (l.more) l.more = l.more.filter(x => byId.has(x.id) && x.id !== r.id);   // an operand that no longer exists is simply dropped
       if (!byId.has(l.a) || !byId.has(l.b) || l.a === r.id || l.b === r.id) { delete r.meta.link; changed = true; }
     }
     for (let pass = 0; pass <= regs.length; pass++) {        // chains (reg4 linked to reg3 linked to …) settle in a few passes; cycles stop here
       let moved = false;
       for (const r of regs) {
         const l = r.meta && r.meta.link; if (!l) continue;
-        let e; try { e = FK.combineExpr(byId.get(l.a).expr, byId.get(l.b).expr, l.op, l.mode); l.error = ''; } catch (err) { l.error = err.message; continue; }
+        let e; try { e = byId.get(l.a).expr; for (const o of APP.linkOps(l)) e = FK.combineExpr(e, byId.get(o.id).expr, o.op, l.mode); l.error = ''; } catch (err) { l.error = err.message; continue; }
         if (e !== r.expr) { r.expr = e; moved = true; changed = true; }
       }
       if (!moved) break;
     }
     return changed;
+  };
+  /** "Combine with another region": a new region linked to `a` and to one other region (union); more operations are added in the properties panel. */
+  APP.startCombine = function (a, op) {
+    const b = S.model.regions.find(x => x.id !== a.id);
+    if (!b) return { error: 'Create a second region first' };
+    const r = APP.createBoolRegion(a, b, op || 'union', 'compact', true);
+    return r;
   };
   APP.createBoolRegion = function (a, b, op, mode, strong) {
     const pl = APP.boolPlan(a, b, op, mode);
@@ -632,7 +649,7 @@
     APP.snap();
     const reg = APP.addRegion(pl.regName, pl.expr, { visible: true, nvois: a.nvois });
     reg.meta = { boolOf: [a.name, b.name, op] };
-    if (strong) reg.meta.link = { a: a.id, b: b.id, op, mode: mode || 'compact', error: '' };
+    if (strong) reg.meta.link = { a: a.id, b: b.id, op, more: [], mode: mode || 'compact', error: '' };
     S.sel = { t: 'region', id: reg.id };
     APP.changed({ tree: true, right: true });
     { const ev = APP.reportQuality(reg); if (!(ev.quality && ev.quality.length)) APP.toast(`Region ${reg.name} created (${a.name} ${op === 'sub' ? '−' : op === 'int' ? '∩' : '∪'} ${b.name}); the originals are unchanged${strong ? '; strong link: it follows ' + a.name + ' and ' + b.name : ''}`); }
@@ -823,7 +840,7 @@
 
   /* ---------- Parametric components (see tpl.js) ---------- */
   // A component owns ordinary bodies and regions (found again through meta.comp.role) and regenerates them when a parameter changes.
-  const linkedTo = (r) => S.model.regions.filter(x => x !== r && x.meta && x.meta.link && (x.meta.link.a === r.id || x.meta.link.b === r.id));
+  const linkedTo = (r) => S.model.regions.filter(x => x !== r && x.meta && x.meta.link && APP.linkIds(x.meta.link).includes(r.id));
   const compName = (c, role) => c.prefix + '_' + role;
   APP.compItems = function (c) {
     const out = { bodies: [], regions: [] };
@@ -927,7 +944,7 @@
     const cs = APP.getCsys(c.cs);
     if (cs && !S.model.bodies.some(b => b.cs === cs.id) && !S.model.csys.some(x => x.parent === cs.id) && S.model.active !== cs.id && S.model.exportCs !== cs.id && !S.model.components.some(x => x.cs === cs.id)) S.model.csys = S.model.csys.filter(x => x !== cs);
     if (S.sel && S.sel.t === 'comp') S.sel = null;
-    const broken = S.model.regions.filter(r => r.meta && r.meta.link && (it.regions.some(g => g.id === r.meta.link.a || g.id === r.meta.link.b))).map(r => r.name);
+    const broken = S.model.regions.filter(r => r.meta && r.meta.link && (it.regions.some(g => APP.linkIds(r.meta.link).includes(g.id)))).map(r => r.name);
     if (broken.length) APP.toast('⚠ ' + broken.join(', ') + ' used a deleted region');
     APP.changed({ tree: true, right: true });
   };

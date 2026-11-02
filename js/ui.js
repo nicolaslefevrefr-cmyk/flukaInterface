@@ -645,7 +645,7 @@
     for (const n of g.nodes) {
       const p = L.pos.get(n.id), cls = ['gn', n.kind, n.id === sel ? 'sel' : '', n.noExport ? 'ne' : '', n.unused ? 'un' : ''].join(' ');
       const r = n.kind === 'region' ? S.model.regions.find(x => x.id === n.ref.id) : null, lk = r && r.meta && r.meta.link;
-      const sub = lk ? `${esc(APP.getRegion(lk.a) ? APP.getRegion(lk.a).name : '?')} ${lk.op === 'sub' ? '−' : lk.op === 'int' ? '∩' : '∪'} ${esc(APP.getRegion(lk.b) ? APP.getRegion(lk.b).name : '?')}` : n.type;
+      const sub = lk ? esc((APP.getRegion(lk.a) || { name: '?' }).name) + APP.linkOps(lk).map(o => ` ${o.op === 'sub' ? '−' : o.op === 'int' ? '∩' : '∪'} ${esc((APP.getRegion(o.id) || { name: '?' }).name)}`).join('') : n.type;
       const tip = n.kind === 'region' ? `${n.name}: ${n.expr}` : `${n.name} (${n.type})`;
       h += `<g class="${cls}" data-id="${n.id}" transform="translate(${p.x} ${p.y})"><title>${esc(tip)}${n.unused ? ' — not used by any exported region' : ''}${n.noExport ? ' — not exported' : ''}</title>
         <rect width="${NW}" height="${NH}" rx="${n.kind === 'region' ? 8 : n.kind === 'cad' ? 3 : 14}" class="gr"/><rect width="6" height="${NH}" rx="3" fill="${esc(n.color || '#888')}"/>
@@ -717,10 +717,11 @@
   function sfRun() {
     const inp = sfInput(), sum = $('#sfSum'); SF.cur = -1;
     if (!inp || !inp.regions.length) { sum.innerHTML = '<span class="muted">Nothing to check: no exported region with a finite body.</span>'; $('#sfList').innerHTML = ''; SF.res = null; return null; }
-    const R = SF.res = FK.surfaceCheck(inp, { perBody: Math.max(50, +$('#sfPer').value || 2500), maxTotal: Math.max(1000, +$('#sfMax').value || 150000), spacing: sfNum('#sfSpacing', 0.1), eps: sfNum('#sfEps', 0.1), group: sfNum('#sfGroup', 0.1), blackOutside: $('#sfBlack').checked, only: $('#sfOnly').value || undefined });
+    const R = SF.res = FK.surfaceCheck(inp, { perBody: Math.max(50, +$('#sfPer').value || 2500), maxTotal: Math.max(1000, +$('#sfMax').value || 150000), spacing: sfNum('#sfSpacing', 0.1), eps: sfNum('#sfEps', 0.1), group: sfNum('#sfGroup', 0.1), blackOutside: $('#sfBlack').checked, reportUndef: $('#sfUndef').checked, only: $('#sfOnly').value || undefined });
     const f = (x) => (x * 10).toPrecision(3), li = [];
     li.push(R.nIssues ? `<span class="bad">✖ ${R.nIssues} error${R.nIssues > 1 ? 's' : ''}: ${R.gaps} gap${R.gaps > 1 ? 's' : ''}, ${R.overlaps} overlap${R.overlaps > 1 ? 's' : ''}</span>` : '<span class="good">✔ No gap and no overlap found</span>');
     li.push(`<div class="muted">${R.points} surface points on ${R.bodies} bodies (mean spacing ≈ ${f(R.spacing)} mm, ε ${R.eps ? f(R.eps) + ' mm' : 'automatic'}, grouping ${R.group ? f(R.group) + ' mm' : 'automatic'}) · ${R.ms} ms${R.blackSkipped ? ` · ${R.blackSkipped} points facing a black hole ignored` : ''}</div>`);
+    if (R.undefSkipped) li.push(`<div class="muted">ⓘ ${R.undefSkipped} point${R.undefSkipped > 1 ? 's' : ''} on ${R.undefBodies.map(esc).join(', ')} lie outside the defined space (no region on either side, e.g. beyond the black-hole boundary): ignored.</div>`);
     if (R.skippedBodies.length) li.push(`<div class="muted">ⓘ Surface not sampled (unsupported type): ${R.skippedBodies.map(esc).join(', ')}</div>`);
     if (R.skippedRegions.length) li.push(`<div class="muted">ⓘ Regions not evaluated (unsupported body or syntax): ${R.skippedRegions.map(esc).join(', ')} — the result may be incomplete</div>`);
     li.push('<div class="muted">A thin gap or overlap can still fall between two sample points: raise the number of points to be more thorough.</div>');
@@ -931,36 +932,12 @@
       if (res.error) toast(res.error);
     });
   })();
-  /* ---------- Boolean of two regions (experimental) ---------- */
-  function boolArgs() { const q = (n) => (document.querySelector('input[name=' + n + ']:checked') || {}).value; return [APP.getRegion(+$('#boolB').value), q('boolOp') || 'sub', q('boolMode') || 'compact']; }
-  function updateBoolPrev() {
-    const d = $('#dlgBool'), a = APP.getRegion(+d.dataset.rid), box = $('#boolPrev'), ok = $('#boolOk');
-    const pl = APP.boolPlan(a, ...boolArgs());
-    if (pl.error) { box.innerHTML = '<div class="msg bad">' + esc(pl.error) + '</div>'; ok.disabled = true; return; }
-    ok.disabled = false;
-    const v = (x) => x === null ? '?' : (+x.toPrecision(5)) + ' cm³';
-    box.innerHTML = '<div class="msg"><b>Region ' + esc(pl.regName) + '</b><br><code>' + esc(pl.expr) + '</code><br>' +
-      'Volume in the render zone: A ' + v(pl.volA) + ' · B ' + v(pl.volB) + ' → result <b>' + v(pl.vol) + '</b>' + (pl.error2 ? '<br><span class="bad">' + esc(pl.error2) + '</span>' : '') + '</div>';
-  }
+  /* ---------- Combine regions: a live-linked region whose operations are edited in the properties panel ---------- */
   function openBoolDlg(a) {
-    const d = $('#dlgBool'); d.dataset.rid = a.id; d.returnValue = '';
-    const others = S.model.regions.filter(r => r.id !== a.id);
-    if (!others.length) { toast('Create a second region first'); return; }
-    $('#boolA').innerHTML = '<b>' + esc(a.name) + '</b> <code>' + esc(a.expr) + '</code>';
-    $('#boolB').innerHTML = others.map(r => `<option value="${r.id}">${esc(r.name)} — ${esc(r.expr.slice(0, 40))}</option>`).join('');
-    updateBoolPrev();
-    if (!d.open) d.showModal();
+    const res = APP.startCombine(a);
+    if (res.error) { toast(res.error); return; }
+    S.rtab = 'definition'; APP.changed({ right: true });
   }
-  (function () {
-    const d = $('#dlgBool'); if (!d) return;
-    d.addEventListener('input', updateBoolPrev); d.addEventListener('change', updateBoolPrev);
-    d.addEventListener('close', () => {
-      if (d.returnValue !== 'ok') return;
-      const a = APP.getRegion(+d.dataset.rid); if (!a) return;
-      const res = APP.createBoolRegion(a, ...boolArgs(), ((document.querySelector('input[name=boolLink]:checked') || {}).value) === 'strong');
-      if (res.error) toast(res.error);
-    });
-  })();
   async function newProject() {
     if (await askConfirm('Start a new project? Meshes, bodies, regions, coordinate systems and measures are removed (the model part can be undone with Ctrl+Z; meshes cannot).', 'Clear everything')) { APP.newModel(true); toast('New project'); }
   }
@@ -1698,20 +1675,21 @@
       <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>
       <div class="fld"><label title="Material assigned to this region (ASSIGNMA card)">Material</label><select data-k="mat"><option value="0">— none —</option>${(S.model.materials || []).map(m => `<option value="${m.id}" ${r.mat === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
-    const lk = r.meta && r.meta.link, others = S.model.regions.filter(x => x.id !== r.id);
-    const regOpts = (sel) => others.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
-    const linkBlock = lk ? `<div class="sec"><h4><span>⛓ Strong link <small class="muted">(live formula)</small></span></h4><div class="fields">
-      <div class="fld"><label>Region A</label><select data-k="lnkA">${regOpts(lk.a)}</select></div>
-      <div class="fld"><label>Region B</label><select data-k="lnkB">${regOpts(lk.b)}</select></div>
-      <div class="fld"><label>Operation</label><select data-k="lnkOp"><option value="sub" ${lk.op === 'sub' ? 'selected' : ''}>A − B</option><option value="int" ${lk.op === 'int' ? 'selected' : ''}>A ∩ B</option><option value="union" ${lk.op === 'union' ? 'selected' : ''}>A ∪ B</option></select></div>
+    const lk = r.meta && r.meta.link, dep = APP.linkDependents(r.id), others = S.model.regions.filter(x => x.id !== r.id && !dep.has(x.id));
+    const regOpts = (sel) => (others.some(x => x.id === sel) ? '' : `<option value="${sel}" selected>${esc((APP.getRegion(sel) || { name: '?' }).name)}</option>`) + others.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    const OPS = [['union', '∪ union'], ['int', '∩ intersect'], ['sub', '− subtract']];
+    const linkBlock = lk ? `<div class="sec"><h4><span>⛓ Combination <small class="muted">(live formula)</small></span></h4>
+      <div class="muted" style="font-size:12px">Operations are applied in order, from the first region: ((A op B) op C) …  The formula below follows these regions and cannot be edited.</div>
+      <div class="fields"><div class="fld"><label>Start from</label><select data-k="lnkA">${regOpts(lk.a)}</select></div>
+      ${APP.linkOps(lk).map((o, i) => `<div class="fld lop"><div class="lopsel"><select data-k="lnkOp" data-i="${i}" title="Operation">${OPS.map(([v, l]) => `<option value="${v}" ${o.op === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div><div class="lopreg"><select data-k="lnkReg" data-i="${i}" title="Region">${regOpts(o.id)}</select><button class="mn" data-act="lnkDel" data-i="${i}" title="Remove this operation" ${APP.linkOps(lk).length < 2 ? 'disabled' : ''}>✕</button></div></div>`).join('')}
       <div class="fld"><label>Form</label><select data-k="lnkMode"><option value="compact" ${lk.mode !== 'expanded' ? 'selected' : ''}>Compact</option><option value="expanded" ${lk.mode === 'expanded' ? 'selected' : ''}>Expanded (De Morgan)</option></select></div></div>
       ${lk.error ? `<div class="msg bad">${esc(lk.error)}</div>` : ''}
-      <div class="btns"><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
+      <div class="btns"><button class="btn sm primary" data-act="lnkAdd" title="Add another region to the combination">＋ Add an operation</button><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
     const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div id="exprMsg">${regionMsg(r)}</div>
-      <div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div></div>`;
+      ${lk ? '<div class="muted" style="font-size:12px">ⓘ Managed by the combination above.</div><!--' : ''}<div class="row2"><select id="termBody"><option value="">— body —</option>${opts}</select></div>
+      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -1965,7 +1943,13 @@
         break;
       }
       case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
-      case 'lnkA': case 'lnkB': case 'lnkOp': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) { APP.snap(); const l = it.meta.link; if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkB') l.b = +t.value; else if (k === 'lnkOp') l.op = t.value; else l.mode = t.value; APP.changed({ tree: true, right: true }); } break;
+      case 'lnkA': case 'lnkOp': case 'lnkReg': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) {
+        APP.snap(); const l = it.meta.link, i = +t.dataset.i;
+        if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkMode') l.mode = t.value;
+        else if (k === 'lnkOp') { if (i === 0) l.op = t.value; else l.more[i - 1].op = t.value; }
+        else { if (i === 0) l.b = +t.value; else l.more[i - 1].id = +t.value; }
+        APP.changed({ tree: true, right: true });
+      } break;
       case 'expr': if (it.meta && it.meta.link) break; APP.snap(key + 'expr'); it.expr = t.value; APP.changed({}); break;
       case 'color': if (e.type === 'input') { APP.snap(key + 'col'); it.color = t.value; APP.changed({ tree: true, csys: type === 'csys' }); } break;
       case 'look': if (e.type === 'change') { APP.snap(); if (t.value) it.look = t.value; else delete it.look; APP.applyStyles(); APP.changed({ tree: true }); } break;
@@ -2001,6 +1985,16 @@
       case 'look': break;
       case 'cadShow': case 'cadHide': case 'cadIsolate': if (it && S.sel.t === 'stl') { const k = APP.cadVisibility(it.id, act === 'cadShow' ? 'show' : act === 'cadHide' ? 'hide' : 'isolate'); toast(k + ' linked object(s) ' + (act === 'cadHide' ? 'hidden' : act === 'cadShow' ? 'shown' : 'isolated')); } break;
       case 'cadCompare': if (it && S.sel.t === 'stl') openDevDlg({ cad: it.id }); break;
+      case 'lnkAdd': if (it && it.meta && it.meta.link) {
+        const l = it.meta.link, dep = APP.linkDependents(it.id), used = new Set(APP.linkIds(l)), cand = S.model.regions.filter(x => x.id !== it.id && !dep.has(x.id));
+        const nx = cand.find(x => !used.has(x.id)) || cand[0]; if (!nx) { toast('No other region'); break; }
+        APP.snap(); (l.more || (l.more = [])).push({ op: 'union', id: nx.id }); APP.changed({ tree: true, right: true });
+      } break;
+      case 'lnkDel': if (it && it.meta && it.meta.link) {
+        const l = it.meta.link, i = +a.dataset.i; if (APP.linkOps(l).length < 2) break;
+        APP.snap(); if (i === 0) { const f = l.more.shift(); l.op = f.op; l.b = f.id; } else l.more.splice(i - 1, 1);
+        APP.changed({ tree: true, right: true });
+      } break;
       case 'unlinkRegion': if (it && it.meta && it.meta.link) { APP.snap(); delete it.meta.link; APP.changed({ tree: true, right: true }); toast('Link removed; the formula is kept'); } break;
       case 'snapCheck': if (it && S.sel.t === 'body') suggestSnap(it, true); break;
       case 'pickRegion': if (it && S.sel.t === 'region') { if (it.meta && it.meta.link) { toast('This region follows a live link: its formula is read-only'); break; } S.cutRid = it.id; setTool('regpick'); if (narrow()) setDrawer('right', false); } break;

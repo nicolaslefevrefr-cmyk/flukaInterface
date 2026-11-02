@@ -139,9 +139,9 @@
   }
 
   /** input: { bodies: [{name, wb}], regions: [{name, expr, black}], box }.  opts: perBody (points), maxTotal, spacing (cm, 0 = auto), eps (cm, 0 = auto),
-   *  group (cm, 0 = auto), blackOutside (bool), only ('gap' | 'overlap' | undefined), maxIssues. */
+   *  group (cm, 0 = auto), blackOutside (bool), reportUndef (bool: also report surfaces with no region on either side), only ('gap' | 'overlap' | undefined), maxIssues. */
   FK.surfaceCheck = function (input, opts) {
-    opts = Object.assign({ perBody: 2500, maxTotal: 150000, spacing: 0, eps: 0, group: 0, blackOutside: true, maxIssues: 400 }, opts || {});
+    opts = Object.assign({ perBody: 2500, maxTotal: 150000, spacing: 0, eps: 0, group: 0, blackOutside: true, reportUndef: false, maxIssues: 400 }, opts || {});
     const t0 = Date.now(), box = input.box, diag = FK.boxDiag(box);
     const epsFloor = Math.max(diag * 1e-9, 1e-9);   // ε is automatic per body: 1/1000 of its sample spacing
     const fns = new Map(), skippedBodies = [];
@@ -168,7 +168,7 @@
       for (let i = 0; i < regs.length; i++) if (FK.astInside(regs[i].ast, flag) === true) res.push(i);
       return res;
     };
-    const bad = []; let npts = 0, nOk = 0, nBlackSkip = 0;
+    const bad = []; let npts = 0, nOk = 0, nBlackSkip = 0, nUndef = 0; const undefBodies = new Set();
     const names = (l) => l.map(i => regs[i].name);
     for (const sm of samples) {
       const P = sm.s.pts, N = sm.s.nrm, n = P.length / 3, eps = opts.eps > 0 ? opts.eps : Math.max(sm.h * 1e-3, epsFloor);
@@ -178,6 +178,7 @@
         npts++;
         const m = regsAt(x - eps * nx, y - eps * ny, z - eps * nz), pl = regsAt(x + eps * nx, y + eps * ny, z + eps * nz);
         let kind = '';
+        if (!m.length && !pl.length && !opts.reportUndef) { nUndef++; undefBodies.add(sm.name); continue; }   // surface lying entirely in undefined space: touches no region, harmless
         if (m.length > 1 || pl.length > 1) kind = 'overlap';
         else if (m.length === 0 || pl.length === 0) {
           const other = m.length ? m : pl;
@@ -191,7 +192,7 @@
       }
     }
     const issues = cluster(bad, opts.group).sort((a, b) => b.count - a.count).slice(0, opts.maxIssues);
-    return { issues, nIssues: issues.length, nBad: bad.length, points: npts, ok: nOk, blackSkipped: nBlackSkip, bodies: samples.length, skippedBodies, skippedRegions,
+    return { issues, nIssues: issues.length, nBad: bad.length, points: npts, ok: nOk, blackSkipped: nBlackSkip, undefSkipped: nUndef, undefBodies: [...undefBodies], bodies: samples.length, skippedBodies, skippedRegions,
       eps: opts.eps > 0 ? opts.eps : 0, group: opts.group > 0 ? opts.group : 0, spacing: meanH, perBody: per, ms: Date.now() - t0, gaps: issues.filter(x => x.kind === 'gap').length, overlaps: issues.filter(x => x.kind === 'overlap').length };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -45,7 +45,8 @@
       }
       const L = r.meta && r.meta.link;
       if (L) {
-        for (const [k, role] of [['a', 'A'], ['b', 'B']]) if (byId.has('r' + L[k])) edges.push({ from: 'r' + L[k], to: 'r' + r.id, kind: 'link', sign: 0, role, op: L.op, strong: true });
+        const lops = [{ op: L.op, id: L.a, role: 'A' }, { op: L.op, id: L.b, role: 'B' }].concat((L.more || []).map((x, i) => ({ op: x.op, id: x.id, role: 'B' + (i + 2) })));
+        for (const o of lops) if (byId.has('r' + o.id)) edges.push({ from: 'r' + o.id, to: 'r' + r.id, kind: 'link', sign: 0, role: o.role, op: o.op, strong: true });
       } else if (r.meta && r.meta.boolOf) {
         const [na, nb, op] = r.meta.boolOf;
         [[na, 'A'], [nb, 'B']].forEach(([n, role]) => { const q = regs.find(x => x.name === n && x !== r); if (q) edges.push({ from: 'r' + q.id, to: 'r' + r.id, kind: 'derived', sign: 0, role, op, strong: false }); });

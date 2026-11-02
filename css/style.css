@@ -524,8 +524,8 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 #rightBody .fld > :only-child { grid-column: 1 / -1; }
 #rightBody .fld input[type=number], #rightBody .fld input[type=text], #rightBody .fld select { height: 26px; font-size: 12.5px; padding: 0 6px; }
 #rightBody .fld input[type=range] { width: 100%; }
-#rightBody .fld input[type=color] { width: 44px; height: 24px; justify-self: start; }
-#rightBody .fld input.pchk, #rightBody .fld input[type=checkbox] { width: 16px; height: 16px; justify-self: start; margin: 0; }
+#rightBody .fld input[type=color] { width: 44px; height: 24px; justify-self: end; }
+#rightBody .fld input.pchk, #rightBody .fld input[type=checkbox] { width: 16px; height: 16px; justify-self: end; margin: 0; }
 #rightBody .fld.grp { display: block; padding: 0; border-bottom: 0; }
 #rightBody .fld.grp:hover { background: transparent; }
 #rightBody .fld.grp .gh { padding: 3px 3px 1px; margin: 0; }
@@ -541,3 +541,17 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 #rightBody .csdax .fld > .row2 > label { white-space: nowrap; }
 #rightBody .csdax .fld { display: block; }
 #rightBody .csdax h5 { margin: 6px 0 2px; font-size: 12.5px; }
+
+/* values right-aligned */
+#rightBody .fld input[type=number], #rightBody .fld input[type=text], #rightBody .g3 input, #rightBody .g4 input { text-align: right; }
+#rightBody .fld select { text-align: right; text-align-last: right; direction: ltr; }
+#rightBody .fld select option { text-align: left; }
+#rightBody .fld input[type=number] { font-variant-numeric: tabular-nums; }
+/* combination operations */
+#rightBody .fld.lop { grid-template-columns: minmax(96px, 36%) minmax(0, 1fr); }
+#rightBody .lopreg { display: flex; gap: 4px; align-items: center; min-width: 0; }
+#rightBody .lopreg select { flex: 1; min-width: 0; }
+#rightBody .lopreg .mn { opacity: .7; width: 24px; height: 24px; }
+#rightBody .lopreg .mn:hover { opacity: 1; }
+#rightBody .lopreg .mn:disabled { opacity: .2; }
+#rightBody .fld:has(> .exprwrap), #rightBody .fld:has(> textarea) { display: block; } #rightBody .fld:has(> .exprwrap) > label { display: block; margin-bottom: 3px; }
