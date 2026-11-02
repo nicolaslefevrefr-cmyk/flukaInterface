@@ -47,7 +47,7 @@
         f([x0, y0, z0], [0, S[1], 0], [0, 0, S[2]], [-1, 0, 0], S[1], S[2]); f([x1, y0, z0], [0, S[1], 0], [0, 0, S[2]], [1, 0, 0], S[1], S[2]);
         f([x0, y0, z0], [S[0], 0, 0], [0, 0, S[2]], [0, -1, 0], S[0], S[2]); f([x0, y1, z0], [S[0], 0, 0], [0, 0, S[2]], [0, 1, 0], S[0], S[2]);
         f([x0, y0, z0], [S[0], 0, 0], [0, S[1], 0], [0, 0, -1], S[0], S[1]); f([x0, y0, z1], [S[0], 0, 0], [0, S[1], 0], [0, 0, 1], S[0], S[1]);
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area: boxArea(S) };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area: boxArea(S) };
       }
       case 'OBOX': {
         const c = [p[0], p[1], p[2]], A = [[p[3], p[4], p[5]], [p[6], p[7], p[8]], [p[9], p[10], p[11]]], L = A.map(V.len); if (L.some(x => !(x > 0))) return null;
@@ -59,12 +59,12 @@
             grid(out, o, V.mul(A[i], 2), V.mul(A[j], 2), nn(L[i]), nn(L[j]), V.mul(u, sg));
           }
         }
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area: boxArea(L.map(x => 2 * x)) };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area: boxArea(L.map(x => 2 * x)) };
       }
       case 'SPH': {
         const R = p[3], area = 4 * Math.PI * R * R, hh = sp(area), m = Math.max(12, Math.ceil(area / (hh * hh))), ga = Math.PI * (3 - Math.sqrt(5));
         for (let i = 0; i < m; i++) { const z = 1 - 2 * (i + 0.5) / m, r = Math.sqrt(1 - z * z), th = ga * i, nx = r * Math.cos(th), ny = r * Math.sin(th); out.push(p[0] + R * nx, p[1] + R * ny, p[2] + R * z, nx, ny, z); }
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area };
       }
       case 'RCC': case 'TRC': {
         const H = [p[3], p[4], p[5]], L = V.len(H); if (!(L > 0)) return null;
@@ -81,7 +81,7 @@
         }
         disc(out, [p[0], p[1], p[2]], d, r1, hh, [-d[0], -d[1], -d[2]]);
         disc(out, [p[0] + H[0], p[1] + H[1], p[2] + H[2]], d, r2, hh, d);
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area };
       }
       case 'XCC': case 'YCC': case 'ZCC': {
         const ax = { XCC: 0, YCC: 1, ZCC: 2 }[type], i = (ax + 1) % 3, j = (ax + 2) % 3;
@@ -92,7 +92,7 @@
           P[ax] = lo + len * (a + 0.5) / nt; P[i] = ci + R * u; P[j] = cj + R * v; N[i] = u; N[j] = v;
           out.push(P[0], P[1], P[2], N[0], N[1], N[2]);
         }
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area };
       }
       case 'PLA': case 'XYP': case 'XZP': case 'YZP': {
         const pl = FK.planeOf({ type, p }), nrm = V.norm(pl.H), o = pl.V, [e1, e2] = basis(nrm);
@@ -105,7 +105,7 @@
           if (x < box.min[0] - pad || x > box.max[0] + pad || y < box.min[1] - pad || y > box.max[1] + pad || z < box.min[2] - pad || z > box.max[2] + pad) continue;
           out.push(x, y, z, nrm[0], nrm[1], nrm[2]);
         }
-        return { pts: Float32Array.from(out.p), nrm: Float32Array.from(out.n), area };
+        return { pts: Float64Array.from(out.p), nrm: Float64Array.from(out.n), area };
       }
     }
     return null;
@@ -143,7 +143,9 @@
   FK.surfaceCheck = function (input, opts) {
     opts = Object.assign({ perBody: 2500, maxTotal: 150000, spacing: 0, eps: 0, group: 0, blackOutside: true, reportUndef: false, maxIssues: 400 }, opts || {});
     const t0 = Date.now(), box = input.box, diag = FK.boxDiag(box);
-    const epsFloor = Math.max(diag * 1e-9, 1e-9);   // ε is automatic per body: 1/1000 of its sample spacing
+    // automatic ε: as small as double precision allows at the coordinates of the model (≈ 1e-10 × the largest coordinate, never below 1e-8 cm),
+    // so that a wedge or a sliver of a few microns between two nearly coincident surfaces is still seen (CG codes report them); never above 1/1000 of the sample spacing
+    const coordMax = Math.max(...box.min.map(Math.abs), ...box.max.map(Math.abs)), epsAuto = Math.max(coordMax * 1e-10, 1e-8); let epsUsed = 0;
     const fns = new Map(), skippedBodies = [];
     for (const b of input.bodies) { const f = FK.insideFn(b.wb); if (f) fns.set(b.name, f); else skippedBodies.push(b.name); }
     const regs = [], skippedRegions = [];
@@ -171,7 +173,7 @@
     const bad = []; let npts = 0, nOk = 0, nBlackSkip = 0, nUndef = 0; const undefBodies = new Set();
     const names = (l) => l.map(i => regs[i].name);
     for (const sm of samples) {
-      const P = sm.s.pts, N = sm.s.nrm, n = P.length / 3, eps = opts.eps > 0 ? opts.eps : Math.max(sm.h * 1e-3, epsFloor);
+      const P = sm.s.pts, N = sm.s.nrm, n = P.length / 3, eps = opts.eps > 0 ? opts.eps : Math.min(sm.h * 1e-3, epsAuto); if (!epsUsed || eps < epsUsed) epsUsed = eps;
       for (let i = 0; i < n; i++) {
         const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], nx = N[i * 3], ny = N[i * 3 + 1], nz = N[i * 3 + 2];
         if (x < box.min[0] || x > box.max[0] || y < box.min[1] || y > box.max[1] || z < box.min[2] || z > box.max[2]) continue;
@@ -193,6 +195,6 @@
     }
     const issues = cluster(bad, opts.group).sort((a, b) => b.count - a.count).slice(0, opts.maxIssues);
     return { issues, nIssues: issues.length, nBad: bad.length, points: npts, ok: nOk, blackSkipped: nBlackSkip, undefSkipped: nUndef, undefBodies: [...undefBodies], bodies: samples.length, skippedBodies, skippedRegions,
-      eps: opts.eps > 0 ? opts.eps : 0, group: opts.group > 0 ? opts.group : 0, spacing: meanH, perBody: per, ms: Date.now() - t0, gaps: issues.filter(x => x.kind === 'gap').length, overlaps: issues.filter(x => x.kind === 'overlap').length };
+      eps: opts.eps > 0 ? opts.eps : 0, epsUsed, group: opts.group > 0 ? opts.group : 0, spacing: meanH, perBody: per, ms: Date.now() - t0, gaps: issues.filter(x => x.kind === 'gap').length, overlaps: issues.filter(x => x.kind === 'overlap').length };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

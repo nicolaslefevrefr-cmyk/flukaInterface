@@ -737,7 +737,7 @@
     const R = SF.res = FK.surfaceCheck(inp, { perBody: Math.max(50, +$('#sfPer').value || 2500), maxTotal: Math.max(1000, +$('#sfMax').value || 150000), spacing: sfNum('#sfSpacing', 0.1), eps: sfNum('#sfEps', 0.1), group: sfNum('#sfGroup', 0.1), blackOutside: $('#sfBlack').checked, reportUndef: $('#sfUndef').checked, only: $('#sfOnly').value || undefined });
     const f = (x) => (x * 10).toPrecision(3), li = [];
     li.push(R.nIssues ? `<span class="bad">✖ ${R.nIssues} error${R.nIssues > 1 ? 's' : ''}: ${R.gaps} gap${R.gaps > 1 ? 's' : ''}, ${R.overlaps} overlap${R.overlaps > 1 ? 's' : ''}</span>` : '<span class="good">✔ No gap and no overlap found</span>');
-    li.push(`<div class="muted">${R.points} surface points on ${R.bodies} bodies (mean spacing ≈ ${f(R.spacing)} mm, ε ${R.eps ? f(R.eps) + ' mm' : 'automatic'}, grouping ${R.group ? f(R.group) + ' mm' : 'automatic'}) · ${R.ms} ms${R.blackSkipped ? ` · ${R.blackSkipped} points facing a black hole ignored` : ''}</div>`);
+    li.push(`<div class="muted">${R.points} surface points on ${R.bodies} bodies (mean spacing ≈ ${f(R.spacing)} mm, ε ${R.eps ? f(R.eps) + ' mm' : 'automatic ≈ ' + (R.epsUsed * 1e4).toPrecision(2) + ' µm'}, grouping ${R.group ? f(R.group) + ' mm' : 'automatic'}) · ${R.ms} ms${R.blackSkipped ? ` · ${R.blackSkipped} points facing a black hole ignored` : ''}</div>`);
     if (R.undefSkipped) li.push(`<div class="muted">ⓘ ${R.undefSkipped} point${R.undefSkipped > 1 ? 's' : ''} on ${R.undefBodies.map(esc).join(', ')} lie outside the defined space (no region on either side, e.g. beyond the black-hole boundary): ignored.</div>`);
     if (R.skippedBodies.length) li.push(`<div class="muted">ⓘ Surface not sampled (unsupported type): ${R.skippedBodies.map(esc).join(', ')}</div>`);
     if (R.skippedRegions.length) li.push(`<div class="muted">ⓘ Regions not evaluated (unsupported body or syntax): ${R.skippedRegions.map(esc).join(', ')} — the result may be incomplete</div>`);
@@ -2292,7 +2292,7 @@
           const pk = APP.makePick(hit, 'face', x, y);
           APP.snap();
           const pl = APP.planeForCut(pk), zone = S.opt.cutZone === undefined ? 'all' : S.opt.cutZone;
-          const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, S.opt.cutKeep === '-' ? -1 : 1, pl.body.name);
+          const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, (S.opt.cutKeep === '-' ? -1 : 1) * (pl.flip ? -1 : 1), pl.body.name);
           if (res.error) { toast(res.error); break; }
           if (pl.created) pl.body.visible = false;                 // the cutting plane only serves the formula: hidden from now on
           S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });

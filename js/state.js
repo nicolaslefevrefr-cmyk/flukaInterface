@@ -749,7 +749,9 @@
     for (const b of S.model.bodies) {
       if (!FK.isPlaneType(b.type)) continue;
       const pl = FK.planeOf(APP.wbody(b)); if (!pl) continue;
-      const m = V.norm(pl.H); if (V.dot(m, n) > 1 - 1e-9 && Math.abs(V.dot(n, V.sub(c, pl.V))) < 1e-6) return { body: b, created: false };
+      // the same plane (or the same plane seen from the other side) within a tiny tolerance is re-used: two cuts meant to coincide must not leave a wedge
+      const m = V.norm(pl.H), dt = V.dot(m, n), angTol = (S.opt.cutMergeAng === undefined ? 0.05 : S.opt.cutMergeAng) * Math.PI / 180, dTol = (S.opt.cutMergeTol === undefined ? 0.01 : S.opt.cutMergeTol) / 10;
+      if (Math.abs(dt) > Math.cos(angTol) && Math.abs(V.dot(m, V.sub(c, pl.V))) < dTol) return { body: b, created: false, flip: dt < 0 };
     }
     const pl = APP.planeFromPick(pk);
     const b = APP.addBody('PLA', pl.p, { meta: pl.meta });
