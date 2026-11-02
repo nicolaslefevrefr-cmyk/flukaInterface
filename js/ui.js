@@ -322,7 +322,7 @@
       if (S.tool === 'select' && S.pick) b += pickCardHTML(S.pick);
       if (S.tool === 'measure') b += measureResultsHTML();
     }
-    el.innerHTML = `<div class="tw-h" data-act="winToggle" title="Show / hide the options and results of this tool"><span>${winTitle()}</span><span style="flex:none;font-weight:400">${open ? '▾' : '▸'}</span></div>` + (open ? `<div class="tw-b">${b}</div>` : '');
+    el.innerHTML = `<div class="tw-h" data-act="winToggle" title="Show / hide the options and results of this tool"><span>${winTitle()}</span><span style="flex:none;font-weight:400">${open ? '−' : '+'}</span></div>` + (open ? `<div class="tw-b">${b}</div>` : '');
   }
   function renderToolOpts() { renderToolWin(); }
 
@@ -1046,6 +1046,8 @@
     return w;
   }
   let UNUSED = new Set();
+  let TF = '';                                   // tree filter (transient)
+  const fl = (list) => TF ? list.filter(o => String(o.name || '').toLowerCase().includes(TF)) : list;
   const treeState = () => S.opt.tree || (S.opt.tree = {});
   const isOpen = (k) => treeState()[k] !== false;
   const GROUPS_DEF = [
@@ -1064,8 +1066,8 @@
     return list.filter(c => (inL.has(c.parent) ? c.parent : 0) === pid).map(c => {
       const sel = S.sel && S.sel.t === 'csys' && S.sel.id === c.id, isA = act === c.id;
       const kids = list.filter(x => x.parent === c.id).length, open = treeState()['cs' + c.id] !== false;
-      return `<div class="item cs${sel ? ' sel' : ''}${isA ? ' act' : ''}" data-t="csys" data-id="${c.id}" draggable="true"><div class="top" style="padding-left:${depth * 14}px">
-        ${kids ? `<button class="chev" data-act="fold" data-k="cs${c.id}">${open ? '▾' : '▸'}</button>` : '<span class="chev"></span>'}
+      return `<div class="item cs${sel ? ' sel' : ''}${isA ? ' act' : ''}" data-t="csys" data-id="${c.id}" draggable="true"><div class="top" style="--d:${depth * 14}px">
+        ${kids ? `<button class="chev" data-act="fold" data-k="cs${c.id}">${open ? '−' : '+'}</button>` : '<span class="chev"></span>'}
         <button class="vis${c.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${c.visible ? ICON.eye : ICON.eyeOff}</button>
         <button class="rad${isA ? ' on' : ''}" data-act="activate" data-cid="${c.id}" title="Set as active coordinate system" aria-label="Active">${isA ? '●' : '○'}</button>
         <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="ty">${APP.exportCs() === c.id ? '⇥ export ' : ''}${c.frozen ? '🔒 ' : ''}${c.parent ? '↳ ' + esc(APP.csysLabel(c.parent)) : ''}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div></div>` +
@@ -1088,21 +1090,22 @@
   function groupRowHTML(gr, members) {
     const open = gr.open !== false, anyVis = members.some(o => o.visible);
     const name = S.renG === gr.id ? `<input class="gname" data-gid="${gr.id}" value="${esc(gr.name)}" maxlength="40">` : `<span class="nm">${esc(gr.name)}</span>`;
-    return `<div class="grow" data-gid="${gr.id}" data-k="${gr.k}"><button class="chev" data-act="gfold" data-gid="${gr.id}" aria-label="Expand / collapse">${open ? '▾' : '▸'}</button>` +
+    return `<div class="grow" data-gid="${gr.id}" data-k="${gr.k}"><button class="chev" data-act="gfold" data-gid="${gr.id}" aria-label="Expand / collapse">${open ? '−' : '+'}</button>` +
       `<button class="vis${anyVis ? '' : ' off'}" data-act="grpvis" data-gid="${gr.id}" title="Show / hide the whole group">${anyVis ? ICON.eye : ICON.eyeOff}</button>` +
       `<span class="gi" aria-hidden="true">▣</span>${name}<span class="cnt">${members.length}</span><button class="mn" data-act="grpmenu" data-gid="${gr.id}" title="Group actions">⋮</button></div>`;
   }
   function catBody(g) {
-    const k = g.k, all = g.items(), groups = APP.groups().filter(x => x.k === k);
+    const k = g.k, all = fl(g.items()), groups = APP.groups().filter(x => x.k === k);
     let h = '';
-    if (k === 'csys') {
+    if (k === 'csys' && !TF) {
       const a0 = S.model.active || 0;
       h += `<div class="item cs g${a0 === 0 ? ' act' : ''}"><div class="top"><span class="chev"></span><button class="rad${a0 === 0 ? ' on' : ''}" data-act="activate" data-cid="0" title="Global frame (default)" aria-label="Global">${a0 === 0 ? '●' : '○'}</button><span class="nm">Global (0, 0, 0)</span><span class="ty">default</span></div></div>`;
     }
     for (const gr of groups) {
       const members = all.filter(o => o.grp === gr.id);
+      if (TF && !members.length) continue;
       h += groupRowHTML(gr, members);
-      if (gr.open !== false) h += `<div class="gb" data-gid="${gr.id}" data-k="${k}">${rowsOf(k, members) || '<div class="empty">Drag items here</div>'}</div>`;
+      if (TF || gr.open !== false) h += `<div class="gb" data-gid="${gr.id}" data-k="${k}">${rowsOf(k, members) || '<div class="empty">Drag items here</div>'}</div>`;
     }
     return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
   }
@@ -1110,13 +1113,15 @@
     UNUSED = new Set(APP.unusedBodies().map(b => b.id));
     let h = `<div class="tree">`;
     for (const g of GROUPS_DEF) {
-      const list = g.items(), open = isOpen(g.k), anyVis = list.some(o => o.visible);
-      h += `<div class="tg" data-k="${g.k}"><div class="th" data-g="${g.k}"><button class="chev" data-act="fold" data-k="${g.k}" aria-label="Expand / collapse">${open ? '▾' : '▸'}</button><span class="tt">${g.title}</span><span class="cnt">${list.length}</span>` +
+      const list = fl(g.items()), open = TF ? true : isOpen(g.k), anyVis = list.some(o => o.visible);
+      if (TF && !list.length) continue;
+      h += `<div class="tg" data-k="${g.k}"><div class="th" data-g="${g.k}"><button class="chev" data-act="fold" data-k="${g.k}" aria-label="Expand / collapse">${open ? '−' : '+'}</button><span class="tt">${g.title}</span><span class="cnt">${list.length}</span>` +
         (g.k !== 'materials' && (g.k !== 'csys' && g.k !== 'measures' || list.length) ? `<button class="vis${anyVis ? '' : ' off'}" data-act="gvis" data-g="${g.k}" title="Show / hide all">${anyVis ? ICON.eye : ICON.eyeOff}</button>` : '') +
         `<button class="mn" data-act="gmenu" data-g="${g.k}" title="Create / actions (or right-click)">＋</button></div>`;
-      if (open) h += `<div class="tb">${catBody(g) || '<div class="empty">Empty — right-click the header to create</div>'}</div>`;
+      if (open) h += `<div class="tb">${catBody(g) || '<div class="empty">(empty)</div>'}</div>`;
       h += '</div>';
     }
+    if (TF && h === '<div class="tree">') h += '<div class="empty">No object matches this filter.</div>';
     h += '</div>';
     $('#leftBody').innerHTML = h;
     const gi = $('#leftBody .gname'); if (gi) { gi.focus(); gi.select(); }
@@ -1233,6 +1238,16 @@
     }
     return [];
   }
+  $('#treeFilter').addEventListener('input', e => { TF = e.target.value.trim().toLowerCase(); renderLeft(); });
+  $('#treeFilter').addEventListener('keydown', e => { if (e.key === 'Escape') { e.target.value = ''; TF = ''; renderLeft(); } });
+  $('#treeExpand').addEventListener('click', () => {
+    const st = treeState(); GROUPS_DEF.forEach(g => { st[g.k] = true; }); S.model.csys.forEach(c => { st['cs' + c.id] = true; });
+    APP.groups().forEach(g => { g.open = true; }); APP.save(); renderLeft();
+  });
+  $('#treeCollapse').addEventListener('click', () => {
+    const st = treeState(); GROUPS_DEF.forEach(g => { st[g.k] = false; }); S.model.csys.forEach(c => { st['cs' + c.id] = false; });
+    APP.groups().forEach(g => { g.open = false; }); APP.save(); renderLeft();
+  });
   $('#leftBody').addEventListener('contextmenu', e => {
     const item = e.target.closest('.item[data-t]'), th = e.target.closest('.th'), gr = e.target.closest('.grow');
     if (gr) { e.preventDefault(); showMenu(e.clientX, e.clientY, grpMenu(+gr.dataset.gid)); }
@@ -1249,6 +1264,7 @@
     if (a === 'grpvis') { const g = APP.getGroup(+act.dataset.gid); if (g) { APP.setGroupVisible(g, !APP.groupMembers(g).some(o => o.visible)); APP.changed({ tree: true, csys: g.k === 'csys', measures: g.k === 'measures' }); } return; }
     if (a === 'grpmenu') { const r = act.getBoundingClientRect(); showMenu(r.left - 140, r.bottom + 2, grpMenu(+act.dataset.gid)); return; }
     if (!act && e.target.closest('.grow') && !e.target.closest('input')) { const g = APP.getGroup(+e.target.closest('.grow').dataset.gid); if (g) { g.open = g.open === false; APP.save(); renderLeft(); } return; }
+    if (!act && !TF && e.target.closest('.th') && !e.target.closest('input')) { const k = e.target.closest('.th').dataset.g; treeState()[k] = !isOpen(k); APP.save(); renderLeft(); return; }
     if (a === 'gvis') { const k = act.dataset.g; setGroupVis(k, !groupItems(k).some(o => o.visible)); return; }
     if (a === 'gmenu') { const r = act.getBoundingClientRect(); showMenu(r.left, r.bottom + 2, groupMenu(act.dataset.g)); return; }
     if (a === 'imenu' && item) { const r = act.getBoundingClientRect(); showMenu(r.left - 140, r.bottom + 2, itemMenu(item.dataset.t, +item.dataset.id)); return; }
