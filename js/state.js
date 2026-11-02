@@ -219,9 +219,40 @@
     return { method: 'axes', o: P(o), a: ax('X', xa), b: ax('Y', ya), px: P(V.add(o, xa)), pxy: P(V.add(o, ya)), error: '', note: '' };
   };
   APP.csSlot = (def, path) => path.split('.').reduce((o, k) => o[k], def);
-  APP.csAxisVec = function (a) { const v = a.src === 'pts' ? V.sub(a.p2.p, a.p1.p) : a.v; return a.flip ? V.mul(v, -1) : v.slice(); };
+  /** Axis X / Y / Z (world frame) of coordinate system `id` (0 = global). */
+  APP.csAxisOf = function (id, L) { const w = APP.csysWorld(id || 0), k = 'XYZ'.indexOf(L || 'X'); return [w[k], w[4 + k], w[8 + k]]; };
+  APP.csAxisVec = function (a) { const v = a.src === 'pts' ? V.sub(a.p2.p, a.p1.p) : a.src === 'csax' ? APP.csAxisOf(a.cs, a.cax) : a.v; return a.flip ? V.mul(v, -1) : v.slice(); };
+  const CS_SLOTS = ['o', 'px', 'pxy', 'a.p1', 'a.p2', 'b.p1', 'b.p2'];
+  /** Ids of the coordinate systems a definition takes its origins / axes from. */
+  APP.csRefs = function (def) {
+    const ids = new Set(); if (!def) return ids;
+    for (const pth of CS_SLOTS) { let s = null; try { s = APP.csSlot(def, pth); } catch (e) { s = null; } if (s && s.src === 'cs') ids.add(s.cs | 0); }
+    for (const k of ['a', 'b']) if (def[k] && def[k].src === 'csax') ids.add(def[k].cs | 0);
+    return ids;
+  };
+  /** Points taken from another coordinate system follow that system's current origin. */
+  APP.csRefresh = function (def) {
+    for (const pth of CS_SLOTS) { let s = null; try { s = APP.csSlot(def, pth); } catch (e) { s = null; } if (s && s.src === 'cs') { const w = APP.csysWorld(s.cs | 0); s.p = [w[3], w[7], w[11]]; } }
+  };
+  /** After a coordinate system moved, the systems defined from it are solved again (a few passes: chains). */
+  APP.followCsRefs = function (moved) {
+    const ids = new Set([moved.id]);
+    for (const x of S.model.csys) if (APP.isDescendant(x.id, moved.id)) ids.add(x.id);
+    for (let pass = 0; pass < 4; pass++) {
+      let any = false;
+      for (const d of S.model.csys) {
+        if (!d.def || ids.has(d.id)) continue;
+        const refs = APP.csRefs(d.def); if (![...refs].some(r => ids.has(r))) continue;
+        const r = APP.csDefSolve(d.def); d.def.error = r.error || ''; d.def.note = r.note || ''; if (r.error) continue;
+        const cl = M.clean(M.mul(M.inv(APP.csysWorld(d.parent || 0)), r.world), 1e-4); if (!cl.ok) continue;
+        d.m = cl.m; ids.add(d.id); for (const x of S.model.csys) if (APP.isDescendant(x.id, d.id)) ids.add(x.id); any = true;
+      }
+      if (!any) break;
+    }
+  };
   /** → { world: 3×4 (world frame) , note } | { error } */
   APP.csDefSolve = function (def) {
+    APP.csRefresh(def);
     const o = def.o.p; let ia, ib, va, vb;
     if (def.method === 'pts3') { ia = 0; ib = 1; va = V.sub(def.px.p, o); vb = V.sub(def.pxy.p, o); }
     else { ia = 'XYZ'.indexOf(def.a.axis); ib = 'XYZ'.indexOf(def.b.axis); if (ia === ib) return { error: 'Axis 1 and axis 2 must be different (X, Y or Z)' }; va = APP.csAxisVec(def.a); vb = APP.csAxisVec(def.b); }
@@ -266,6 +297,7 @@
       const loc = M.mul(M.inv(APP.csysWorld(x.parent)), old.get(x.id));
       x.m = (M.clean(loc, 1e-6).m) || loc;
     }
+    APP.followCsRefs(c);
     APP.changed(soft ? { tree: true, csys: true } : { tree: true, right: true });
     return true;
   };

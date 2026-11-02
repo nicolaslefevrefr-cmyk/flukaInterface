@@ -34,6 +34,8 @@
   /* ---------- Drawers and INP sheet ---------- */
   const dL = $('#drawerLeft'), dR = $('#drawerRight'), scrim = $('#scrim'), sheet = $('#sheet');
   const narrow = () => window.matchMedia('(max-width: 899px)').matches;
+  // the view toolbar wraps onto several rows when the viewport gets narrow: floating items (triad, tool window) sit below it
+  if (window.ResizeObserver) { const vt = document.getElementById('vtools'), vp = document.getElementById('viewport'); if (vt && vp) new ResizeObserver(() => vp.style.setProperty('--vth', Math.ceil(vt.getBoundingClientRect().height) + 'px')).observe(vt); }
   function setDrawer(side, open) {
     const d = side === 'left' ? dL : dR, o = side === 'left' ? dR : dL;
     d.classList.toggle('open', open);
@@ -1386,10 +1388,10 @@
 
   function numField(label, attr, val) { return `<div class="fld"><label>${label}</label><input type="number" step="0.1" value="${esc(fmt(val, 6))}" ${attr}></div>`; }
   function commonStyle(o, withEdge) {
-    return `<div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(o.color)}">
-      <label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${o.visible ? 'checked' : ''}>Visible</label></div>
-      <div class="row2"><span class="muted">Opacity</span><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-k="opacity"></div>
-      <div class="row2"><span class="muted" title="Overrides the global render mode for this object">Appearance ⓘ</span><select data-k="look"><option value="" ${!o.look ? 'selected' : ''}>Follow the global mode</option><option value="opaque" ${o.look === 'opaque' ? 'selected' : ''}>Always opaque</option><option value="transparent" ${o.look === 'transparent' ? 'selected' : ''}>Always transparent</option></select></div>`;
+    return `<div class="fields"><div class="fld"><label>Color</label><input type="color" data-k="color" value="${esc(o.color)}"></div>
+      <div class="fld"><label>Visible</label><input type="checkbox" class="pchk" data-k="visible" ${o.visible ? 'checked' : ''}></div>
+      <div class="fld"><label>Opacity</label><input type="range" min="0" max="100" value="${Math.round(o.opacity * 100)}" data-k="opacity"></div>
+      <div class="fld"><label title="Overrides the global render mode for this object">Appearance ⓘ</label><select data-k="look"><option value="" ${!o.look ? 'selected' : ''}>Follow the global mode</option><option value="opaque" ${o.look === 'opaque' ? 'selected' : ''}>Always opaque</option><option value="transparent" ${o.look === 'transparent' ? 'selected' : ''}>Always transparent</option></select></div></div>`;
   }
 
   function liveInfoHTML() {
@@ -1523,7 +1525,7 @@
     const defFields = h; h = '';
     if (b.type !== 'RAW' || S.model.csys.length) {
       h += `<div class="fld full"><label>Defined in coordinate system</label><select data-k="bcs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${b.cs === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-opt="keepPos" ${S.opt.keepPos === true ? 'checked' : ''}>Keep the position when changing frame (recomputes the parameters)</label></div>`;
+        <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" title="Recomputes the parameters so that the body stays where it is" data-opt="keepPos" ${S.opt.keepPos === true ? 'checked' : ''}>Keep position on frame change</label></div>`;
     }
     const csHTML = h; h = '';
     let inpLine = '';
@@ -1538,7 +1540,7 @@
       if (src) { const o = src.kind === 'stl' ? APP.getStl(src.id) : null; planeBtns += `<div class="muted" style="font-size:12px">Source: triangle #${src.tri}${o ? ' of ' + esc(o.name) : ''}</div>`; }
     }
     const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
-      <div class="fld full"><label>Name (max 8 characters for CG)</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
+      <div class="fld full"><label title="Maximum 8 characters in the INP file">Name</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
       <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
     const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
     const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
@@ -1578,7 +1580,7 @@
         <div class="muted" style="font-size:12px">p_parent = R·p + t. Must be a proper rotation (orthonormal, determinant +1).</div></div></details>
       <details class="fold"><summary>World values</summary><div id="csysWorld">${csysWorldHTML(c)}</div></details>
 </div>`;
-    const view = `<div class="sec"><h4><span>View</span></h4><div class="row2"><span class="muted">Color</span><input type="color" data-k="color" value="${esc(c.color)}"><label class="chk" style="margin:0 0 0 auto"><input type="checkbox" data-k="visible" ${c.visible ? 'checked' : ''}>Visible</label></div></div>`;
+    const view = `<div class="sec"><h4><span>View</span></h4><div class="fields"><div class="fld"><label>Color</label><input type="color" data-k="color" value="${esc(c.color)}"></div><div class="fld"><label>Visible</label><input type="checkbox" class="pchk" data-k="visible" ${c.visible ? 'checked' : ''}></div></div></div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn primary" data-act="csysActivate">${S.model.active === c.id ? '● Active system' : 'Set as active'}</button>
       <button class="btn${APP.exportCs() === c.id ? ' primary' : ''}" data-act="csysExport" title="The INP file is written in this frame (only one)">${APP.exportCs() === c.id ? '⇥ Export system (click to unset)' : 'Use as export system'}</button>
@@ -1587,21 +1589,27 @@
       <div class="btns opsdel"><button class="btn danger" data-act="del" title="The children are re-attached to the parent; the bodies keep their place">Delete</button></div></div>`;
     return tabbed({ general, view, definition, operations });
   }
-  const SLOT_SRC = [['xyz', 'Coordinates'], ['pick', 'Point / vertex in the view'], ['arc', 'Centre of a circular edge'], ['mid', 'Midpoint of an edge'], ['planes3', 'Intersection of 3 faces']];
-  const AX_SRC = [['vec', 'Vector (typed)'], ['pts', 'Two points'], ['face', 'Normal of a face'], ['edge', 'Direction of an edge'], ['circ', 'Axis of a circular edge']];
+  const SLOT_SRC = [['xyz', 'Coordinates'], ['cs', 'Origin of a coordinate system'], ['pick', 'Point / vertex in the view'], ['arc', 'Centre of a circular edge'], ['mid', 'Midpoint of an edge'], ['planes3', 'Intersection of 3 faces']];
+  const AX_SRC = [['vec', 'Vector (typed)'], ['csax', 'Axis of a coordinate system'], ['pts', 'Two points'], ['face', 'Normal of a face'], ['edge', 'Direction of an edge'], ['circ', 'Axis of a circular edge']];
   const SLOT_MODE = { pick: 'vertex', arc: 'arc', mid: 'mid', planes3: 'planes3' };
+  /** Options of the coordinate systems a definition may refer to (not itself, nor the systems that depend on it). */
+  function csOpts(c, sel) {
+    return `<option value="0" ${sel === 0 ? 'selected' : ''}>Global (0,0,0)</option>` + S.model.csys.filter(x => x.id !== c.id && !APP.isDescendant(x.id, c.id)).map(x => `<option value="${x.id}" ${sel === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  }
   function slotHTML(c, label, path) {
     const sl = APP.csSlot(c.def, path), on = S.fill && S.fill.kind === 'csdef' && S.fill.slot === path;
-    return `<div class="fld full grp csd"><div class="gh"><label>${label}</label><select class="mini" data-cd="${path}|src">${SLOT_SRC.map(([k, l]) => `<option value="${k}" ${sl.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${sl.src !== 'xyz' ? `<button class="pk${on ? ' on' : ''}" data-act="csdPick" data-path="${path}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div>
-      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${path}|p${i}" value="${fmt(sl.p[i], 6)}">`).join('')}</div></div>`;
+    return `<div class="fld full grp csd"><div class="gh"><label>${label}</label><select class="mini" data-cd="${path}|src">${SLOT_SRC.map(([k, l]) => `<option value="${k}" ${sl.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${sl.src !== 'xyz' && sl.src !== 'cs' ? `<button class="pk${on ? ' on' : ''}" data-act="csdPick" data-path="${path}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div>
+      ${sl.src === 'cs' ? `<div class="fld"><label>Coordinate system</label><select data-cd="${path}|cs">${csOpts(c, sl.cs | 0)}</select></div>` : ''}
+      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${path}|p${i}" value="${fmt(sl.p[i], 6)}" ${sl.src === 'cs' ? 'readonly' : ''}>`).join('')}</div></div>`;
   }
   function axisHTML(c, which, title) {
     const a = c.def[which], v = APP.csAxisVec(a), pk = ['face', 'edge', 'circ'].includes(a.src), on = S.fill && S.fill.kind === 'csdef' && S.fill.ax === which;
     return `<div class="csdax"><h5>${title}</h5><div class="fld full"><div class="row2"><label style="margin:0">This axis is</label><select class="mini" data-cd="${which}|axis">${['X', 'Y', 'Z'].map(L => `<option ${a.axis === L ? 'selected' : ''}>${L}</option>`).join('')}</select>
 <button class="btn sm" data-act="csdFlip" data-ax="${which}" title="Reverse the direction">⇄ Reverse</button></div>
       <div class="row2" style="margin-top:4px"><select data-cd="${which}|src" style="flex:1;min-width:0">${AX_SRC.map(([k, l]) => `<option value="${k}" ${a.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      ${pk ? `<button class="pk${on ? ' on' : ''}" data-act="csdPickAxis" data-ax="${which}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div></div>
-      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${which}|v${i}" value="${fmt(v[i], 6)}" ${a.src === 'pts' ? 'readonly' : ''}>`).join('')}</div>
+      ${pk ? `<button class="pk${on ? ' on' : ''}" data-act="csdPickAxis" data-ax="${which}" title="Pick in the 3D view" aria-label="Pick">⌖</button>` : ''}</div>
+      ${a.src === 'csax' ? `<div class="row2" style="margin-top:4px"><select data-cd="${which}|cs" style="flex:1;min-width:0" title="Coordinate system">${csOpts(c, a.cs | 0)}</select><select data-cd="${which}|cax" class="mini" title="Which axis of that system">${['X', 'Y', 'Z'].map(L => `<option ${(a.cax || 'X') === L ? 'selected' : ''}>${L}</option>`).join('')}</select></div>` : ''}</div>
+      <div class="g3">${[0, 1, 2].map(i => `<input type="number" step="any" data-cd="${which}|v${i}" value="${fmt(v[i], 6)}" ${a.src === 'pts' || a.src === 'csax' ? 'readonly' : ''}>`).join('')}</div>
       ${a.src === 'pts' ? slotHTML(c, 'From point', which + '.p1') + slotHTML(c, 'To point', which + '.p2') : ''}</div>`;
   }
   function csDefHTML(c) {
@@ -1624,11 +1632,14 @@
     if (path === 'a' || path === 'b') {
       const a = d[path], o = d[path === 'a' ? 'b' : 'a'];
       if (field === 'axis') { if (o.axis === t.value) o.axis = a.axis; a.axis = t.value; }
-      else if (field === 'src') { if (t.value === 'pts' && a.src !== 'pts') { const v = APP.csAxisVec(a); a.p2.p = V.add(a.p1.p, v); } else if (a.src === 'pts') { a.v = APP.csAxisVec(a); a.flip = false; } a.src = t.value; }
+      else if (field === 'cs') a.cs = +t.value;
+      else if (field === 'cax') a.cax = t.value;
+      else if (field === 'src') { if (t.value === 'pts' && a.src !== 'pts') { const v = APP.csAxisVec(a); a.p2.p = V.add(a.p1.p, v); } else if (a.src === 'pts' || a.src === 'csax') { a.v = APP.csAxisVec(a); a.flip = false; } a.src = t.value; if (t.value === 'csax') { a.cs = a.cs | 0; a.cax = a.cax || a.axis; a.flip = false; } }
       else { const i = +field[1], v = parseFloat(t.value); if (!isFinite(v)) return; a.v = APP.csAxisVec(a); a.flip = false; a.v[i] = v; a.src = 'vec'; }
     } else {
       const sl = APP.csSlot(d, path);
-      if (field === 'src') sl.src = t.value; else { const i = +field[1], v = parseFloat(t.value); if (!isFinite(v)) return; sl.p[i] = v; sl.src = 'xyz'; }
+      if (field === 'cs') { sl.cs = +t.value; sl.src = 'cs'; }
+      else if (field === 'src') { sl.src = t.value; if (t.value === 'cs') sl.cs = sl.cs | 0; } else { const i = +field[1], v = parseFloat(t.value); if (!isFinite(v)) return; sl.p[i] = v; sl.src = 'xyz'; }
     }
     APP.applyCsysDef(c, key); APP.changed({ tree: true, right: true });
   }
@@ -1802,6 +1813,30 @@
     first.insertAdjacentHTML('afterbegin', `<div class="muted" style="margin:4px 0 8px">⚠ Generated by component <b>${esc(c.name)}</b>: geometry is read-only. <button class="btn sm" data-act="compOwner">Open component</button></div>`);
     root.querySelectorAll('[data-bf],[data-k=bcs],#exprArea,.exprbtns button,[data-act=pickField],.pk').forEach(el => { el.disabled = true; });
   }
+  /** Property grid: a single checkbox with its text becomes "name | [x]"; sections fold like tree nodes (state kept in S.opt.secClosed). */
+  function gridify(root) {
+    root.querySelectorAll('label.chk').forEach(l => {
+      const cbs = l.querySelectorAll('input'); if (cbs.length !== 1 || cbs[0].type !== 'checkbox' || l.closest('.msg, .scalebox, .pieceleg')) return;
+      const par = l.parentElement; if (!par || par.classList.contains('row2') && par.children.length > 1) return;
+      const cb = cbs[0], lab = document.createElement('label'); lab.className = 'pn';
+      if (l.title) lab.title = l.title;
+      [...l.childNodes].forEach(n => { if (n !== cb) lab.appendChild(n); });
+      cb.classList.add('pchk');
+      let row = par;
+      if (par.classList.contains('fld')) { [...par.children].forEach(x => { if (x !== l && x.tagName !== 'LABEL') lab.appendChild(x); }); }
+      else { row = document.createElement('div'); row.className = 'fld'; par.insertBefore(row, l); }
+      row.classList.add('cchk');
+      if (row === par) { row.insertBefore(lab, l); row.insertBefore(cb, l); } else { row.appendChild(lab); row.appendChild(cb); }
+      l.remove();
+    });
+    const closed = S.opt.secClosed || {};
+    root.querySelectorAll('.sec > h4').forEach(h => { const k = (h.textContent || '').trim(); h.parentElement.classList.toggle('collapsed', !!closed[k]); });
+  }
+  $('#rightBody').addEventListener('click', e => {
+    const h = e.target.closest('.sec > h4'); if (!h || e.target.closest('button, a, input, select')) return;
+    const k = (h.textContent || '').trim(), sec = h.parentElement, c = !sec.classList.contains('collapsed');
+    sec.classList.toggle('collapsed', c); (S.opt.secClosed || (S.opt.secClosed = {}))[k] = c ? 1 : 0; APP.save();
+  });
   function renderRight() {
     let h = '';
     const it = APP.selItem();
@@ -1809,6 +1844,7 @@
       h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps, comp: compProps, material: matProps })[S.sel.t](it);
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
+    gridify($('#rightBody'));
     updateLive();
     if (it && S.sel && S.sel.t === 'region') initExprEditor();
     lockGenerated(it);
