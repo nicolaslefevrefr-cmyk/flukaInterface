@@ -565,19 +565,26 @@
     if (!ev.bbox || ev.vol < 1e-9) return { error: 'Region "' + r.name + '" is empty inside the render zone, so there is nothing to surround.', diag: ev.diag };
     margin = Math.max(0, +margin || 0);
     const r3 = (x) => +x.toFixed(4);
-    const mn = ev.bbox.min.map(x => r3(x - margin)), mx = ev.bbox.max.map(x => r3(x + margin));
+    // the box is defined in the default (active) coordinate system, like any new body: bounding box of the region in that frame
+    const cs = S.model.active || 0; let bb = ev.bbox;
+    if (cs && ev.polys && ev.polys.length) {
+      const inv = M.inv(APP.csysWorld(cs)), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const pg of ev.polys) for (const v of pg.v) { const q = M.apply(inv, [v[0], v[1], v[2]]); for (let k = 0; k < 3; k++) { if (q[k] < lo[k]) lo[k] = q[k]; if (q[k] > hi[k]) hi[k] = q[k]; } }
+      bb = { min: lo, max: hi };
+    }
+    const mn = bb.min.map(x => r3(x - margin)), mx = bb.max.map(x => r3(x + margin));
     const p = [mn[0], mx[0], mn[1], mx[1], mn[2], mx[2]];
     const boxName = FK.uniqueName('vb_' + r.name, bodyNames());
     const regName = FK.uniqueName('v_' + r.name, regionNames());
     let expr;
     try { expr = FK.complementExpr(r.expr, boxName, mode || 'compact'); } catch (e) { return { error: e.message }; }
-    return { p, boxName, regName, expr, bbox: ev.bbox, margin, mode: mode || 'compact', vol: ev.vol };
+    return { p, cs, boxName, regName, expr, bbox: ev.bbox, margin, mode: mode || 'compact', vol: ev.vol };
   };
   APP.createVoidRegion = function (r, margin, mode) {
     const pl = APP.voidPlan(r, margin, mode);
     if (pl.error) return pl;
     APP.snap();
-    const body = APP.addBody('RPP', pl.p, { name: pl.boxName, cs: 0, visible: false, color: '#9aa0a6', meta: { voidOf: r.name } });
+    const body = APP.addBody('RPP', pl.p, { name: pl.boxName, cs: pl.cs, visible: false, color: '#9aa0a6', meta: { voidOf: r.name } });
     const reg = APP.addRegion(pl.regName, pl.expr, { visible: false, nvois: r.nvois });
     reg.meta = { voidOf: r.name };
     { const bh = APP.materialByName('BLCKHOLE'); if (bh) reg.mat = bh.id; }

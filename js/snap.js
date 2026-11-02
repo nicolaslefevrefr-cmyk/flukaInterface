@@ -93,9 +93,9 @@
       if (T === 'PLA') {
         const l = V.len([w.p[0], w.p[1], w.p[2]]); let n0 = l ? V.mul([w.p[0], w.p[1], w.p[2]], 1 / l) : [0, 0, 1];
         const g = globalAxis(n0); let converted = false;
-        if (g.ang > 1e-7 && g.ang <= angTol) step('axis', `normal ${f3(g.ang)}° off ${AX[g.a]} → exactly along ${AX[g.a]}${g.sign > 0 ? ' (XYP / XZP / YZP)' : ''}`, () => {
-          if (g.sign > 0) { const c = w.p[3 + g.a]; w.type = ['YZP', 'XZP', 'XYP'][g.a]; w.p = [c]; converted = true; }
-          else { const d = [0, 0, 0]; d[g.a] = -1; w.p[0] = d[0] * l; w.p[1] = d[1] * l; w.p[2] = d[2] * l; n0 = d; }
+        if (g.ang > 1e-7 && g.ang <= angTol) step('axis', `normal ${f3(g.ang)}° off ${AX[g.a]} → exactly along ${AX[g.a]}${g.sign > 0 && !opts.noAxisPlane ? ' (XYP / XZP / YZP)' : ''}`, () => {
+          if (g.sign > 0 && !opts.noAxisPlane) { const c = w.p[3 + g.a]; w.type = ['YZP', 'XZP', 'XYP'][g.a]; w.p = [c]; converted = true; }
+          else { const d = [0, 0, 0]; d[g.a] = g.sign > 0 ? 1 : -1; w.p[0] = d[0] * l; w.p[1] = d[1] * l; w.p[2] = d[2] * l; n0 = d; }
         });
         if (!converted && w.type === 'PLA') {
           let best = null; for (const q of planes) { const ang = Math.acos(Math.min(1, Math.abs(V.dot(n0, q.n)))) * DEG; if (ang > 1e-7 && ang <= angTol && (!best || ang < best.ang)) best = { ang, q }; }

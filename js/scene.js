@@ -715,9 +715,15 @@
     camera.updateMatrixWorld(true);
     ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    const hits = raycaster.intersectObjects(pickMeshes(), false);
+    const hits = backLast(raycaster.intersectObjects(pickMeshes(), false));
     return hits.length ? hits[0] : null;
   };
+  /** While a region is being defined (cut / pick tools) it is clickable only after everything else: its hits go to the end of the list. */
+  function backLast(hits) {
+    const id = S.pickBackRid; if (!id || hits.length < 2) return hits;
+    const isBack = (h) => h.object.userData && h.object.userData.kind === 'region' && h.object.userData.id === id;
+    return hits.filter(h => !isBack(h)).concat(hits.filter(isBack));
+  }
   /** All entities under the cursor (one hit per mesh / body / region, nearest first). */
   APP.raycastAll = function (cx, cy) {
     const r = canvas.getBoundingClientRect();
@@ -725,7 +731,7 @@
     ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
     const seen = new Set(), out = [];
-    for (const h of raycaster.intersectObjects(pickMeshes(), false)) {
+    for (const h of backLast(raycaster.intersectObjects(pickMeshes(), false))) {
       const u = h.object.userData, k = u.kind + ':' + u.id;
       if (seen.has(k)) continue; seen.add(k); out.push(h);
     }

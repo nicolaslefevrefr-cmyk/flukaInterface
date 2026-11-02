@@ -171,12 +171,28 @@
     $$('#grpTool button').forEach(b => b.classList.toggle('on', b.dataset.tool === 'select' ? (S.tool === 'select' && !!S.info) : b.dataset.tool === S.tool));
   }
   function clearPick() { S.pick = null; APP.drawHighlight(APP.gSel, null); }
+  /** Cut / pick tools: the region being defined turns transparent and falls behind every other clickable object; everything is restored at the end. */
+  function cutBegin() {
+    const r = APP.getRegion(S.cutRid); if (!r || S.cutSnap) return;
+    S.cutSnap = { id: r.id, visible: r.visible, look: r.look, opacity: r.opacity };
+    r.visible = true; r.look = 'transparent'; r.opacity = Math.min(r.opacity, 0.18); S.pickBackRid = r.id;
+    APP.applyStyles(); APP.changed({ tree: true });
+  }
+  function cutEnd() {
+    const sn = S.cutSnap; S.cutSnap = null; S.pickBackRid = 0; if (!sn) return;
+    const r = APP.getRegion(sn.id); if (!r) return;
+    r.visible = sn.visible; r.opacity = sn.opacity; if (sn.look) r.look = sn.look; else delete r.look;
+    APP.applyStyles(); APP.changed({ tree: true, right: true });
+  }
   function setTool(t) {
+    if (S.cutSnap && t !== 'regcut' && t !== 'regpick') cutEnd();
     S.fill = null; S.tool = t; S.info = false; if (t !== 'select') S.winOpen = true; S.pending = null; S.cs3 = []; S.ptPlanes = []; if (t !== 'replane') S.reassign = null;
     APP.setPending(null); APP.clearHover(); hoverText = '';
+    if ((t === 'regcut' || t === 'regpick') && S.cutRid) cutBegin();
     syncToolbar(); renderToolOpts(); updateStatus();
   }
   function setFilter(fl) {
+    if (S.cutSnap) cutEnd();
     S.fill = null; S.filter = fl; S.tool = 'select'; S.info = true; S.winOpen = true; S.pending = null; S.cs3 = []; S.reassign = null; APP.setPending(null);
     clearPick(); APP.clearHover(); hoverText = '';
     syncToolbar(); renderToolOpts(); renderRight(); updateStatus();
@@ -498,11 +514,12 @@
   /* ---------- Alignment suggestions for a new body ---------- */
   const SNAP = { id: 0, orig: null, off: new Set() };
   function snapOthers(b) { return S.model.bodies.filter(x => x.id !== b.id && x.type !== 'RAW').map(x => Object.assign({}, APP.wbody(x), { name: x.name })).filter(x => x.p); }
-  function snapOpts() { return { tol: (S.opt.snapTol === undefined ? 0.2 : S.opt.snapTol) / 10, ang: S.opt.snapAng === undefined ? 0.5 : S.opt.snapAng }; }
+  /** noAxisPlane: XYP / XZP / YZP only when the body's frame has the same axes as the frame the INP is written in (otherwise they would not be axis planes in the file). */
+  function snapOpts(b) { return { tol: (S.opt.snapTol === undefined ? 0.2 : S.opt.snapTol) / 10, ang: S.opt.snapAng === undefined ? 0.5 : S.opt.snapAng, noAxisPlane: !!b && !FK.M.isTranslation(APP.relM(b), 1e-9) }; }
   function snapHide() { const c = $('#snapCard'); c.hidden = true; c.innerHTML = ''; SNAP.id = 0; }
   function snapRender() {
     const b = APP.getBody(SNAP.id), c = $('#snapCard'); if (!b || !SNAP.orig) { snapHide(); return; }
-    const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(), new Set());
+    const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(b), new Set());
     if (!res) { snapHide(); return; }
     const o = snapOpts();
     c.innerHTML = `<div class="sn-h"><b>Alignment check — ${esc(b.name)}</b><button type="button" class="ib" data-sn="close" aria-label="Close">✕</button></div>
@@ -514,7 +531,7 @@
   /** Proposes corrected values for body b (only when something is within the tolerances). Returns true when a proposal is shown. */
   function suggestSnap(b, force) {
     if (!b || b.cs || b.type === 'RAW' || (!force && S.opt.snapOn === false)) return false;
-    const res = FK.snapSuggest(b, snapOthers(b), snapOpts(), new Set());
+    const res = FK.snapSuggest(b, snapOthers(b), snapOpts(b), new Set());
     if (!res) { if (force) toast('Nothing to align: no other object within the tolerances'); snapHide(); return false; }
     SNAP.id = b.id; SNAP.orig = { type: b.type, p: b.p.slice(), name: b.name }; SNAP.off = new Set();
     snapRender(); return true;
@@ -532,7 +549,7 @@
       if (a.dataset.sn === 'close') snapHide();
       else if (a.dataset.sn === 'apply') {
         const b = APP.getBody(SNAP.id); if (!b) { snapHide(); return; }
-        const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(), SNAP.off);
+        const res = FK.snapSuggest(SNAP.orig, snapOthers(b), snapOpts(b), SNAP.off);
         if (res) { APP.snap(); b.type = res.type; b.p = res.p; APP.changed({ tree: true, right: true }); toast(`${b.name}: corrected values applied (Ctrl+Z restores the previous ones)`); }
         snapHide();
       }
@@ -2277,6 +2294,7 @@
           const pl = APP.planeForCut(pk), zone = S.opt.cutZone === undefined ? 'all' : S.opt.cutZone;
           const res = APP.addRegionTerm(r, zone === 'all' ? 'all' : +zone, S.opt.cutKeep === '-' ? -1 : 1, pl.body.name);
           if (res.error) { toast(res.error); break; }
+          if (pl.created) pl.body.visible = false;                 // the cutting plane only serves the formula: hidden from now on
           S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });
           toast(`${S.opt.cutKeep === '-' ? '−' : '+'}${pl.body.name} ${pl.created ? 'created and ' : '(existing plane) '}added to ${r.name}`);
           if (!S.opt.cutStay) setTool('select');

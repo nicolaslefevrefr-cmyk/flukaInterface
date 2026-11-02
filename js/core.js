@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.24.0';
+  FK.VERSION = '1.25.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -826,8 +826,10 @@
       case 'PLA': return { type: 'PLA', p: M.applyVec(m, [p[0], p[1], p[2]]).concat(M.apply(m, [p[3], p[4], p[5]])) };
       case 'XYP': case 'XZP': case 'YZP': {
         if (tr) { const k = b.type === 'XYP' ? 11 : b.type === 'XZP' ? 7 : 3; return { type: b.type, p: [p[0] + m[k]] }; }
-        const pl = FK.planeOf(b);
-        return { type: 'PLA', p: M.applyVec(m, pl.H).concat(M.apply(m, pl.V)) };
+        const pl = FK.planeOf(b), Hn = M.applyVec(m, pl.H), Vn = M.apply(m, pl.V), L = V.len(Hn);
+        // an axis plane stays an axis plane only when its normal lands EXACTLY on +X / +Y / +Z of the target frame (otherwise: PLA)
+        for (let k = 0; k < 3; k++) if (Math.abs(Hn[k] / L - 1) < 1e-12 && Math.abs(Hn[(k + 1) % 3]) < 1e-12 * L && Math.abs(Hn[(k + 2) % 3]) < 1e-12 * L) return { type: ['YZP', 'XZP', 'XYP'][k], p: [Vn[k]] };
+        return { type: 'PLA', p: Hn.concat(Vn) };
       }
       case 'RPP': {
         const x0 = Math.min(p[0], p[1]), x1 = Math.max(p[0], p[1]), y0 = Math.min(p[2], p[3]), y1 = Math.max(p[2], p[3]), z0 = Math.min(p[4], p[5]), z1 = Math.max(p[4], p[5]);
