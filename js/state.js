@@ -1185,12 +1185,13 @@
   APP.setOnlyExported = function (on) {
     if (on) {
       S.opt.onlyExpSnap = { b: {}, r: {} };
-      for (const b of S.model.bodies) { S.opt.onlyExpSnap.b[b.id] = b.visible; b.visible = !b.noExport; }
-      for (const r of S.model.regions) { S.opt.onlyExpSnap.r[r.id] = r.visible; r.visible = !r.noExport; }
+      for (const b of S.model.bodies) { S.opt.onlyExpSnap.b[b.id] = [b.visible, !b.noExport]; b.visible = !b.noExport; }
+      for (const r of S.model.regions) { S.opt.onlyExpSnap.r[r.id] = [r.visible, !r.noExport]; r.visible = !r.noExport; }
     } else if (S.opt.onlyExpSnap) {
       const sn = S.opt.onlyExpSnap;
-      for (const b of S.model.bodies) if (b.id in sn.b) b.visible = sn.b[b.id];
-      for (const r of S.model.regions) if (r.id in sn.r) r.visible = sn.r[r.id];
+      // the mode is a preset: an object whose eye was toggled by hand meanwhile keeps its own state
+      for (const b of S.model.bodies) if (b.id in sn.b && (b.visible === sn.b[b.id][1] || !Array.isArray(sn.b[b.id]))) b.visible = Array.isArray(sn.b[b.id]) ? sn.b[b.id][0] : sn.b[b.id];
+      for (const r of S.model.regions) if (r.id in sn.r && (r.visible === sn.r[r.id][1] || !Array.isArray(sn.r[r.id]))) r.visible = Array.isArray(sn.r[r.id]) ? sn.r[r.id][0] : sn.r[r.id];
       delete S.opt.onlyExpSnap;
     }
     S.opt.onlyExp = !!on;

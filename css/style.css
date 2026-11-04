@@ -341,7 +341,7 @@ dialog.devwin { width: min(400px, 94vw); z-index: 41; }
 .chkwin { width: min(460px, 94vw); }
 .devres ul { list-style: none; margin: 2px 0 8px; padding: 0; }
 .devres li { padding: 1px 0; }
-.devres li.good { color: #1b8a3a; } .devres li.bad { color: #c62828; } .devres li.warn { color: #b26a00; } .devres li.info { color: var(--muted, #667); }
+.devres li.good { color: #1b8a3a; } .devres li.bad { color: #c62828; } .devres li.warn { color: #b26a00; } .devres li.info { color: var(--muted); }
 
 /* alignment suggestions */
 #snapCard { position: fixed; left: 12px; bottom: 24px; z-index: 45; width: min(380px, 92vw); background: var(--panel, #fff); color: inherit; border: 1px solid var(--line, #ccd); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.22); padding: 10px 12px; font-size: 12.5px; }
@@ -555,3 +555,27 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 #rightBody .lopreg .mn:hover { opacity: 1; }
 #rightBody .lopreg .mn:disabled { opacity: .2; }
 #rightBody .fld:has(> .exprwrap), #rightBody .fld:has(> textarea) { display: block; } #rightBody .fld:has(> .exprwrap) > label { display: block; margin-bottom: 3px; }
+
+/* region definition: chips, object picker */
+.exprchips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 5px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); min-height: 30px; max-height: 150px; overflow: auto; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 5px; border: 1px solid var(--line); border-radius: 999px; font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; cursor: pointer; background: var(--panel, #fff); user-select: none; }
+.chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+.chip b { font-weight: 700; } .chip.pos b { color: #1a8a3c; } .chip.neg { border-style: dashed; } .chip.neg b { color: #d63b3b; }
+.chip.bad { border-color: var(--danger); color: var(--danger); }
+.cdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0,0,0,.3); flex: none; }
+.cop { font: 600 13px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); padding: 0 1px; }
+.usedchk { margin: 4px 0; }
+.tpick { position: relative; width: 100%; }
+.tpbtn { display: flex; align-items: center; gap: 6px; width: 100%; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-align: left; }
+.tpbtn .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tpbtn .car { color: var(--muted); }
+.tpbtn.flash { outline: 3px solid #f2994a; outline-offset: 1px; transition: outline-color .8s; }
+.tplist { position: absolute; left: 0; right: 0; top: 34px; z-index: 30; max-height: 280px; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 3px; }
+.tplist[hidden] { display: none; }
+.tph { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 5px 6px 2px; }
+.tpg { font-size: 12px; font-weight: 600; padding: 3px 6px 1px 14px; }
+.tpopt { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 6px 4px 18px; border: 0; border-radius: 6px; background: transparent; text-align: left; font-size: 13px; }
+.tpopt:hover { background: var(--accent-soft); } .tpopt.on { background: var(--accent-soft); font-weight: 600; }
+.tpopt .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tpopt small { color: var(--muted); }
+.usedchk { flex-direction: row !important; align-items: center; gap: 6px; } .usedchk input { order: -1; flex: none; width: auto; margin: 0; }
+#rightBody .usedrow { display: block; margin: 4px 0; } #rightBody .usedrow label.usedchk { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px; text-align: left; } #rightBody .usedrow input { order: -1; flex: none; width: auto; margin: 0; }
+#rightBody .usedrow label.usedchk { margin: 0 !important; width: 100% !important; justify-content: flex-start !important; text-align: left !important; }

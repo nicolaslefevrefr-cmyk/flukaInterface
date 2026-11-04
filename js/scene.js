@@ -62,7 +62,7 @@
   };
   Object.defineProperty(APP, 'camera', { get: () => camera });
   /** Bounding box of what is currently displayed (visible meshes, bodies, regions); falls back to the render zone. */
-  const shown = (it) => !!it.visible && !(S.opt.onlyExp && it.noExport);       // "only what the INP file contains" filter
+  const shown = (it) => !!it.visible;       // every object follows its own visibility toggle, exported or not
   APP.visibleBox = function () {
     const sb = [], bodies = [];
     for (const m of S.stls) if (m.visible && m.stats && m.stats.bbox) sb.push(m.stats.bbox);
@@ -558,8 +558,8 @@
     };
     const style = (c, item, plane, isSel, col) => {
       const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
-      c.group.visible = shown(item);
-      c.mesh.visible = item.opacity > 0.004;
+      c.group.visible = shown(item) || S.hlId === item.id;
+      c.mesh.visible = item.opacity > 0.004 || S.hlId === item.id;
       m.color.set(item.color); m.opacity = o;
       const solid = o >= 0.995 && !plane; m.transparent = !solid; m.depthWrite = solid;
       c.lines.visible = edgesOn && rm !== 'wire';
@@ -568,7 +568,7 @@
     };
     for (const b of S.model.bodies) {
       const c = bodyC.get(b.id); if (!c || !c.group) continue;
-      style(c, b, FK.isPlaneType(b.type), sel && sel.t === 'body' && sel.id === b.id);
+      style(c, b, FK.isPlaneType(b.type), (sel && sel.t === 'body' && sel.id === b.id) || S.hlId === b.id);
     }
     for (const r of S.model.regions) {
       const c = regC.get(r.id); if (!c || !c.group) continue;
