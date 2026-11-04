@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.28.2';
+  FK.VERSION = '1.29.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1893,6 +1893,43 @@
   const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
   /** { bodies: Map(item → name), regions: Map(item → name), explicit: Set(item), changed: n } — an explicit `inpName` is kept as typed;
    *  otherwise the name itself when it fits, else its first 8 characters, made unique with a numeric suffix. */
+  /** Plan for renaming the INP names (only those: the objects keep their names). spec: { scope: [items] | null (= every exported object), pb, pp, pr (prefixes of bodies / planes / regions),
+   *  withType (prefix + type + number, one counter per type), pad (zero padding), start }. Returns { renames: [{ item, kind, name }], errors: [text] }. */
+  FK.planInpRename = function (model, spec) {
+    const sc = spec.scope ? new Set(spec.scope) : null, start = Math.max(0, parseInt(spec.start, 10) || 1), errors = [], renames = [];
+    const inScope = (it) => !it.noExport && (!sc || sc.has(it));
+    const cats = [
+      { k: 'planes', kind: 'body', pre: spec.pp || '', list: model.bodies.filter(b => FK.isPlaneType(b.type) && inScope(b)) },
+      { k: 'bodies', kind: 'body', pre: spec.pb || '', list: model.bodies.filter(b => !FK.isPlaneType(b.type) && inScope(b)) },
+      { k: 'regions', kind: 'region', pre: spec.pr || '', list: model.regions.filter(inScope) }];
+    const typeOf = (b) => String(b.type === 'RAW' ? (b.rawType || 'RAW') : b.type || '').toLowerCase();
+    for (const c of cats) {
+      if (!c.list.length) continue;
+      if (c.pre && !/^[A-Za-z][A-Za-z0-9_]*$/.test(c.pre)) errors.push(`Prefix "${c.pre}" (${c.k}): letters, digits and _ only, starting with a letter`);
+      const groups = new Map();
+      for (const it of c.list) { const key = spec.withType && c.kind === 'body' ? typeOf(it) : ''; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(it); }
+      for (const [key, arr] of groups) {
+        const w = spec.pad ? String(start + arr.length - 1).length : 1;
+        arr.forEach((it, i) => renames.push({ item: it, kind: c.kind, cat: c.k, name: c.pre + key + String(start + i).padStart(w, '0') }));
+      }
+    }
+    // keep the model order
+    const order = new Map([...model.bodies, ...model.regions].map((x, i) => [x, i])); renames.sort((a, b) => order.get(a.item) - order.get(b.item));
+    for (const r of renames) if (!/^[A-Za-z]/.test(r.name)) { errors.push(`"${r.name}" does not start with a letter: give a prefix`); break; }
+    const long = renames.filter(r => r.name.length > FK.INP_NAME_MAX); if (long.length) errors.push(`${long.length} name${long.length > 1 ? 's are' : ' is'} longer than ${FK.INP_NAME_MAX} characters (e.g. ${long[0].name}): shorten the prefix${spec.withType ? ' or do not add the type' : ''}`);
+    // uniqueness inside the same namespace (bodies + planes share one, regions have another), against the names that stay
+    const cur = FK.inpNames(model), mine = new Set(renames.map(r => r.item));
+    for (const kind of ['body', 'region']) {
+      const seen = new Map(), list = kind === 'body' ? model.bodies : model.regions, map = kind === 'body' ? cur.bodies : cur.regions;
+      for (const it of list) {
+        if (it.noExport) continue;
+        const r = renames.find(x => x.item === it), nm = r ? r.name : map.get(it);
+        if (seen.has(nm)) { errors.push(`INP name "${nm}" would be used twice (${seen.get(nm)} and ${it.name})`); break; }
+        seen.set(nm, it.name);
+      }
+    }
+    return { renames, errors };
+  };
   FK.inpNames = function (model) {
     const res = { bodies: new Map(), regions: new Map(), explicit: new Set(), shortened: [] };
     const run = (list, map) => {

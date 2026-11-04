@@ -360,6 +360,7 @@
     if (k === 'snapFeat') renderToolOpts();
     if (k === 'ptMode') { S.ptPlanes = []; ptRefreshPending(); renderToolOpts(); updateStatus(); }
     if (k === 'margin' || k === 'axes') APP.changed({});
+    if (k === 'showInpName') APP.changed({ tree: true });
     if (k === 'invX' || k === 'invY') syncToolbar();
     if (k === 'pieceHl') updatePieces(true);
     if (k === 'inpComment') updateInp();
@@ -990,6 +991,7 @@
     const o = S.opt;
     $('#settingsBody').innerHTML = `<details class="fold" open><summary>Display</summary><div>
         <label class="chk"><input type="checkbox" data-opt="axes" ${o.axes ? 'checked' : ''}>Axes at the origin (X red, Y green, Z blue)</label>
+        <label class="chk"><input type="checkbox" data-opt="showInpName" ${o.showInpName !== false ? 'checked' : ''}>Show the INP name in brackets after each name in the tree</label>
         <label class="chk"><input type="checkbox" data-opt="multiPick" ${o.multiPick !== false ? 'checked' : ''}>Pop-up to choose among overlapping entities under a click</label>
         <label class="chk"><input type="checkbox" data-opt="invX" ${o.invX ? 'checked' : ''}>Invert left / right mouse rotation</label>
         <label class="chk"><input type="checkbox" data-opt="invY" ${o.invY ? 'checked' : ''}>Invert up / down mouse rotation</label>
@@ -1026,13 +1028,13 @@
   /* ---------- Left panel: project tree ---------- */
   function itemHTML(t, o, ex) {
     ex = ex || {};
-    const sel = S.sel && S.sel.t === t && S.sel.id === o.id;
+    const sel = (S.sel && S.sel.t === t && S.sel.id === o.id) || isMulti(t, o.id);
     const warn = ex.warn && ex.warn.length ? `<span class="wicon" tabindex="0" title="${esc(ex.warn.join('\n'))}">⚠${ex.warn.length > 1 ? ex.warn.length : ''}</span>` : '';
     const info = ex.info ? `<span class="wicon info" tabindex="0" title="${esc(ex.info)}">ⓘ</span>` : '';
     const look = ex.look !== undefined ? `<button class="lk${ex.look ? ' on' : ''}" data-act="look" title="${ex.look === 'opaque' ? 'Always opaque (click: always transparent)' : ex.look === 'transparent' ? 'Always transparent (click: follow the global mode)' : 'Follows the global mode (click: always opaque)'}">${ex.look === 'opaque' ? '●' : ex.look === 'transparent' ? '○' : '◐'}</button>` : '';
     return `<div class="item${sel ? ' sel' : ''}${ex.ne ? ' ne' : ''}" data-t="${t}" data-id="${o.id}" draggable="true">
       <div class="top">${ex.novis ? '<span class="chev"></span>' : `<button class="vis${o.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${o.visible ? ICON.eye : ICON.eyeOff}</button>`}
-      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}</span>${warn}${info}<span class="ty">${ex.ne ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span>${look}<button class="mn" data-act="imenu" title="Actions">⋮</button></div>
+      ${o.color ? `<span class="sw" style="background:${o.color}"></span>` : ''}<span class="nm">${esc(o.name)}${ex.inp ? ` <span class="inpn" title="Name written in the INP file">(${esc(ex.inp)})</span>` : ''}</span>${warn}${info}<span class="ty">${ex.ne ? '<span title="Not exported to the INP">⊘ </span>' : ''}${esc(o.type)}</span>${look}<button class="mn" data-act="imenu" title="Actions">⋮</button></div>
       </div>`;
   }
   /** Warnings shown next to a region in the tree (empty, quality check). */
@@ -1044,7 +1046,7 @@
     if (S.model.materials && !r.noExport && !APP.getMaterial(r.mat)) w.push('No material assigned');
     return w;
   }
-  let UNUSED = new Set();
+  let UNUSED = new Set(), INPN = { bodies: new Map(), regions: new Map() };
   let TF = '';                                   // tree filter (transient)
   const fl = (list) => TF ? list.filter(o => String(o.name || '').toLowerCase().includes(TF)) : list;
   const treeState = () => S.opt.tree || (S.opt.tree = {});
@@ -1063,7 +1065,7 @@
   function csysTree(list, pid, depth) {
     const act = S.model.active || 0, inL = new Set(list.map(c => c.id));
     return list.filter(c => (inL.has(c.parent) ? c.parent : 0) === pid).map(c => {
-      const sel = S.sel && S.sel.t === 'csys' && S.sel.id === c.id, isA = act === c.id;
+      const sel = (S.sel && S.sel.t === 'csys' && S.sel.id === c.id) || isMulti('csys', c.id), isA = act === c.id;
       const kids = list.filter(x => x.parent === c.id).length, open = treeState()['cs' + c.id] !== false;
       return `<div class="item cs${sel ? ' sel' : ''}${isA ? ' act' : ''}" data-t="csys" data-id="${c.id}" draggable="true"><div class="top" style="--d:${depth * 14}px">
         ${kids ? `<button class="chev" data-act="fold" data-k="cs${c.id}">${open ? '−' : '+'}</button>` : '<span class="chev"></span>'}
@@ -1077,8 +1079,8 @@
     switch (k) {
       case 'meshes': return itemHTML('stl', { id: o.id, name: o.name, type: o.format || 'STL', color: o.color, visible: o.visible, opacity: o.opacity }, { look: o.look || '' });
       case 'planes': case 'bodies': return itemHTML('body', { id: o.id, name: o.name, type: o.type === 'RAW' ? o.rawType : o.type, color: o.color, visible: o.visible, opacity: o.type === 'RAW' ? undefined : o.opacity },
-        { ne: !!o.noExport, look: o.type === 'RAW' ? undefined : (o.look || ''), info: !o.noExport && UNUSED.has(o.id) ? 'Not used by any exported region' : '' });
-      case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity }, { ne: !!o.noExport, look: o.look || '', warn: o.noExport ? [] : regionWarns(o), info: o.meta && o.meta.link ? 'Strong link (formula follows its parent regions)' : '' });
+        { ne: !!o.noExport, look: o.type === 'RAW' ? undefined : (o.look || ''), info: !o.noExport && UNUSED.has(o.id) ? 'Not used by any exported region' : '', inp: !o.noExport && S.opt.showInpName !== false ? INPN.bodies.get(o) : '' });
+      case 'regions': return itemHTML('region', { id: o.id, name: o.name, type: 'REGION', color: o.color, visible: o.visible, opacity: o.opacity }, { ne: !!o.noExport, inp: !o.noExport && S.opt.showInpName !== false ? INPN.regions.get(o) : '', look: o.look || '', warn: o.noExport ? [] : regionWarns(o), info: o.meta && o.meta.link ? 'Strong link (formula follows its parent regions)' : '' });
       case 'materials': return itemHTML('material', { id: o.id, name: o.name, type: APP.regionsOfMaterial(o.id).length + ' reg.', visible: true }, { novis: true });
       case 'comps': return itemHTML('comp', { id: o.id, name: o.name, type: (FK.TEMPLATES[o.tpl] || {}).prefix || 'comp', color: '#7a5af8', visible: o.visible !== false }, { warn: o.error ? [o.error] : [] });
       case 'measures': return itemHTML('measure', { id: o.id, name: `M${S.measures.indexOf(o) + 1} · ${f(V.dist(o.a, o.b), 3)} cm`, type: 'DIST', visible: o.visible });
@@ -1109,7 +1111,7 @@
     return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
   }
   function renderLeft() {
-    UNUSED = new Set(APP.unusedBodies().map(b => b.id));
+    UNUSED = new Set(APP.unusedBodies().map(b => b.id)); INPN = FK.inpNames(S.model);
     let h = `<div class="tree">`;
     for (const g of GROUPS_DEF) {
       const list = fl(g.items()), open = TF ? true : isOpen(g.k), anyVis = list.some(o => o.visible);
@@ -1185,14 +1187,16 @@
     if (o.grp && APP.getGroup(o.grp)) m.push({ label: 'Remove from group', fn: () => { APP.setItemGroup(t, o, 0); APP.changed({ tree: true }); } });
     return m;
   }
-  function grpMenu(id) {
+  const grpMenu = (id) => { const g = APP.getGroup(id); if (!g) return []; const a = grpMenu0(id), ex = grpExtra(g), i = a.findIndex(x => x.sep); return i < 0 ? a.concat(ex) : a.slice(0, i).concat(ex, a.slice(i)); };
+  function grpMenu0(id) {
     const g = APP.getGroup(id); if (!g) return [];
     return [{ label: 'Rename…', fn: () => { S.renG = id; renderLeft(); } },
       { label: 'Show all', fn: () => { APP.setGroupVisible(g, true); APP.changed({ tree: true, csys: g.k === 'csys', measures: g.k === 'measures' }); } },
       { label: 'Hide all', fn: () => { APP.setGroupVisible(g, false); APP.changed({ tree: true, csys: g.k === 'csys', measures: g.k === 'measures' }); } },
       { sep: 1 }, { label: 'Delete group (items are kept)', danger: true, fn: () => { APP.deleteGroup(id); APP.changed({ tree: true }); } }];
   }
-  function groupMenu(k) {
+  const groupMenu = (k) => groupMenu0(k).concat(catExtra(k));
+  function groupMenu0(k) {
     switch (k) {
       case 'meshes': return [{ label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() }, newGrp(k)].concat(visItems(k));
       case 'materials': return FK.DEFAULT_MATERIALS.filter(n => !APP.materialByName(n)).map(n => ({ label: 'Add ' + n, fn: () => APP.addMaterial(n) })).concat([{ label: 'New material…', fn: () => { const m = APP.addMaterial('MAT1'); S.rtab = 'general'; APP.changed({ tree: true, right: true }); setTimeout(() => { const i = $('#rightBody [data-k=name]'); if (i) { i.focus(); i.select(); } }, 60); } }]);
@@ -1215,7 +1219,9 @@
   function itemMenu(t, id) {
     const o = findItem(t, id), m = itemMenuBase(t, id); if (!o) return m;
     let i = m.length - 1; while (i > 0 && !m[i].sep) i--;       // insert before the last separator (Delete)
-    return m.slice(0, i).concat(moveItems(t, o), m.slice(i));
+    const ex = t === 'body' || t === 'region' ? [{ sep: 1 }, { label: o.noExport ? 'Export to the INP file' : 'Do not export to the INP file', fn: () => setExportMany([{ t, o }], !!o.noExport) },
+      { label: 'Rename the INP names…', fn: () => openInpRename([{ t, o }]) }] : [];
+    return m.slice(0, i).concat(ex, moveItems(t, o), m.slice(i));
   }
   function itemMenuBase(t, id) {
     const o = findItem(t, id); if (!o) return [];
@@ -1265,7 +1271,7 @@
   $('#leftBody').addEventListener('contextmenu', e => {
     const item = e.target.closest('.item[data-t]'), th = e.target.closest('.th'), gr = e.target.closest('.grow');
     if (gr) { e.preventDefault(); showMenu(e.clientX, e.clientY, grpMenu(+gr.dataset.gid)); }
-    else if (item) { e.preventDefault(); showMenu(e.clientX, e.clientY, itemMenu(item.dataset.t, +item.dataset.id)); }
+    else if (item) { e.preventDefault(); const ml = isMulti(item.dataset.t, +item.dataset.id) ? multiList() : null; showMenu(e.clientX, e.clientY, ml ? multiMenu(ml) : itemMenu(item.dataset.t, +item.dataset.id)); }
     else if (th) { e.preventDefault(); showMenu(e.clientX, e.clientY, groupMenu(th.dataset.g)); }
   });
 
@@ -1290,7 +1296,10 @@
     if (a === 'look' && item) { const o = findItem(item.dataset.t, +item.dataset.id); if (o) { APP.snap(); const nx = { '': 'opaque', opaque: 'transparent', transparent: '' }[o.look || '']; if (nx) o.look = nx; else delete o.look; APP.applyStyles(); APP.changed({ tree: true, right: true }); } return; }
     if (a === 'activate') { APP.setActiveCsys(+act.dataset.cid); return; }
     if (a === 'op') return;
-    if (item && item.dataset.t && !e.target.closest('input')) { selectItem(item.dataset.t, +item.dataset.id); return; }
+    if (item && item.dataset.t && !e.target.closest('input')) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) { treeMultiClick(item, e); return; }
+      S.multi = null; selectItem(item.dataset.t, +item.dataset.id); return;
+    }
     if (!act) return;
     switch (a) {
       case 'addStl': $('#fileStl').click(); break;
@@ -1330,7 +1339,7 @@
   $('#leftBody').addEventListener('dragstart', e => {
     const it = e.target.closest && e.target.closest('.item[data-t]'); if (!it || !it.dataset.id) return;
     const o = findItem(it.dataset.t, +it.dataset.id); if (!o) return;
-    dragItem = { t: it.dataset.t, o, k: APP.catOf(it.dataset.t, o) };
+    dragItem = { t: it.dataset.t, o, k: APP.catOf(it.dataset.t, o), list: isMulti(it.dataset.t, +it.dataset.id) ? multiList() : null };
     if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', o.name); } catch (err) { /* ignore */ } }
     it.classList.add('dragging');
   });
@@ -1344,12 +1353,134 @@
     const d = dropTarget(e); clearDrop();
     if (!d || d.k !== dragItem.k) { dragItem = null; return; }
     e.preventDefault();
-    const { t, o } = dragItem; dragItem = null;
+    const { t, o, list } = dragItem; dragItem = null;
+    if (list) { let n = 0; for (const x of list) if ((x.o.grp || 0) !== d.gid && APP.setItemGroup(x.t, x.o, d.gid)) n++; if (n) APP.changed({ tree: true }); return; }
     if ((o.grp || 0) !== d.gid && APP.setItemGroup(t, o, d.gid)) APP.changed({ tree: true });
   });
   $('#leftBody').addEventListener('dragend', () => { dragItem = null; clearDrop(); $$('#leftBody .dragging').forEach(n => n.classList.remove('dragging')); });
 
   function findItem(t, id) { return { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: APP.getCsys, comp: APP.getComp, material: APP.getMaterial }[t](id); }
+
+  /* ---------- Multi-selection in the tree (Ctrl / ⌘ + click: toggle · Shift + click: range · same category only) ---------- */
+  const mkey = (t, id) => t + ':' + id;
+  const isMulti = (t, id) => { const m = S.multi; return !!(m && m.keys.size > 1 && S.sel && m.keys.has(mkey(S.sel.t, S.sel.id)) && m.keys.has(mkey(t, id))); };
+  /** The valid multi-selection as [{ t, o }] (2 items or more) or null. */
+  function multiList() {
+    const m = S.multi; if (!m || m.keys.size < 2 || !S.sel || !m.keys.has(mkey(S.sel.t, S.sel.id))) return null;
+    const out = []; for (const k of m.keys) { const [t, id] = k.split(':'), o = findItem(t, +id); if (o) out.push({ t, o }); }
+    return out.length > 1 ? out : null;
+  }
+  function treeMultiClick(item, e) {
+    const t = item.dataset.t, id = +item.dataset.id, o = findItem(t, id); if (!o) return;
+    const cat = APP.catOf(t, o), cur = S.sel && findItem(S.sel.t, S.sel.id), curCat = cur ? APP.catOf(S.sel.t, cur) : null;
+    let keys = S.multi && S.multi.keys.size > 1 && S.sel && S.multi.keys.has(mkey(S.sel.t, S.sel.id)) ? new Set(S.multi.keys) : (cur && curCat === cat ? new Set([mkey(S.sel.t, S.sel.id)]) : new Set());
+    if (curCat && curCat !== cat) { toast('Only items of the same category can be selected together'); return; }
+    if (e.shiftKey && cur && curCat === cat) {
+      const tg = item.closest('.tg'), rows = [...tg.querySelectorAll('.item[data-t]')], a = rows.findIndex(r => r.dataset.t === S.sel.t && +r.dataset.id === S.sel.id), b = rows.indexOf(item);
+      if (a >= 0 && b >= 0) { keys = new Set(); for (let i = Math.min(a, b); i <= Math.max(a, b); i++) keys.add(mkey(rows[i].dataset.t, +rows[i].dataset.id)); }
+      S.multi = { keys }; if (!keys.has(mkey(S.sel.t, S.sel.id))) S.sel = { t, id };
+    } else {
+      const k = mkey(t, id);
+      if (keys.has(k)) { keys.delete(k); if (S.sel && mkey(S.sel.t, S.sel.id) === k) { const f = [...keys][0]; if (f) { const [ft, fid] = f.split(':'); S.sel = { t: ft, id: +fid }; } } }
+      else { keys.add(k); S.sel = { t, id }; }
+      S.multi = keys.size > 1 ? { keys } : null;
+      if (keys.size === 1) { const [ft, fid] = [...keys][0].split(':'); S.sel = { t: ft, id: +fid }; }
+    }
+    APP.changed({ tree: true, right: true });
+  }
+  function deleteMany(list) {
+    APP.deleteItems(list); S.multi = null;
+  }
+  /** Export / do not export a list of [{ t, o }] bodies and regions; asks when other regions would lose a body. */
+  async function setExportMany(list, on) {
+    const its = list.filter(x => x.t === 'body' || x.t === 'region'); if (!its.length) return;
+    if (on) { APP.snap(); its.forEach(x => { delete x.o.noExport; }); APP.changed({ tree: true, right: true }); return; }
+    const inSel = new Set(its.map(x => x.o)), imp = [], seen = new Set();
+    for (const x of its) if (x.t === 'body') for (const i of APP.exportImpact('body', x.o)) if (!i.item.noExport && !inSel.has(i.item) && !seen.has(i.item)) { seen.add(i.item); imp.push(i); }
+    let all = false;
+    if (imp.length) { const res = await askImpact('body', its.length === 1 ? its[0].o : { name: its.length + ' objects' }, imp); if (res === 'cancel') return; all = res === 'all'; }
+    APP.snap(); its.forEach(x => { x.o.noExport = true; }); if (all) imp.forEach(i => { i.item.noExport = true; });
+    APP.changed({ tree: true, right: true });
+  }
+  const catLabel = { meshes: 'meshes', comps: 'components', csys: 'coordinate systems', planes: 'planes', bodies: 'bodies', regions: 'regions', materials: 'materials', measures: 'measures' };
+  function multiPanel(list) {
+    const cat = APP.catOf(list[0].t, list[0].o), exp = cat === 'planes' || cat === 'bodies' || cat === 'regions';
+    return `<div class="sec"><h4><span>${list.length} ${catLabel[cat] || 'items'} selected</span></h4>
+      <div class="muted" style="font-size:12.5px">Ctrl / ⌘ + click toggles an item, Shift + click selects a range. Drag them onto a group in the tree, or use the actions (also in the right-click menu).</div>
+      <div class="btns"><button class="btn" data-act="mShow">Show</button><button class="btn" data-act="mHide">Hide</button>
+      ${exp ? `<button class="btn" data-act="mExp">Export to the INP file</button><button class="btn" data-act="mNoExp">Do not export</button><button class="btn" data-act="mRename" title="Prefix + number for the names written in the INP file">Rename INP names…</button>` : ''}</div>
+      <div class="muted" style="font-size:12px;margin-top:6px;word-break:break-word">${list.map(x => esc(x.o.name)).join(' · ')}</div>
+      <div class="btns opsdel"><button class="btn danger" data-act="mDel">Delete ${list.length} items</button></div></div>`;
+  }
+  function multiAct(act) {
+    const ml = multiList(); if (!ml) return;
+    const vis = (on) => { APP.snap(); ml.forEach(x => { x.o.visible = on; }); APP.changed({ tree: true, right: true, csys: ml[0].t === 'csys', measures: ml[0].t === 'measure' }); };
+    if (act === 'mShow') vis(true); else if (act === 'mHide') vis(false);
+    else if (act === 'mExp') setExportMany(ml, true); else if (act === 'mNoExp') setExportMany(ml, false);
+    else if (act === 'mRename') openInpRename(ml); else if (act === 'mDel') deleteMany(ml);
+  }
+  function multiMenu(ml) {
+    const cat = APP.catOf(ml[0].t, ml[0].o), exp = cat === 'planes' || cat === 'bodies' || cat === 'regions', n = ml.length;
+    const m = [{ label: `Show (${n})`, fn: () => multiAct('mShow') }, { label: `Hide (${n})`, fn: () => multiAct('mHide') }];
+    if (exp) m.push({ sep: 1 }, { label: 'Export to the INP file', fn: () => setExportMany(ml, true) }, { label: 'Do not export to the INP file', fn: () => setExportMany(ml, false) }, { label: 'Rename the INP names…', fn: () => openInpRename(ml) });
+    m.push({ sep: 1 });
+    const gs = APP.groups().filter(x => x.k === cat);
+    if (gs.length) m.push({ label: 'Move to group', sub: gs.map(g => ({ label: g.name, fn: () => { ml.forEach(x => APP.setItemGroup(x.t, x.o, g.id)); APP.changed({ tree: true }); } })) });
+    m.push({ label: 'New group with these items…', fn: () => { const g = APP.addGroup(cat); ml.forEach(x => APP.setItemGroup(x.t, x.o, g.id)); S.renG = g.id; APP.changed({ tree: true }); } });
+    if (ml.some(x => x.o.grp && APP.getGroup(x.o.grp))) m.push({ label: 'Remove from group', fn: () => { ml.forEach(x => APP.setItemGroup(x.t, x.o, 0)); APP.changed({ tree: true }); } });
+    m.push({ sep: 1 }, { label: `Delete (${n})`, danger: true, fn: () => deleteMany(ml) });
+    return m;
+  }
+  const expItems = (items) => items.length ? [{ sep: 1 }, { label: 'Export all to the INP file', fn: () => setExportMany(items, true) }, { label: 'Do not export any to the INP file', fn: () => setExportMany(items, false) }, { label: 'Rename the INP names…', fn: () => openInpRename(items) }] : [];
+  function catExtra(k) {
+    if (k !== 'planes' && k !== 'bodies' && k !== 'regions') return [];
+    return expItems(groupItems(k).map(o => ({ t: k === 'regions' ? 'region' : 'body', o })));
+  }
+  function grpExtra(g) {
+    const mem = APP.groupMembers(g), t = g.k === 'regions' ? 'region' : g.k === 'csys' ? 'csys' : g.k === 'meshes' ? 'stl' : g.k === 'comps' ? 'comp' : g.k === 'materials' ? 'material' : g.k === 'measures' ? 'measure' : 'body';
+    const items = mem.map(o => ({ t, o })), out = [];
+    if (items.length > 1) out.push({ label: `Select the ${items.length} members`, fn: () => { S.multi = { keys: new Set(items.map(x => mkey(x.t, x.o.id))) }; S.sel = { t, id: items[0].o.id }; APP.changed({ tree: true, right: true }); } });
+    if (g.k === 'planes' || g.k === 'bodies' || g.k === 'regions') out.push(...expItems(items));
+    return out;
+  }
+
+  /* ---------- Rename the INP names (prefix + number) ---------- */
+  function openInpRename(scope) {
+    const d = $('#dlgInpRename'), o = S.opt.inpRen || {};
+    d._scope = scope ? scope.filter(x => x.t === 'body' || x.t === 'region').map(x => x.o) : null;
+    if (d._scope && !d._scope.length) d._scope = null;
+    $('#irScope').innerHTML = (d._scope ? `<option value="sel">The ${d._scope.length} selected object${d._scope.length > 1 ? 's' : ''}</option>` : '') + '<option value="all">Every exported object</option>';
+    $('#irPb').value = o.pb === undefined ? 'B' : o.pb; $('#irPp').value = o.pp === undefined ? 'P' : o.pp; $('#irPr').value = o.pr === undefined ? 'R' : o.pr;
+    $('#irType').checked = !!o.withType; $('#irPad').checked = o.pad !== false; $('#irStart').value = o.start === undefined ? 1 : o.start;
+    d.returnValue = ''; irRefresh(); if (!d.open) d.showModal();
+  }
+  function irSpec() {
+    const d = $('#dlgInpRename');
+    return { scope: $('#irScope').value === 'sel' ? d._scope : null, pb: $('#irPb').value.trim(), pp: $('#irPp').value.trim(), pr: $('#irPr').value.trim(), withType: $('#irType').checked, pad: $('#irPad').checked, start: $('#irStart').value };
+  }
+  function irRefresh() {
+    const sp = irSpec(), pl = FK.planInpRename(S.model, sp), rows = pl.renames.slice(0, 10);
+    $('#irPrev').innerHTML = (pl.errors.length ? pl.errors.map(e => `<div class="bad">⚠ ${esc(e)}</div>`).join('') : '') +
+      (pl.renames.length ? `<div class="muted" style="margin:4px 0">${pl.renames.length} name${pl.renames.length > 1 ? 's' : ''} will change in the INP file:</div>` + rows.map(r => `<div><span class="muted">${esc(r.item.name)}</span> → <b>${esc(r.name)}</b></div>`).join('') + (pl.renames.length > rows.length ? '<div class="muted">…</div>' : '') : '<div class="muted">No exported object in this scope.</div>');
+    $('#irOk').disabled = !!pl.errors.length || !pl.renames.length;
+  }
+  (function () {
+    const d = $('#dlgInpRename'); if (!d) return;
+    d.addEventListener('input', irRefresh); d.addEventListener('change', irRefresh);
+    d.addEventListener('close', () => {
+      const sp = irSpec();
+      if (d.returnValue === 'ok') {
+        const pl = FK.planInpRename(S.model, sp); if (pl.errors.length || !pl.renames.length) return;
+        S.opt.inpRen = { pb: sp.pb, pp: sp.pp, pr: sp.pr, withType: sp.withType, pad: sp.pad, start: sp.start };
+        APP.snap(); pl.renames.forEach(r => { if (r.name === r.item.name) delete r.item.inpName; else r.item.inpName = r.name; });
+        APP.changed({ tree: true, right: true }); APP.save(); toast(`${pl.renames.length} INP name${pl.renames.length > 1 ? 's' : ''} renamed`);
+      } else if (d.returnValue === 'reset') {
+        const scope = sp.scope ? new Set(sp.scope) : null; let n = 0; APP.snap();
+        for (const it of S.model.bodies.concat(S.model.regions)) if ((!scope || scope.has(it)) && it.inpName) { delete it.inpName; n++; }
+        APP.changed({ tree: true, right: true }); toast(`${n} INP name${n === 1 ? '' : 's'} back to automatic`);
+      }
+    });
+  })();
 
   /* ---------- Right panel ---------- */
   const loc = (p) => APP.toLocal(p);
@@ -1859,7 +1990,9 @@
   function renderRight() {
     let h = '';
     const it = APP.selItem();
-    if (it && S.sel) {
+    const ml = multiList();
+    if (ml) h += multiPanel(ml);
+    else if (it && S.sel) {
       h += ({ body: bodyProps, region: regionProps, stl: stlProps, measure: measureProps, csys: csysProps, comp: compProps, material: matProps })[S.sel.t](it);
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
@@ -2149,6 +2282,7 @@
   function onActClick(e) {
     const a = e.target.closest('[data-act]'); if (!a) return;
     const it = APP.selItem(), act = a.dataset.act, pk = S.pick;
+    if (/^m[A-Z]/.test(act)) { multiAct(act); return; }
     switch (act) {
       case 'openRight': break;
       case 'winToggle': S.winOpen = !S.winOpen; renderToolWin(); break;
@@ -2528,10 +2662,11 @@
     $('#isCount').innerHTML = iss.length ? [n.e ? `<span class="e">✖ ${n.e}</span>` : '', n.w ? `<span class="w">⚠ ${n.w}</span>` : '', n.i ? `<span class="i">ⓘ ${n.i}</span>` : ''].join('') : '<span class="ok">✔ no problem</span>';
     $('#inpWarn').innerHTML = (iss.length ? '' : '<div class="isok">Nothing to report.</div>') + iss.sort((a, b) => 'ewi'.indexOf(a.sev) - 'ewi'.indexOf(b.sev)).map(x => x.t
       ? `<button type="button" class="is ${x.sev}${curGo === x.t + ':' + x.id ? ' cur' : ''}" data-go="${x.t}:${x.id}" title="Select it in the project and in the 3D view"><i>${IC[x.sev]}</i><span>${esc(x.text)}</span></button>`
-      : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${esc(x.text)}</span></div>`).join('') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
+      : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${esc(x.text)}</span></div>`).join('') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
     const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
   }
   $('#inpWarn').addEventListener('click', e => {
+    if (e.target.closest('[data-renameall]')) { openInpRename(null); return; }
     const go = e.target.closest('[data-go]');
     if (go) { const [t, id] = go.dataset.go.split(':'); if (findItem(t, +id)) { curGo = go.dataset.go; selectItem(t, +id); const o = findItem(t, +id); if (o && !o.visible) toast(`${o.name} is hidden (use its eye to show it)`); } }
   });
@@ -2608,7 +2743,7 @@
     }
     if (e.key === 'Escape') { if (!ctxEl.hidden) { hideMenu(); return; } if (dlg.open) return; if (S.fill) { cancelFill(); return; } if (S.tool !== 'select') setTool('select'); else if (S.pick) { clearPick(); renderRight(); updateStatus(); } else if (S.info) { setTool('select'); } }
     if (e.key === 'Enter' && !typing && S.fill) { e.preventDefault(); finishCirclePts(); }
-    if (e.key === 'Delete' && !typing && S.sel && !dlg.open && !S.fill) { e.preventDefault(); APP.deleteSel(); }
+    if (e.key === 'Delete' && !typing && S.sel && !dlg.open && !S.fill) { e.preventDefault(); const ml = multiList(); if (ml) deleteMany(ml); else APP.deleteSel(); }
   });
 
   /* ---------- PWA install ---------- */

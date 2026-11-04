@@ -590,3 +590,6 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 .ctxsub button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; font-size: 13px; }
 .ctxsub button:hover { background: var(--accent-soft); } .ctxsub hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
 #ctxmenu button.hassub { display: flex; justify-content: space-between; gap: 12px; } #ctxmenu .sa { color: var(--muted); }
+
+.tree .item .nm .inpn { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+#irPrev .bad { color: var(--danger); } #irPrev { max-height: 220px; overflow: auto; }

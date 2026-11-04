@@ -814,6 +814,19 @@
     S.model.regions.push(c);
     return c;
   };
+  /** Deletes several items [{ t, o }] in one undo step. */
+  APP.deleteItems = function (list) {
+    APP.snap();
+    const ids = (ty) => new Set(list.filter(x => x.t === ty).map(x => x.o.id));
+    const bi = ids('body'), ri = ids('region'), mi = ids('measure'), si = ids('stl');
+    if (bi.size) S.model.bodies = S.model.bodies.filter(b => !bi.has(b.id));
+    if (ri.size) S.model.regions = S.model.regions.filter(r => !ri.has(r.id));
+    if (mi.size) S.measures = S.measures.filter(m => !mi.has(m.id));
+    if (si.size) { for (const s of S.stls.filter(x => si.has(x.id))) if (APP.hooks.disposeStl) APP.hooks.disposeStl(s); S.stls = S.stls.filter(x => !si.has(x.id)); }
+    for (const x of list) { if (x.t === 'csys') APP.deleteCsys(x.o.id); else if (x.t === 'comp') APP.deleteComp(x.o.id, false); else if (x.t === 'material') APP.deleteMaterial(x.o.id); }
+    S.sel = null; S.multi = null;
+    APP.changed({ tree: true, right: true, measures: true });
+  };
   APP.deleteSel = function () {
     if (!S.sel) return;
     const { t, id } = S.sel;

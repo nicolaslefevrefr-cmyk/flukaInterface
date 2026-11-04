@@ -8,14 +8,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.28.2">
+<link rel="stylesheet" href="css/style.css?v=1.29.0">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
     <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.28.2</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.29.0</i></b></div>
     <input id="projName" class="pname" type="text" maxlength="60" spellcheck="false" placeholder="Project name" title="Project name: also the title line of the INP file and the name of the saved files" aria-label="Project name">
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
     <div class="spacer"></div>
@@ -166,6 +166,21 @@
     <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="ok" class="pill primary" id="confirmOk">OK</button></div>
   </form>
 </dialog>
+<dialog id="dlgInpRename">
+  <form method="dialog">
+    <h3>Rename the INP names</h3>
+    <p class="muted">Only the names written in the INP file change (max 8 characters). The objects keep their names in this tool.</p>
+    <label class="row">Objects <select id="irScope"></select></label>
+    <label class="row">Bodies prefix <input type="text" id="irPb" maxlength="6" style="width:90px"></label>
+    <label class="row">Planes prefix <input type="text" id="irPp" maxlength="6" style="width:90px"></label>
+    <label class="row">Regions prefix <input type="text" id="irPr" maxlength="6" style="width:90px"></label>
+    <label class="row"><input type="checkbox" id="irType"> Add the body type (e.g. Brpp1, Brcc1) — one counter per type</label>
+    <label class="row"><input type="checkbox" id="irPad"> Zero padding (01, 02 … 10)</label>
+    <label class="row">First number <input type="number" id="irStart" min="0" step="1" style="width:80px"></label>
+    <div id="irPrev" class="voidprev"></div>
+    <div class="dlgBtns"><button value="cancel" class="pill">Cancel</button><button value="reset" class="pill" title="Removes the explicit INP names of this scope">Back to automatic names</button><button value="ok" class="pill primary" id="irOk">Rename</button></div>
+  </form>
+</dialog>
 <dialog id="dlgVoid">
   <form method="dialog">
     <h3>Void region around a region <small class="muted">(experimental)</small></h3>
@@ -272,18 +287,18 @@
 <input type="file" id="fileProj" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.28.2"></script>
-<script src="js/core.js?v=1.28.2"></script>
-<script src="js/state.js?v=1.28.2"></script>
-<script src="js/scene.js?v=1.28.2"></script>
-<script src="js/cut.js?v=1.28.2"></script>
-<script src="js/compare.js?v=1.28.2"></script>
-<script src="js/check.js?v=1.28.2"></script>
-<script src="js/snap.js?v=1.28.2"></script>
-<script src="js/graph.js?v=1.28.2"></script>
-<script src="js/surfcheck.js?v=1.28.2"></script>
-<script src="js/tpl.js?v=1.28.2"></script>
-<script src="js/ui.js?v=1.28.2"></script>
-<script src="js/pwa.js?v=1.28.2"></script>
+<script src="js/lib/three.min.js?v=1.29.0"></script>
+<script src="js/core.js?v=1.29.0"></script>
+<script src="js/state.js?v=1.29.0"></script>
+<script src="js/scene.js?v=1.29.0"></script>
+<script src="js/cut.js?v=1.29.0"></script>
+<script src="js/compare.js?v=1.29.0"></script>
+<script src="js/check.js?v=1.29.0"></script>
+<script src="js/snap.js?v=1.29.0"></script>
+<script src="js/graph.js?v=1.29.0"></script>
+<script src="js/surfcheck.js?v=1.29.0"></script>
+<script src="js/tpl.js?v=1.29.0"></script>
+<script src="js/ui.js?v=1.29.0"></script>
+<script src="js/pwa.js?v=1.29.0"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.28.2)
+# Combinatorial Geometry Tool  (v1.29.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.29.0** — Tree view: **multi-selection** (Ctrl / ⌘ + click toggles, Shift + click selects a range, same category only). A selection can be dragged into a group, shown / hidden, exported or not, renamed and deleted at once (right panel summary, right-click menu, Delete key; one undo step). Right-click menus (single item, selection, group, category) get *Export to the INP file* / *Do not export*, and *Rename the INP names…*; groups also offer *Select the members*. **Rename the INP names**: prefix for bodies, planes and regions + number (optionally with the body type, zero padding, first number), for every exported object or only the selected ones; only the names written in the INP file change, with a preview and checks (8 characters, letters / digits / _, no duplicates); *Back to automatic names* undoes it. The tree shows the INP name in brackets after each exported object (Settings ▸ Display to hide it).
 - **1.28.2** — Definition: the *Text / chips* button is now a check box *Edit the definition as plain text*. In the chips view the insertion point can be moved anywhere, including inside parentheses: click an operator (a click on ")" puts it just before it), or use ← → Home End; Backspace / Delete remove the term before / after it.
 - **1.28.1** — The Backspace key no longer deletes the selected object (Delete still does).
 - **1.28.0** — Region definition: the chips are now the definition box itself (no separate row): click a chip to open the object, right-click for the menu, click in the empty area or on an operator to place the insertion point (blinking caret) used by + add / − subtract / | union / ( ); *✎ Text / chips* switches to plain text editing. Tree context menu: one *Move to group* command opening a sub-menu with the groups. Settings ▸ Display: *Step of numeric fields* (default 0.1) sets the increment of the numeric fields of the properties panel.
