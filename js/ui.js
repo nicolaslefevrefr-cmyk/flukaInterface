@@ -1721,11 +1721,11 @@
       ${lk.error ? `<div class="msg bad">${esc(lk.error)}</div>` : ''}
       <div class="btns"><button class="btn sm primary" data-act="lnkAdd" title="Add another region to the combination">＋ Add an operation</button><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
     const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
-      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap${exprRich(lk) ? ' rich' : ''}" id="exprWrap"><div class="exprchips" id="exprChips" title="Click a chip to open the object · right-click for more · click in the empty area to place the insertion point"></div><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
-      <div class="usedrow"><label class="chk usedchk" title="Show only the objects used in this definition in the 3D view; un-check to get the previous view back"><input type="checkbox" id="chkUsed" ${S.usedView && S.isoSnap ? 'checked' : ''}>Show the components used in this definition</label></div>
+      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap${exprRich(lk) ? ' rich' : ''}" id="exprWrap"><div class="exprchips" id="exprChips" tabindex="0" title="Click a chip to open the object · right-click for more · click an operator or the empty area (or use ← → Home End) to move the insertion point · Backspace / Delete remove the term before / after it"></div><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
+      <div class="usedrow"><label class="chk" title="Edit the definition as plain text instead of clickable chips"><input type="checkbox" id="chkText" ${S.opt.exprText === true && !lk ? 'checked' : ''} ${lk ? 'disabled' : ''}>Edit the definition as plain text</label><label class="chk usedchk" title="Show only the objects used in this definition in the 3D view; un-check to get the previous view back"><input type="checkbox" id="chkUsed" ${S.usedView && S.isoSnap ? 'checked' : ''}>Show the components used in this definition</label></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       ${lk ? '<div class="muted" style="font-size:12px">ⓘ Managed by the combination above.</div><!--' : ''}<div class="row2">${opts}</div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="exprMode" title="Switch the definition between chips and plain text">✎ Text / chips</button><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
+      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -1972,9 +1972,33 @@
     const tg = e.target.closest('[data-act=tpToggle]'); if (tg) { const l = $('#termPick .tplist'); l.hidden = !l.hidden; const on = l.querySelector('.tpopt.on'); if (!l.hidden && on) on.scrollIntoView({ block: 'nearest' }); return; }
     const pk = e.target.closest('[data-act=tpPick]'); if (pk) { setTermSel(pk.dataset.n); $('#termPick .tplist').hidden = true; return; }
     const ch = e.target.closest('#exprChips .chip'); if (ch) { goToBody(ch.dataset.n); return; }
-    const box = e.target.closest('#exprChips'); if (box) { const { ta } = exprEls(), op = e.target.closest('.cop'); setCaretAt(op ? +op.dataset.e : ta.value.length); return; }
-    const md = e.target.closest('[data-act=exprMode]'); if (md) { S.opt.exprText = !(S.opt.exprText === true); const w = $('#exprWrap'); if (w) w.classList.toggle('rich', exprRich(false)); APP.save(); if (S.opt.exprText) { const { ta } = exprEls(); ta.focus(); } updateExprMirror(); }
+    const box = e.target.closest('#exprChips'); if (box) { const { ta } = exprEls(), op = e.target.closest('.cop'); const oe = op ? +op.dataset.e : ta.value.length; setCaretAt(op && ta.value[oe - 1] === ')' ? oe - 1 : oe); box.focus(); return; }
   });
+  function setTextMode(on) {
+    S.opt.exprText = !!on; const w = $('#exprWrap'); if (w) w.classList.toggle('rich', exprRich(false)); APP.save();
+    const { ta } = exprEls(); if (on && ta) ta.focus(); updateExprMirror();
+  }
+  /** Caret positions of the chips view = boundaries between tokens. */
+  function caretStops(v) { const st = new Set([0]); for (const t of exprTokens(v)) { st.add(t.s); st.add(t.e); } return [...st].sort((a, b) => a - b); }
+  function deleteRange(s0, e0) {
+    const it = APP.selItem(), { ta } = exprEls(); if (!it || !ta || (it.meta && it.meta.link)) return;
+    const v = ta.value.slice(0, s0) + ta.value.slice(e0); APP.snap(); it.expr = v; ta.value = v; setCaretAt(s0); APP.changed({});
+  }
+  $('#rightBody').addEventListener('keydown', e => {
+    const box = e.target.closest && e.target.closest('#exprChips'); if (!box) return;
+    const { ta } = exprEls(), v = ta.value, st = S.exprSel && S.sel && S.exprSel.id === S.sel.id ? S.exprSel.s : v.length, stops = caretStops(v), k = e.key;
+    const tk = exprTokens(v), terms = exprTerms(v);
+    if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'Home' || k === 'End') {
+      e.preventDefault(); e.stopPropagation();
+      const p = k === 'Home' ? 0 : k === 'End' ? v.length : k === 'ArrowLeft' ? ([...stops].reverse().find(x => x < st) ?? 0) : (stops.find(x => x > st) ?? v.length);
+      setCaretAt(p);
+    } else if (k === 'Backspace' || k === 'Delete') {
+      e.preventDefault(); e.stopPropagation();
+      if (k === 'Backspace') { const t = [...tk].reverse().find(x => x.e <= st); if (!t) return; const tm = terms.find(x => x.e === t.e); deleteRange(tm ? tm.s : t.s, t.e); }
+      else { const t = tk.find(x => x.s >= st); if (!t) return; const tm = terms.find(x => x.s === t.s); deleteRange(t.s, tm ? tm.e : t.e); }
+    }
+  });
+  $('#rightBody').addEventListener('change', e => { if (e.target.id === 'chkText') setTextMode(e.target.checked); });
   function setCaretAt(p) { const it = APP.selItem(), { ta } = exprEls(); if (!ta || !it) return; S.exprSel = { id: it.id, s: p, e: p }; try { ta.setSelectionRange(p, p); } catch (e) { /* ignore */ } updateExprMirror(); }
   $('#rightBody').addEventListener('change', e => { if (e.target.id === 'chkUsed') setUsedView(e.target.checked); });
   $('#rightBody').addEventListener('contextmenu', e => {
@@ -2584,7 +2608,7 @@
     }
     if (e.key === 'Escape') { if (!ctxEl.hidden) { hideMenu(); return; } if (dlg.open) return; if (S.fill) { cancelFill(); return; } if (S.tool !== 'select') setTool('select'); else if (S.pick) { clearPick(); renderRight(); updateStatus(); } else if (S.info) { setTool('select'); } }
     if (e.key === 'Enter' && !typing && S.fill) { e.preventDefault(); finishCirclePts(); }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.sel && !dlg.open && !S.fill) { e.preventDefault(); APP.deleteSel(); }
+    if (e.key === 'Delete' && !typing && S.sel && !dlg.open && !S.fill) { e.preventDefault(); APP.deleteSel(); }
   });
 
   /* ---------- PWA install ---------- */
