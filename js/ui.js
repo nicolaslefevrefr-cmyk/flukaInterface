@@ -352,7 +352,9 @@
     if (t.type === 'checkbox') v = t.checked;
     else if (t.type === 'number') { v = parseFloat(t.value); if (!isFinite(v)) return; }
     else v = t.value;
+    if (k === 'numStep' && !(v > 0)) return;
     S.opt[k] = v;
+    if (k === 'numStep') renderRight();
     if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly', 'edgeSoft'].includes(k)) { clearPick(); APP.clearHover(); }
     if (k === 'theme') applyTheme();
     if (k === 'snapFeat') renderToolOpts();
@@ -991,6 +993,7 @@
         <label class="chk"><input type="checkbox" data-opt="multiPick" ${o.multiPick !== false ? 'checked' : ''}>Pop-up to choose among overlapping entities under a click</label>
         <label class="chk"><input type="checkbox" data-opt="invX" ${o.invX ? 'checked' : ''}>Invert left / right mouse rotation</label>
         <label class="chk"><input type="checkbox" data-opt="invY" ${o.invY ? 'checked' : ''}>Invert up / down mouse rotation</label>
+        <div class="row2"><span class="muted" style="flex:1" title="Increment of the numeric fields of the properties panel (arrows, mouse wheel, ↑ / ↓)">Step of numeric fields</span><input type="number" step="0.01" min="0.0001" style="width:80px" data-opt="numStep" value="${o.numStep > 0 ? o.numStep : 0.1}"></div>
         <div class="row2"><span class="muted" style="flex:1">Render zone margin (%)</span><input type="number" step="1" min="0" style="width:80px" data-opt="margin" value="${o.margin}"></div></div></details>
       <details class="fold" open><summary>Alignment check on creation</summary><div>
         <label class="chk" title="After a detected feature, a plane from a face or a picked cylinder / box is created, propose exact values: axis on X / Y / Z, parallel / coaxial with other cylinders, equal radii, faces and ends coincident with other objects"><input type="checkbox" data-opt="snapOn" ${o.snapOn !== false ? 'checked' : ''}>Propose corrected values for new objects</label>
@@ -1140,17 +1143,31 @@
   /* ---- context menus ---- */
   const ctxEl = document.createElement('div'); ctxEl.id = 'ctxmenu'; ctxEl.hidden = true; document.body.appendChild(ctxEl);
   let ctxItems = [];
-  function hideMenu() { ctxEl.hidden = true; }
+  const subEl = document.createElement('div'); subEl.id = 'ctxmenu'; subEl.className = 'ctxsub'; subEl.removeAttribute('id'); subEl.hidden = true; document.body.appendChild(subEl);
+  let subItems = [];
+  function hideSub() { subEl.hidden = true; }
+  function hideMenu() { ctxEl.hidden = true; hideSub(); }
+  function openSub(btn, items) {
+    subItems = items;
+    subEl.innerHTML = items.map((it, i) => it.sep ? '<hr>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}">${esc(it.label)}</button>`).join('');
+    subEl.hidden = false;
+    const r = btn.getBoundingClientRect(), w = subEl.offsetWidth || 200, h = subEl.offsetHeight || 100;
+    subEl.style.left = (r.right + w + 8 < window.innerWidth ? r.right - 2 : Math.max(4, r.left - w + 2)) + 'px';
+    subEl.style.top = Math.max(4, Math.min(r.top - 4, window.innerHeight - h - 6)) + 'px';
+  }
+  subEl.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const it = subItems[+b.dataset.i]; hideMenu(); if (it && it.fn) it.fn(); });
   function showMenu(x, y, items) {
     ctxItems = items;
-    ctxEl.innerHTML = items.map((it, i) => it.sep ? '<hr>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}">${esc(it.label)}</button>`).join('');
+    hideSub();
+    ctxEl.innerHTML = items.map((it, i) => it.sep ? '<hr>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}${it.sub ? ' hassub' : ''}">${esc(it.label)}${it.sub ? '<span class="sa">▸</span>' : ''}</button>`).join('');
     ctxEl.hidden = false;
     const w = ctxEl.offsetWidth || 200, h = ctxEl.offsetHeight || 200;
     ctxEl.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 6)) + 'px';
     ctxEl.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 6)) + 'px';
   }
-  ctxEl.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const it = ctxItems[+b.dataset.i]; hideMenu(); if (it && it.fn) it.fn(); });
-  document.addEventListener('pointerdown', e => { if (!ctxEl.hidden && !ctxEl.contains(e.target)) hideMenu(); }, true);
+  ctxEl.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const it = ctxItems[+b.dataset.i]; if (it && it.sub) { openSub(b, it.sub); return; } hideMenu(); if (it && it.fn) it.fn(); });
+  ctxEl.addEventListener('mouseover', e => { const b = e.target.closest('button'); if (!b) return; const it = ctxItems[+b.dataset.i]; if (it && it.sub) openSub(b, it.sub); else hideSub(); });
+  document.addEventListener('pointerdown', e => { if (!ctxEl.hidden && !ctxEl.contains(e.target) && !subEl.contains(e.target)) hideMenu(); }, true);
   const newBody = (type) => { APP.snap(); const b = APP.addBody(type); S.sel = { t: 'body', id: b.id }; APP.changed({ tree: true, right: true }); return b; };
   const visItems = (k) => [{ sep: 1 }, { label: 'Show all', fn: () => setGroupVis(k, true) }, { label: 'Hide all', fn: () => setGroupVis(k, false) }];
   /* ---- organisation groups ---- */
@@ -1162,7 +1179,8 @@
   }
   function moveItems(t, o) {
     const k = APP.catOf(t, o), m = [{ sep: 1 }];
-    for (const g of APP.groups().filter(x => x.k === k && x.id !== o.grp)) m.push({ label: 'Move to group: ' + g.name, fn: () => { APP.setItemGroup(t, o, g.id); APP.changed({ tree: true }); } });
+    const gs = APP.groups().filter(x => x.k === k && x.id !== o.grp);
+    if (gs.length) m.push({ label: 'Move to group', sub: gs.map(g => ({ label: g.name, fn: () => { APP.setItemGroup(t, o, g.id); APP.changed({ tree: true }); } })) });
     m.push(newGrp(k, { t, o }));
     if (o.grp && APP.getGroup(o.grp)) m.push({ label: 'Remove from group', fn: () => { APP.setItemGroup(t, o, 0); APP.changed({ tree: true }); } });
     return m;
@@ -1703,11 +1721,11 @@
       ${lk.error ? `<div class="msg bad">${esc(lk.error)}</div>` : ''}
       <div class="btns"><button class="btn sm primary" data-act="lnkAdd" title="Add another region to the combination">＋ Add an operation</button><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
     const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
-      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprchips" id="exprChips" title="Click a chip to open the object · right-click for more"></div><div class="exprwrap"><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
+      <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap${exprRich(lk) ? ' rich' : ''}" id="exprWrap"><div class="exprchips" id="exprChips" title="Click a chip to open the object · right-click for more · click in the empty area to place the insertion point"></div><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
       <div class="usedrow"><label class="chk usedchk" title="Show only the objects used in this definition in the 3D view; un-check to get the previous view back"><input type="checkbox" id="chkUsed" ${S.usedView && S.isoSnap ? 'checked' : ''}>Show the components used in this definition</label></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       ${lk ? '<div class="muted" style="font-size:12px">ⓘ Managed by the combination above.</div><!--' : ''}<div class="row2">${opts}</div>
-      <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
+      <div class="btns exprbtns"><button class="btn sm" data-act="exprMode" title="Switch the definition between chips and plain text">✎ Text / chips</button><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
     const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
     const operations = `<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -1833,6 +1851,11 @@
     const k = (h.textContent || '').trim(), sec = h.parentElement, c = !sec.classList.contains('collapsed');
     sec.classList.toggle('collapsed', c); (S.opt.secClosed || (S.opt.secClosed = {}))[k] = c ? 1 : 0; APP.save();
   });
+  /** Step of the numeric fields (arrows / wheel / ↑ ↓): the 0.1 default of the properties panel can be changed in the settings. */
+  function applyNumStep(root) {
+    const st = S.opt.numStep > 0 ? S.opt.numStep : 0.1; if (st === 0.1) return;
+    root.querySelectorAll('input[type=number][step="0.1"]').forEach(i => { i.step = st; });
+  }
   function renderRight() {
     let h = '';
     const it = APP.selItem();
@@ -1841,6 +1864,7 @@
     } else h += '<div class="empty" style="padding:6px 2px 14px">Select an item in the tree or click in the 3D view to show its properties.</div>';
     $('#rightBody').innerHTML = h;
     gridify($('#rightBody'));
+    applyNumStep($('#rightBody'));
     updateLive();
     if (it && S.sel && S.sel.t === 'region') initExprEditor();
     lockGenerated(it);
@@ -1865,21 +1889,27 @@
     }
     return out;
   }
+  /** Chips view (default, always for a linked region) or plain text editing. */
+  const exprRich = (lk) => !!lk || S.opt.exprText !== true;
   function renderExprChips() {
     const box = $('#exprChips'), { ta } = exprEls(); if (!box || !ta) return;
     const v = ta.value, tk = exprTokens(v), terms = new Map(exprTerms(v).map(x => [x.s, x]));
     let h = '';
+    const st = S.exprSel && S.sel && S.exprSel.id === S.sel.id ? S.exprSel : { s: v.length }, caret = '<span class="ccaret"></span>';
+    let placed = false; const at = Math.min(st.s, v.length);
     for (let i = 0; i < tk.length; i++) {
+      if (!placed && tk[i].s >= at && at < v.length) { h += caret; placed = true; }
       const t = tk[i], term = terms.get(t.s);
       if (term) {
         const b = bodyByName(term.name);
         h += `<span class="chip ${term.sign < 0 ? 'neg' : 'pos'}${b ? '' : ' bad'}" data-s="${term.s}" data-e="${term.e}" data-n="${esc(term.name)}" title="${b ? esc(term.name + ' · ' + (b.type === 'RAW' ? b.rawType : b.type)) : 'Unknown object'}"><i class="cdot" style="background:${b ? b.color : '#bbb'}"></i><b>${term.sign < 0 ? '−' : '+'}</b>${esc(term.name)}</span>`;
         if (!term.implicit) i++;
-      } else if (t.t === '|') h += '<span class="cop">∪</span>';
-      else if (t.t === '+' || t.t === '-') h += `<span class="cop">${t.t === '-' ? '−' : '+'}</span>`;
-      else h += `<span class="cop">${esc(t.t)}</span>`;
+      } else if (t.t === '|') h += `<span class="cop" data-e="${t.e}">∪</span>`;
+      else if (t.t === '+' || t.t === '-') h += `<span class="cop" data-e="${t.e}">${t.t === '-' ? '−' : '+'}</span>`;
+      else h += `<span class="cop" data-e="${t.e}">${esc(t.t)}</span>`;
     }
-    box.innerHTML = h || '<span class="muted" style="font-size:12px">(empty definition)</span>';
+    if (!placed) h += caret;
+    box.innerHTML = h;
   }
   /** Removes / inverts one term of the textarea expression (by position); keeps the rest of the text. */
   function editTerm(s0, e0, mode) {
@@ -1941,13 +1971,17 @@
   $('#rightBody').addEventListener('click', e => {
     const tg = e.target.closest('[data-act=tpToggle]'); if (tg) { const l = $('#termPick .tplist'); l.hidden = !l.hidden; const on = l.querySelector('.tpopt.on'); if (!l.hidden && on) on.scrollIntoView({ block: 'nearest' }); return; }
     const pk = e.target.closest('[data-act=tpPick]'); if (pk) { setTermSel(pk.dataset.n); $('#termPick .tplist').hidden = true; return; }
-    const ch = e.target.closest('#exprChips .chip'); if (ch) goToBody(ch.dataset.n);
+    const ch = e.target.closest('#exprChips .chip'); if (ch) { goToBody(ch.dataset.n); return; }
+    const box = e.target.closest('#exprChips'); if (box) { const { ta } = exprEls(), op = e.target.closest('.cop'); setCaretAt(op ? +op.dataset.e : ta.value.length); return; }
+    const md = e.target.closest('[data-act=exprMode]'); if (md) { S.opt.exprText = !(S.opt.exprText === true); const w = $('#exprWrap'); if (w) w.classList.toggle('rich', exprRich(false)); APP.save(); if (S.opt.exprText) { const { ta } = exprEls(); ta.focus(); } updateExprMirror(); }
   });
+  function setCaretAt(p) { const it = APP.selItem(), { ta } = exprEls(); if (!ta || !it) return; S.exprSel = { id: it.id, s: p, e: p }; try { ta.setSelectionRange(p, p); } catch (e) { /* ignore */ } updateExprMirror(); }
   $('#rightBody').addEventListener('change', e => { if (e.target.id === 'chkUsed') setUsedView(e.target.checked); });
   $('#rightBody').addEventListener('contextmenu', e => {
     const ch = e.target.closest('#exprChips .chip'); if (!ch) return; e.preventDefault();
     const it = APP.selItem(), ro = !it || (it.meta && it.meta.link), s0 = +ch.dataset.s, e0 = +ch.dataset.e, n = ch.dataset.n, b = bodyByName(n), neg = ch.classList.contains('neg');
     const m = [{ label: 'Go to the definition of ' + n, fn: () => goToBody(n) }, { label: 'Highlight in the 3D view', fn: () => flashBody(n) }];
+    m.push({ label: 'Insert the next term after this one', fn: () => setCaretAt(e0) });
     if (b) m.push({ label: b.visible ? 'Hide in the 3D view' : 'Show in the 3D view', fn: () => { APP.snap(); b.visible = !b.visible; APP.changed({ tree: true }); } });
     if (!ro) m.push({ sep: 1 }, { label: neg ? 'Invert: − becomes +' : 'Invert: + becomes −', fn: () => editTerm(s0, e0, 'invert') }, { label: 'Remove from the definition', danger: true, fn: () => editTerm(s0, e0, 'remove') });
     showMenu(e.clientX, e.clientY, m);

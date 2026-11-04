@@ -579,3 +579,14 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 .usedchk { flex-direction: row !important; align-items: center; gap: 6px; } .usedchk input { order: -1; flex: none; width: auto; margin: 0; }
 #rightBody .usedrow { display: block; margin: 4px 0; } #rightBody .usedrow label.usedchk { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px; text-align: left; } #rightBody .usedrow input { order: -1; flex: none; width: auto; margin: 0; }
 #rightBody .usedrow label.usedchk { margin: 0 !important; width: 100% !important; justify-content: flex-start !important; text-align: left !important; }
+
+/* chips inside the definition box */
+.exprwrap .exprchips { display: none; margin: 0; border: 1px solid var(--line); border-radius: 8px; min-height: 74px; max-height: 220px; padding: 6px 8px; align-content: flex-start; cursor: text; gap: 4px 4px; }
+.exprwrap.rich .exprchips { display: flex; }
+.exprwrap.rich textarea.expr, .exprwrap.rich .exprmirror { display: none; }
+.ccaret { display: inline-block; width: 0; height: 1.3em; border-left: 2px solid var(--accent); animation: fcblink 1.1s steps(1) infinite; }
+.chip .nm { } .ctxsub { position: fixed; z-index: 101; min-width: 160px; max-width: 86vw; max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.2); padding: 4px; }
+.ctxsub[hidden] { display: none; }
+.ctxsub button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; font-size: 13px; }
+.ctxsub button:hover { background: var(--accent-soft); } .ctxsub hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+#ctxmenu button.hassub { display: flex; justify-content: space-between; gap: 12px; } #ctxmenu .sa { color: var(--muted); }
