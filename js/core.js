@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.29.0';
+  FK.VERSION = '1.29.2';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1873,6 +1873,13 @@
     return false;
   };
 
+  /** Names of bodies and regions are written in the region expressions: letters, digits and _ only, starting with a letter or _ (spaces and other characters become _). */
+  FK.validObjectName = (n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n || '');
+  FK.cleanObjectName = function (n) {
+    let s = String(n === undefined || n === null ? '' : n).trim().replace(/[^A-Za-z0-9_]/g, '_');
+    if (s && !/^[A-Za-z_]/.test(s)) s = 'a' + s;
+    return s;
+  };
   FK.uniqueName = function (base, used, maxLen) {
     maxLen = maxLen || 8;
     base = base.replace(/[^A-Za-z0-9_]/g, '_');

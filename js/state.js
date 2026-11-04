@@ -68,7 +68,7 @@
         S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
         if (o.filter) S.filter = o.filter;
         let mx = S.nextId; for (const a of [S.model.bodies, S.model.regions, S.measures, S.model.csys]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
-        S.nextId = mx;
+        S.nextId = mx; APP.sanitizeNames();
         return true;
       }
     } catch (e) { /* ignorer */ }
@@ -488,6 +488,22 @@
     for (const m of S.stls) stls.push({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, mesh: await packF32(m.raw) });
     return JSON.stringify({ app: 'fluka-geo-tool', version: 3, model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls });
   };
+  /** Gives a valid name (see FK.cleanObjectName) to the bodies and regions of older projects; the expressions follow. Returns the number renamed. */
+  APP.sanitizeNames = function () {
+    let n = 0;
+    const run = (list, isBody) => {
+      const used = new Set(list.map(x => x.name));
+      for (const it of list) {
+        if (FK.validObjectName(it.name)) continue;
+        const old = it.name; let c = FK.cleanObjectName(old) || (isBody ? 'body' : 'reg'), cand = c;
+        for (let k = 2; used.has(cand); k++) cand = c + '_' + k;
+        used.delete(old); used.add(cand); it.name = cand; n++;
+        if (isBody) for (const r of S.model.regions) if (r.expr && r.expr.includes(old)) r.expr = r.expr.split(old).join(cand);
+      }
+    };
+    run(S.model.bodies, true); run(S.model.regions, false);
+    return n;
+  };
   APP.importProject = async function (text) {
     let o; try { o = JSON.parse(text); } catch (e) { APP.toast('Invalid JSON'); return false; }
     if (!o || !o.model || !Array.isArray(o.model.bodies)) { APP.toast('Not a project file'); return false; }
@@ -506,6 +522,7 @@
     if (o.filter) S.filter = o.filter;
     let mx = o.nextId || 1000; for (const a of [S.model.bodies, S.model.regions, S.model.csys, S.measures, S.stls]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
     S.nextId = Math.max(S.nextId, mx); S.sel = null; S.pick = null; S.fill = null;
+    { const nn = APP.sanitizeNames(); if (nn) APP.toast(`${nn} object name${nn > 1 ? 's' : ''} contained spaces or special characters: replaced by _`); }
     APP.changed({ tree: true, right: true, measures: true, fit: true });
     return true;
   };
@@ -537,7 +554,7 @@
   APP.addBody = function (type, p, extra) {
     extra = extra || {};
     const info = FK.BODY_TYPES[type];
-    const name = extra.name || FK.uniqueName(info.prefix + '1', bodyNames());
+    const name = (extra.name && FK.cleanObjectName(extra.name)) || FK.uniqueName(info.prefix + '1', bodyNames());
     const b = {
       id: APP.nid(), type, name, p: p || APP.defaultParams(type), cs: extra.cs !== undefined ? extra.cs : (S.model.active || 0),
       visible: extra.visible !== undefined ? extra.visible : true,
@@ -550,7 +567,7 @@
   APP.addRegion = function (name, expr, extra) {
     extra = extra || {};
     const r = {
-      id: APP.nid(), name: name || FK.uniqueName('reg1', regionNames()), nvois: extra.nvois || 5, expr: expr || '',
+      id: APP.nid(), name: (name && FK.cleanObjectName(name)) || FK.uniqueName('reg1', regionNames()), nvois: extra.nvois || 5, expr: expr || '',
       visible: extra.visible !== undefined ? extra.visible : false, opacity: extra.opacity !== undefined ? extra.opacity : 0.4,
       color: extra.color || color(S.model.regions.length + 3), meta: {}
     };
@@ -841,8 +858,10 @@
     S.sel = null;
     APP.changed({ tree: true, right: true, measures: true });
   };
+  /** Spaces and special characters are not allowed in the names of bodies and regions (they would break the region expressions). */
+  const cleanTyped = (nn) => { const c = FK.cleanObjectName(nn); if (c !== String(nn).trim()) APP.toast('Spaces and special characters are replaced by _ in object names'); return c; };
   APP.renameBody = function (b, nn) {
-    nn = nn.trim();
+    nn = cleanTyped(nn);
     if (!nn || nn === b.name) return false;
     if (S.model.bodies.some(x => x !== b && x.name === nn)) { APP.toast('A body with this name already exists'); return false; }
     APP.snap();
@@ -852,7 +871,7 @@
     return true;
   };
   APP.renameRegion = function (r, nn) {
-    nn = nn.trim();
+    nn = cleanTyped(nn);
     if (!nn || nn === r.name) return false;
     if (S.model.regions.some(x => x !== r && x.name === nn)) { APP.toast('A region with this name already exists'); return false; }
     APP.snap(); r.name = nn; APP.changed({ tree: true });
@@ -863,7 +882,7 @@
   /* ---------- Parametric components (see tpl.js) ---------- */
   // A component owns ordinary bodies and regions (found again through meta.comp.role) and regenerates them when a parameter changes.
   const linkedTo = (r) => S.model.regions.filter(x => x !== r && x.meta && x.meta.link && APP.linkIds(x.meta.link).includes(r.id));
-  const compName = (c, role) => c.prefix + '_' + role;
+  const compName = (c, role) => FK.cleanObjectName(c.prefix + '_' + role);
   APP.compItems = function (c) {
     const out = { bodies: [], regions: [] };
     for (const k of Object.keys(c.items || {})) {

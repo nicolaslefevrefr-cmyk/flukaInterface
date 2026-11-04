@@ -1853,7 +1853,7 @@
       <div class="btns"><button class="btn sm primary" data-act="lnkAdd" title="Add another region to the combination">＋ Add an operation</button><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
     const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
       <div class="fld full"><label>Expression  (+ inside · − outside · | union · parentheses)${lk ? ' — read-only while linked' : ''}</label><div class="exprwrap${exprRich(lk) ? ' rich' : ''}" id="exprWrap"><div class="exprchips" id="exprChips" tabindex="0" title="Click a chip to open the object · right-click for more · click an operator or the empty area (or use ← → Home End) to move the insertion point · Backspace / Delete remove the term before / after it"></div><textarea class="expr" id="exprArea" data-k="expr" spellcheck="false" ${lk ? 'readonly' : ''}>${esc(r.expr)}</textarea><div class="exprmirror" id="exprMirror" aria-hidden="true"></div></div></div></div>
-      <div class="usedrow"><label class="chk" title="Edit the definition as plain text instead of clickable chips"><input type="checkbox" id="chkText" ${S.opt.exprText === true && !lk ? 'checked' : ''} ${lk ? 'disabled' : ''}>Edit the definition as plain text</label><label class="chk usedchk" title="Show only the objects used in this definition in the 3D view; un-check to get the previous view back"><input type="checkbox" id="chkUsed" ${S.usedView && S.isoSnap ? 'checked' : ''}>Show the components used in this definition</label></div>
+      <div class="usedrow"><label class="chk" title="Edit the definition as plain text instead of clickable chips (the text uses the object names; chips and the object list show the names written in the INP file)"><input type="checkbox" id="chkText" ${S.opt.exprText === true && !lk ? 'checked' : ''} ${lk ? 'disabled' : ''}>Edit the definition as plain text</label><label class="chk usedchk" title="Show only the objects used in this definition in the 3D view; un-check to get the previous view back"><input type="checkbox" id="chkUsed" ${S.usedView && S.isoSnap ? 'checked' : ''}>Show the components used in this definition</label></div>
       <div id="exprMsg">${regionMsg(r)}</div>
       ${lk ? '<div class="muted" style="font-size:12px">ⓘ Managed by the combination above.</div><!--' : ''}<div class="row2">${opts}</div>
       <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
@@ -2006,6 +2006,8 @@
 
   /* ---------- Region definition: chips, object picker, "show used components" ---------- */
   const bodyByName = (n) => S.model.bodies.find(b => b.name === n);
+  /** Name written in the INP file for a body (its own name when it is not exported): what chips and the object list show in a region definition. */
+  const inpLabel = (b, map) => (b && !b.noExport && (map || FK.inpNames(S.model).bodies).get(b)) || (b ? b.name : '');
   /** Tokens of an expression with their position: [{ t, s, e }]. */
   function exprTokens(v) {
     const re = /\s*([+\-|()]|[A-Za-z_][A-Za-z0-9_]*|\S)/g, out = []; let m;
@@ -2026,7 +2028,7 @@
   const exprRich = (lk) => !!lk || S.opt.exprText !== true;
   function renderExprChips() {
     const box = $('#exprChips'), { ta } = exprEls(); if (!box || !ta) return;
-    const v = ta.value, tk = exprTokens(v), terms = new Map(exprTerms(v).map(x => [x.s, x]));
+    const v = ta.value, tk = exprTokens(v), terms = new Map(exprTerms(v).map(x => [x.s, x])), inm = FK.inpNames(S.model).bodies;
     let h = '';
     const st = S.exprSel && S.sel && S.exprSel.id === S.sel.id ? S.exprSel : { s: v.length }, caret = '<span class="ccaret"></span>';
     let placed = false; const at = Math.min(st.s, v.length);
@@ -2035,7 +2037,7 @@
       const t = tk[i], term = terms.get(t.s);
       if (term) {
         const b = bodyByName(term.name);
-        h += `<span class="chip ${term.sign < 0 ? 'neg' : 'pos'}${b ? '' : ' bad'}" data-s="${term.s}" data-e="${term.e}" data-n="${esc(term.name)}" title="${b ? esc(term.name + ' · ' + (b.type === 'RAW' ? b.rawType : b.type)) : 'Unknown object'}"><i class="cdot" style="background:${b ? b.color : '#bbb'}"></i><b>${term.sign < 0 ? '−' : '+'}</b>${esc(term.name)}</span>`;
+        h += `<span class="chip ${term.sign < 0 ? 'neg' : 'pos'}${b ? '' : ' bad'}" data-s="${term.s}" data-e="${term.e}" data-n="${esc(term.name)}" title="${b ? esc(term.name + ' · ' + (b.type === 'RAW' ? b.rawType : b.type) + (inpLabel(b, inm) !== term.name ? ' · written ' + inpLabel(b, inm) + ' in the INP file' : '')) : 'Unknown object'}"><i class="cdot" style="background:${b ? b.color : '#bbb'}"></i><b>${term.sign < 0 ? '−' : '+'}</b>${esc(b ? inpLabel(b, inm) : term.name)}</span>`;
         if (!term.implicit) i++;
       } else if (t.t === '|') h += `<span class="cop" data-e="${t.e}">∪</span>`;
       else if (t.t === '+' || t.t === '-') h += `<span class="cop" data-e="${t.e}">${t.t === '-' ? '−' : '+'}</span>`;
@@ -2082,8 +2084,8 @@
   }
   /** Object list (custom, with colour bullets) grouped as in the tree: Planes / Bodies, then user groups. */
   function termPickerHTML() {
-    const cur = bodyByName(S.termSel) ? S.termSel : '';
-    const opt = (b) => `<button type="button" class="tpopt${b.name === cur ? ' on' : ''}" data-act="tpPick" data-n="${esc(b.name)}"><i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(b.name)}</span><small>${esc(b.type === 'RAW' ? b.rawType || 'RAW' : b.type)}${b.noExport ? ' · ⊘' : ''}</small></button>`;
+    const cur = bodyByName(S.termSel) ? S.termSel : '', inm = FK.inpNames(S.model).bodies;
+    const opt = (b) => `<button type="button" class="tpopt${b.name === cur ? ' on' : ''}" data-act="tpPick" data-n="${esc(b.name)}" title="${esc(b.name)}"><i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(inpLabel(b, inm))}</span><small>${esc(b.type === 'RAW' ? b.rawType || 'RAW' : b.type)}${b.noExport ? ' · ⊘' : ''}</small></button>`;
     let list = '';
     for (const c of [{ k: 'planes', t: 'Planes', f: (b) => FK.isPlaneType(b.type) }, { k: 'bodies', t: 'Bodies', f: (b) => !FK.isPlaneType(b.type) }]) {
       const all = S.model.bodies.filter(c.f); if (!all.length) continue;
@@ -2094,7 +2096,7 @@
     const cb = bodyByName(cur);
     return `<div class="tpick" id="termPick"><input type="hidden" id="termBody" value="${esc(cur)}"><button type="button" class="tpbtn" data-act="tpToggle" title="Object to insert with + add / − subtract">${tpLabel(cb)}</button><div class="tplist" hidden>${list || '<div class="empty">No object</div>'}</div></div>`;
   }
-  const tpLabel = (b) => b ? `<i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(b.name)}</span><span class="car">▾</span>` : '<span class="nm muted">— choose an object —</span><span class="car">▾</span>';
+  const tpLabel = (b) => b ? `<i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(inpLabel(b))}</span><span class="car">▾</span>` : '<span class="nm muted">— choose an object —</span><span class="car">▾</span>';
   function setTermSel(name) {
     S.termSel = name || ''; const h = $('#termBody'); if (h) h.value = S.termSel;
     const btn = $('#termPick .tpbtn'); if (btn) { btn.innerHTML = tpLabel(bodyByName(S.termSel)); btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 1200); }
@@ -2229,9 +2231,10 @@
     }
     switch (k) {
       case 'name':
+        if (e.type === 'input' && (type === 'body' || type === 'region')) { const c = t.selectionStart, v = t.value.replace(/[^A-Za-z0-9_]/g, '_'); if (v !== t.value) { t.value = v; try { t.setSelectionRange(c, c); } catch (err) { /* ignore */ } } return; }
         if (e.type !== 'change') return;
-        if (type === 'body') { if (!APP.renameBody(it, t.value)) t.value = it.name; }
-        else if (type === 'region') { if (!APP.renameRegion(it, t.value)) t.value = it.name; }
+        if (type === 'body') { if (!APP.renameBody(it, t.value)) t.value = it.name; else t.value = it.name; }
+        else if (type === 'region') { if (!APP.renameRegion(it, t.value)) t.value = it.name; else t.value = it.name; }
         else if (type === 'stl') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
         else if (type === 'csys') { if (!APP.renameCsys(it, t.value)) t.value = it.name; }
         else if (type === 'material') { if (!APP.renameMaterial(it, t.value)) t.value = it.name; else t.value = it.name; }

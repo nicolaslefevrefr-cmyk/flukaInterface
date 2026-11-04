@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.29.0)
+# Combinatorial Geometry Tool  (v1.29.2)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,8 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.29.2** — Names of bodies and regions can no longer contain spaces or special characters (they would break the region expressions, where a space separates the terms): letters, digits and _ only, other characters are replaced by _ while typing, at creation and on import; the expressions follow a renamed object. Older projects with such names are repaired when they are loaded.
+- **1.29.1** — Region definition: the chips and the object list show the name written in the INP file (the object name is in the tooltip); the expression itself still holds the object names, and the INP is written with the INP names (checked).
 - **1.29.0** — Tree view: **multi-selection** (Ctrl / ⌘ + click toggles, Shift + click selects a range, same category only). A selection can be dragged into a group, shown / hidden, exported or not, renamed and deleted at once (right panel summary, right-click menu, Delete key; one undo step). Right-click menus (single item, selection, group, category) get *Export to the INP file* / *Do not export*, and *Rename the INP names…*; groups also offer *Select the members*. **Rename the INP names**: prefix for bodies, planes and regions + number (optionally with the body type, zero padding, first number), for every exported object or only the selected ones; only the names written in the INP file change, with a preview and checks (8 characters, letters / digits / _, no duplicates); *Back to automatic names* undoes it. The tree shows the INP name in brackets after each exported object (Settings ▸ Display to hide it).
 - **1.28.2** — Definition: the *Text / chips* button is now a check box *Edit the definition as plain text*. In the chips view the insertion point can be moved anywhere, including inside parentheses: click an operator (a click on ")" puts it just before it), or use ← → Home End; Backspace / Delete remove the term before / after it.
 - **1.28.1** — The Backspace key no longer deletes the selected object (Delete still does).
