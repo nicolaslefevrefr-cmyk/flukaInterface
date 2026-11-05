@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.31.1';
+  FK.VERSION = '1.32.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -826,6 +826,12 @@
       out[i + 2] = ((mw[8] * X + mw[9] * Y + mw[10] * Z + mw[11]) - o[2]) / f;
     }
     return out;
+  };
+  /** World matrix of a list of transform steps ([{ m }], applied in order) or null when there is none. */
+  FK.composeSteps = function (steps) {
+    let t = null;
+    for (const st of steps || []) if (st && Array.isArray(st.m) && st.m.length === 12 && st.m.every(isFinite)) t = t ? M.mul(st.m, t) : st.m.slice();
+    return t && !M.isIdentity(t, 1e-12) ? t : null;
   };
   FK.M = M;
 

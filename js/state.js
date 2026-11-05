@@ -52,7 +52,7 @@
 
   /* ---------- Local storage ---------- */
   const KEY = 'fluka-geo-tool-v1';
-  const stlMeta = (m) => ({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, n: m.raw ? m.raw.length : 0 });
+  const stlMeta = (m) => ({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, steps: m.steps || [], n: m.raw ? m.raw.length : 0 });
   APP.save = function () {
     try { localStorage.setItem(KEY, JSON.stringify({ model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls: S.stls.map(stlMeta) })); } catch (e) { /* quota / private mode */ }
     clearTimeout(APP._meshT); APP._meshT = setTimeout(() => APP.persistMeshes(), 600);
@@ -61,13 +61,13 @@
   const idbOpen = () => new Promise((res, rej) => { if (typeof indexedDB === 'undefined') return rej(new Error('no IndexedDB')); const r = indexedDB.open('fgt-meshes', 1); r.onupgradeneeded = () => r.result.createObjectStore('raw', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const reqP = (rq) => new Promise((res, rej) => { rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
   const rawStored = new Set();
-  /** Rigid transform (world matrix, cm) baked into the triangles of a mesh. Keeps a session-only history so it can be reverted. */
-  APP.transformStl = function (stl, mw, noHist) {
-    stl.raw = FK.transformMeshRaw(stl.raw, APP.UNIT[stl.unit] || 0.1, stl.offset, mw);
-    if (!noHist) { (stl.hist = stl.hist || []).push(FK.M.inv(mw)); if (stl.hist.length > 50) stl.hist.shift(); }
-    for (const x of [...rawStored]) if (x.startsWith(stl.id + ':')) rawStored.delete(x);
+  /** Rigid transform (world matrix, cm) added to the mesh's list of steps. The triangles stay as imported; the steps are saved with the project. */
+  APP.transformStl = function (stl, mw, label, desc) {
+    (stl.steps = stl.steps || []).push({ label: label || 'Transform', m: mw.slice(), d: desc || null });
     APP.buildStl(stl);
   };
+  APP.removeStlStep = function (stl, i) { if (!stl.steps || !stl.steps[i]) return; stl.steps.splice(i, 1); APP.buildStl(stl); };
+  APP.cleanSteps = (a) => Array.isArray(a) ? a.filter(x => x && Array.isArray(x.m) && x.m.length === 12 && x.m.every(isFinite)).map(x => ({ label: String(x.label || 'Transform'), m: x.m.slice(), d: x.d || null })) : [];
   APP.persistMeshes = async function () {
     try {
       const db = await idbOpen(), tx = db.transaction('raw', 'readwrite'), st = tx.objectStore('raw');
@@ -87,7 +87,7 @@
       for (const m of meta) {
         const rec = await reqP(st.get(m.id)); if (!rec || !rec.raw || S.stls.some(x => x.id === m.id)) continue;
         const raw = rec.raw instanceof Float32Array ? rec.raw : new Float32Array(rec.raw);
-        const s = { id: m.id, name: m.name, format: m.format || 'STL', raw, unit: m.unit || 'mm', offset: m.offset || [0, 0, 0], flip: !!m.flip, visible: m.visible !== false, opacity: m.opacity === undefined ? 0.6 : m.opacity, color: m.color || '#8f9bb0', edges: !!m.edges, grp: m.grp || 0, group: null, mesh: null };
+        const s = { id: m.id, name: m.name, format: m.format || 'STL', raw, unit: m.unit || 'mm', offset: m.offset || [0, 0, 0], flip: !!m.flip, visible: m.visible !== false, opacity: m.opacity === undefined ? 0.6 : m.opacity, color: m.color || '#8f9bb0', edges: !!m.edges, grp: m.grp || 0, steps: APP.cleanSteps(m.steps), group: null, mesh: null };
         APP.buildStl(s); S.stls.push(s); rawStored.add(s.id + ':' + raw.length); n++;
       }
       db.close();
@@ -525,7 +525,7 @@
   /** Project = model + coordinate systems + measures + settings + the source meshes (STL / OBJ triangles). */
   APP.exportProject = async function (withMeshes) {
     const stls = [];
-    if (withMeshes !== false) for (const m of S.stls) stls.push({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, mesh: await packF32(m.raw) });
+    if (withMeshes !== false) for (const m of S.stls) stls.push({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, steps: m.steps || [], mesh: await packF32(m.raw) });
     return JSON.stringify({ app: 'fluka-geo-tool', kind: 'project', version: 4, model: S.model, measures: S.measures, nextId: S.nextId, filter: S.filter, stls });
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
@@ -579,7 +579,7 @@
     const stls = [];
     try {
       for (const m of (o.stls || [])) {
-        stls.push({ id: m.id, name: m.name, format: m.format || 'STL', raw: await unpackF32(m.mesh), unit: m.unit || 'mm', offset: m.offset || [0, 0, 0], flip: !!m.flip, visible: m.visible !== false, opacity: m.opacity === undefined ? 0.6 : m.opacity, color: m.color || '#8f9bb0', edges: !!m.edges, grp: m.grp || 0, group: null, mesh: null });
+        stls.push({ id: m.id, name: m.name, format: m.format || 'STL', raw: await unpackF32(m.mesh), unit: m.unit || 'mm', offset: m.offset || [0, 0, 0], flip: !!m.flip, visible: m.visible !== false, opacity: m.opacity === undefined ? 0.6 : m.opacity, color: m.color || '#8f9bb0', edges: !!m.edges, grp: m.grp || 0, steps: APP.cleanSteps(m.steps), group: null, mesh: null });
       }
     } catch (e) { APP.toast('Mesh data unreadable: ' + e.message); return false; }
     APP.snap();

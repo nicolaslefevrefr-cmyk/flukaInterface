@@ -1952,7 +1952,7 @@
     const names = new Set(S.stls.map(m => m.name));
     comps.forEach((c, k) => {
       let nm = s.name + '_' + (k + 1); for (let q = 2; names.has(nm); q++) nm = s.name + '_' + (k + 1) + ' (' + q + ')'; names.add(nm);
-      const m = { id: APP.nid(), name: nm, file: s.file || s.name, format: s.format, raw: c.positions, unit: s.unit, offset: s.offset.slice(), flip: s.flip, visible: true, opacity: s.opacity, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: c.count <= 80000, group: null, mesh: null };
+      const m = { id: APP.nid(), name: nm, file: s.file || s.name, format: s.format, raw: c.positions, unit: s.unit, offset: s.offset.slice(), flip: s.flip, steps: (s.steps || []).map(x => ({ label: x.label, m: x.m.slice(), d: x.d })), visible: true, opacity: s.opacity, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: c.count <= 80000, group: null, mesh: null };
       APP.buildStl(m); S.stls.push(m);
     });
     if (nLinked) { s.visible = false; toast(`${comps.length} meshes created; the original is kept (hidden) because CG objects are linked to it`); }
@@ -2008,10 +2008,13 @@
         <div class="fld"><label>Angle (°)</label><input type="number" step="1" data-tf="ang" value="${esc(fmt(XF.ang, 6))}"></div></div>
       <div class="muted" style="font-size:12px;margin-top:4px">The rotation axis passes through the origin of the coordinate system; the rotation is done first, then the translation. The mesh is previewed in the 3D view until you click Apply.</div>
       <div class="btns"><button class="btn primary" data-act="tfApply">Apply</button><button class="btn" data-act="tfReset">Reset</button>
-      <button class="btn" data-act="tfUndo" ${s.hist && s.hist.length ? '' : 'disabled'}>Revert last applied${s.hist && s.hist.length ? ` (${s.hist.length})` : ''}</button></div>
+</div>
       <div class="fields" style="margin-top:10px"><div class="fld"><label>Align: from</label><select data-tf="from">${csO(XF.from)}</select></div><div class="fld"><label>to</label><select data-tf="to">${csO(XF.to)}</select></div></div>
       <div class="btns"><button class="btn" data-act="tfAlign" title="Moves the mesh so that the 'from' system lands on the 'to' system (applied immediately)">Align from → to</button></div>
-      <div class="muted" style="font-size:12px;margin-top:4px">The triangles are moved for good (saved with the project). Linked CG objects are not moved.</div></div>`;
+      <h4 style="margin-top:12px"><span>Applied transformations (${(s.steps || []).length})</span></h4>
+      ${(s.steps || []).length ? `<div class="stepl">${s.steps.map((x, i) => `<div class="steprow"><span><b>${i + 1}.</b> ${esc(x.label)}</span><button class="btn sm" data-act="tfDel" data-i="${i}" title="Remove this step (the following ones are kept)">×</button></div>`).join('')}</div>
+      <div class="btns"><button class="btn" data-act="tfClear">Back to the imported position</button></div>` : '<div class="muted" style="font-size:12px">None: the mesh is at its imported position.</div>'}
+      <div class="muted" style="font-size:12px;margin-top:4px">Steps are kept with the project (the imported triangles are never altered) and are applied in order. Each one is stored as a fixed move, so later changes to a coordinate system do not move the mesh. Linked CG objects are not moved.</div></div>`;
     const operations = `${transform}<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button>
       <button class="btn" data-act="cadCompare" title="Colour the CG regions linked to this mesh by their distance to it, volumes and metrics">Compare with CG regions…</button>
@@ -2478,12 +2481,14 @@
         if (act === 'tfApply') mw = xfMatrix();
         else { if ((XF.from | 0) === (XF.to | 0)) { toast('Choose two different coordinate systems'); break; } mw = FK.M.mul(APP.csysWorld(XF.to | 0), FK.M.inv(APP.csysWorld(XF.from | 0))); }
         if (!mw || FK.M.isIdentity(mw, 1e-12)) { toast('Nothing to apply'); break; }
+        const lab = act === 'tfApply' ? [XF.ang ? `Rotate ${XF.axis} ${fmt(XF.ang, 6)}°` : '', XF.d.some(v => v) ? `Translate (${XF.d.map(v => fmt(v, 6)).join(', ')}) cm` : ''].filter(Boolean).join(' + ') + ' in ' + APP.csysLabel(XF.cs | 0) : `Align ${APP.csysLabel(XF.from | 0)} → ${APP.csysLabel(XF.to | 0)}`;
         xfReset();
-        for (const m of list) APP.transformStl(m, mw);
+        for (const m of list) APP.transformStl(m, mw, lab);
         APP.changed({ tree: true, right: true, keepPick: false }); toast(`${list.length} mesh${list.length > 1 ? 'es' : ''} transformed`); break;
       }
       case 'tfReset': xfReset(); renderRight(); break;
-      case 'tfUndo': if (it && S.sel.t === 'stl' && it.hist && it.hist.length) { xfReset(); APP.transformStl(it, it.hist.pop(), true); APP.changed({ tree: true, right: true, keepPick: false }); } break;
+      case 'tfDel': if (it && S.sel.t === 'stl') { xfReset(); APP.removeStlStep(it, +a.dataset.i); APP.changed({ tree: true, right: true, keepPick: false }); } break;
+      case 'tfClear': if (it && S.sel.t === 'stl' && it.steps && it.steps.length) { xfReset(); it.steps = []; APP.buildStl(it); APP.changed({ tree: true, right: true, keepPick: false }); } break;
       case 'rppStl': if (it && it.stats && it.stats.bbox) { const nb = APP.rppFromBox(it.stats.bbox); nb.meta = nb.meta || {}; nb.meta.cad = it.id; APP.changed({ tree: true, right: true }); } break;
       case 'rppMeasure': if (it) APP.createRpp(it.a, it.b); break;
       case 'del': APP.deleteSel(); break;

@@ -255,6 +255,8 @@
     const f = UNIT[stl.unit] || 0.1, raw = stl.raw, n = raw.length;
     const pos = new Float32Array(n);
     for (let i = 0; i < n; i += 3) { pos[i] = raw[i] * f + stl.offset[0]; pos[i + 1] = raw[i + 1] * f + stl.offset[1]; pos[i + 2] = raw[i + 2] * f + stl.offset[2]; }
+    const mt = FK.composeSteps(stl.steps);
+    if (mt) for (let i = 0; i < n; i += 3) { const X = pos[i], Y = pos[i + 1], Z = pos[i + 2]; pos[i] = mt[0] * X + mt[1] * Y + mt[2] * Z + mt[3]; pos[i + 1] = mt[4] * X + mt[5] * Y + mt[6] * Z + mt[7]; pos[i + 2] = mt[8] * X + mt[9] * Y + mt[10] * Z + mt[11]; }
     stl.positions = pos;
     stl.stats = FK.meshStats(pos);
     const g = new THREE.BufferGeometry();

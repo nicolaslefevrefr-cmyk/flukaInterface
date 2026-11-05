@@ -603,3 +603,5 @@ span.chev { width: 13px; margin: 0 5px 0 4px; flex: none; }
 .spane[hidden] { display: none; } .spane h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .matrow { display: flex; align-items: center; gap: 6px; margin: 3px 0; } .matrow input { flex: 1; min-width: 0; } .matrow small { color: var(--muted); min-width: 60px; text-align: right; }
 #dlgSettings { width: min(620px, 96vw); } #settingsBody { min-height: 300px; }
+
+.stepl { margin: 4px 0; } .steprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12.5px; border-bottom: 1px solid var(--line); } .steprow .btn { padding: 1px 8px; }
