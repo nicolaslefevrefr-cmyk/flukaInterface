@@ -1966,8 +1966,28 @@
       <div class="muted" style="font-size:12.5px">${n ? `${L.bodies.length} bod${L.bodies.length === 1 ? 'y' : 'ies'} · ${L.planes.length} plane${L.planes.length === 1 ? '' : 's'} · ${L.regions.length} region${L.regions.length === 1 ? '' : 's'}` : 'None yet (planes picked on a face, detected features and regions made of them are linked automatically).'}</div>
       ${n ? `<div class="btns"><button class="btn sm" data-act="cadShow">Show</button><button class="btn sm" data-act="cadHide">Hide</button><button class="btn sm" data-act="cadIsolate" title="Show only this mesh and what is linked to it">Isolate</button></div>` : ''}</div>`;
   }
-  const XF = { cs: 0, d: [0, 0, 0], axis: 'Z', ang: 90, from: 0, to: 0 };
+  const XF = { id: 0, cs: 0, d: [0, 0, 0], axis: 'Z', ang: 0, from: 0, to: 0 };
+  const xfTargets = () => { const nm = multiList(); return nm ? nm.filter(x => x.t === 'stl').map(x => x.o) : (S.sel && S.sel.t === 'stl' && APP.selItem() ? [APP.selItem()] : []); };
+  /** translation (in the csys axes) after a rotation about the csys axis; null when there is nothing to do */
+  function xfMatrix() {
+    const w = APP.csysWorld(XF.cs | 0);
+    const R = XF.ang ? FK.M.axisAngle(APP.csAxisOf(XF.cs, XF.axis), XF.ang, [w[3], w[7], w[11]]) : FK.M.id();
+    const mw = FK.M.mul(FK.M.translation(FK.M.applyVec(w, XF.d)), R);
+    return FK.M.isIdentity(mw, 1e-12) ? null : mw;
+  }
+  /** live preview: the mesh is moved on screen only (triangles untouched) until Apply */
+  function xfPreview() {
+    const mw = xfMatrix(), tg = new Set(xfTargets());
+    for (const m of S.stls) {
+      if (!m.group) continue;
+      if (tg.has(m) && mw) { m.group.matrixAutoUpdate = false; m.group.matrix.set(mw[0], mw[1], mw[2], mw[3], mw[4], mw[5], mw[6], mw[7], mw[8], mw[9], mw[10], mw[11], 0, 0, 0, 1); m.group.matrixWorldNeedsUpdate = true; m.xfPrev = true; }
+      else if (m.xfPrev) { m.group.matrix.identity(); m.group.matrixAutoUpdate = true; m.xfPrev = false; }
+    }
+    APP.requestRender();
+  }
+  function xfReset() { XF.d = [0, 0, 0]; XF.ang = 0; xfPreview(); }
   function stlProps(s) {
+    if (XF.id !== s.id) { XF.id = s.id; XF.d = [0, 0, 0]; XF.ang = 0; }
     const unitOpts = ['mm', 'cm', 'm', 'in'].map(u => `<option ${s.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     const general = `<div class="sec"><h4><span>Mesh file</span></h4><div class="fields">
       <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(s.name)}"></div>${s.file ? `<div class="fld full"><div class="muted" style="font-size:12px">File: ${esc(s.file)}</div></div>` : ''}</div></div>
@@ -1984,14 +2004,13 @@
     const transform = `<div class="sec"><h4><span>Transform${nSel > 1 ? ` (${nSel} selected meshes)` : ''}</span></h4>
       <div class="fld full"><label title="Axes and origin used by the translation and the rotation">Coordinate system</label><select data-tf="cs">${csO(XF.cs)}</select></div>
       <div class="fields">${['x', 'y', 'z'].map((L, i) => `<div class="fld"><label>Δ${L.toUpperCase()} (cm)</label><input type="number" step="0.1" data-tf="d${i}" value="${esc(fmt(XF.d[i], 6))}"></div>`).join('')}</div>
-      <div class="btns"><button class="btn" data-act="tfMove">Translate</button></div>
-      <div class="fields" style="margin-top:8px"><div class="fld"><label>Rotation axis</label><select data-tf="axis">${['X', 'Y', 'Z'].map(L => `<option ${XF.axis === L ? 'selected' : ''}>${L}</option>`).join('')}</select></div>
+      <div class="fields" style="margin-top:6px"><div class="fld"><label>Rotation axis</label><select data-tf="axis">${['X', 'Y', 'Z'].map(L => `<option ${XF.axis === L ? 'selected' : ''}>${L}</option>`).join('')}</select></div>
         <div class="fld"><label>Angle (°)</label><input type="number" step="1" data-tf="ang" value="${esc(fmt(XF.ang, 6))}"></div></div>
-      <div class="btns"><button class="btn" data-act="tfRot">Rotate about this axis</button></div>
-      <div class="muted" style="font-size:12px;margin-top:4px">The rotation axis passes through the origin of the coordinate system.</div>
-      <div class="fields" style="margin-top:8px"><div class="fld"><label>From</label><select data-tf="from">${csO(XF.from)}</select></div><div class="fld"><label>To</label><select data-tf="to">${csO(XF.to)}</select></div></div>
-      <div class="btns"><button class="btn" data-act="tfAlign" title="Moves the mesh so that the 'From' system lands on the 'To' system">Align From → To</button>
-      <button class="btn" data-act="tfUndo" ${s.hist && s.hist.length ? '' : 'disabled'}>Revert last transform${s.hist && s.hist.length ? ` (${s.hist.length})` : ''}</button></div>
+      <div class="muted" style="font-size:12px;margin-top:4px">The rotation axis passes through the origin of the coordinate system; the rotation is done first, then the translation. The mesh is previewed in the 3D view until you click Apply.</div>
+      <div class="btns"><button class="btn primary" data-act="tfApply">Apply</button><button class="btn" data-act="tfReset">Reset</button>
+      <button class="btn" data-act="tfUndo" ${s.hist && s.hist.length ? '' : 'disabled'}>Revert last applied${s.hist && s.hist.length ? ` (${s.hist.length})` : ''}</button></div>
+      <div class="fields" style="margin-top:10px"><div class="fld"><label>Align: from</label><select data-tf="from">${csO(XF.from)}</select></div><div class="fld"><label>to</label><select data-tf="to">${csO(XF.to)}</select></div></div>
+      <div class="btns"><button class="btn" data-act="tfAlign" title="Moves the mesh so that the 'from' system lands on the 'to' system (applied immediately)">Align from → to</button></div>
       <div class="muted" style="font-size:12px;margin-top:4px">The triangles are moved for good (saved with the project). Linked CG objects are not moved.</div></div>`;
     const operations = `${transform}<div class="sec"><h4><span>Operations</span></h4>
       <div class="btns"><button class="btn" data-act="rppStl">Bounding RPP</button><button class="btn" data-act="detectFeat">Detect features… <small>(experimental)</small></button>
@@ -2081,6 +2100,7 @@
     root.querySelectorAll('input[type=number][step="0.1"]').forEach(i => { i.step = st; });
   }
   function renderRight() {
+    if (S.stls.some(m => m.xfPrev) && !(S.sel && S.sel.t === 'stl' && S.sel.id === XF.id)) { XF.d = [0, 0, 0]; XF.ang = 0; xfPreview(); }
     let h = '';
     const it = APP.selItem();
     const ml = multiList();
@@ -2324,6 +2344,7 @@
       else if (q === 'ang') { const v = parseFloat(t.value); if (isFinite(v)) XF.ang = v; }
       else if (q === 'axis') XF.axis = t.value;
       else XF[q] = +t.value;
+      if (q === 'cs' || q === 'axis' || q[0] === 'd' || q === 'ang') xfPreview();
       return;
     }
     if (t.dataset.off !== undefined) {
@@ -2451,18 +2472,18 @@
       case 'pickCsysFace': if (pk && pk.kind === 'face') { const c = APP.createCsysWorld(APP.csysFromNormal(pk.centroid, pk.normal)); if (c) toast('Coordinate system ' + c.name + ' created: Z = face normal'); } break;
       case 'pickRppFace': if (pk && pk.bbox) selectedBodyRppFromBox(pk.bbox); break;
       case 'pickRppObj': if (pk) { const bb = APP.objectStats(pk).bbox; if (bb) selectedBodyRppFromBox(bb); } break;
-      case 'tfMove': case 'tfRot': case 'tfAlign': {
-        const nm = multiList(), list = (nm ? nm.filter(x => x.t === 'stl').map(x => x.o) : []).concat(nm ? [] : (it && S.sel.t === 'stl' ? [it] : []));
-        if (!list.length) break;
-        const W = (id) => APP.csysWorld(id | 0); let mw = null;
-        if (act === 'tfMove') { const v = FK.M.applyVec(W(XF.cs), XF.d); mw = FK.M.translation(v); }
-        else if (act === 'tfRot') { const w = W(XF.cs); mw = FK.M.axisAngle(APP.csAxisOf(XF.cs, XF.axis), XF.ang, [w[3], w[7], w[11]]); }
-        else { if ((XF.from | 0) === (XF.to | 0)) { toast('Choose two different coordinate systems'); break; } mw = FK.M.mul(W(XF.to), FK.M.inv(W(XF.from))); }
-        if (!mw || FK.M.isIdentity(mw, 1e-12)) { toast('Nothing to do'); break; }
+      case 'tfApply': case 'tfAlign': {
+        const list = xfTargets(); if (!list.length) break;
+        let mw;
+        if (act === 'tfApply') mw = xfMatrix();
+        else { if ((XF.from | 0) === (XF.to | 0)) { toast('Choose two different coordinate systems'); break; } mw = FK.M.mul(APP.csysWorld(XF.to | 0), FK.M.inv(APP.csysWorld(XF.from | 0))); }
+        if (!mw || FK.M.isIdentity(mw, 1e-12)) { toast('Nothing to apply'); break; }
+        xfReset();
         for (const m of list) APP.transformStl(m, mw);
         APP.changed({ tree: true, right: true, keepPick: false }); toast(`${list.length} mesh${list.length > 1 ? 'es' : ''} transformed`); break;
       }
-      case 'tfUndo': if (it && S.sel.t === 'stl' && it.hist && it.hist.length) { APP.transformStl(it, it.hist.pop(), true); APP.changed({ tree: true, right: true, keepPick: false }); } break;
+      case 'tfReset': xfReset(); renderRight(); break;
+      case 'tfUndo': if (it && S.sel.t === 'stl' && it.hist && it.hist.length) { xfReset(); APP.transformStl(it, it.hist.pop(), true); APP.changed({ tree: true, right: true, keepPick: false }); } break;
       case 'rppStl': if (it && it.stats && it.stats.bbox) { const nb = APP.rppFromBox(it.stats.bbox); nb.meta = nb.meta || {}; nb.meta.cad = it.id; APP.changed({ tree: true, right: true }); } break;
       case 'rppMeasure': if (it) APP.createRpp(it.a, it.b); break;
       case 'del': APP.deleteSel(); break;
