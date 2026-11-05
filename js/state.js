@@ -52,8 +52,41 @@
 
   /* ---------- Local storage ---------- */
   const KEY = 'fluka-geo-tool-v1';
+  const stlMeta = (m) => ({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, n: m.raw ? m.raw.length : 0 });
   APP.save = function () {
-    try { localStorage.setItem(KEY, JSON.stringify({ model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter })); } catch (e) { /* quota / private mode */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls: S.stls.map(stlMeta) })); } catch (e) { /* quota / private mode */ }
+    clearTimeout(APP._meshT); APP._meshT = setTimeout(() => APP.persistMeshes(), 600);
+  };
+  /* The triangles of the meshes are kept in IndexedDB (too big for localStorage), so that a page reload brings the meshes back. */
+  const idbOpen = () => new Promise((res, rej) => { if (typeof indexedDB === 'undefined') return rej(new Error('no IndexedDB')); const r = indexedDB.open('fgt-meshes', 1); r.onupgradeneeded = () => r.result.createObjectStore('raw', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const reqP = (rq) => new Promise((res, rej) => { rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+  const rawStored = new Set();
+  APP.persistMeshes = async function () {
+    try {
+      const db = await idbOpen(), tx = db.transaction('raw', 'readwrite'), st = tx.objectStore('raw');
+      const keep = new Set(S.stls.map(m => m.id));
+      for (const k of await reqP(st.getAllKeys())) if (!keep.has(k)) { st.delete(k); for (const x of [...rawStored]) if (x.startsWith(k + ':')) rawStored.delete(x); }
+      for (const m of S.stls) { const key = m.id + ':' + (m.raw ? m.raw.length : 0); if (m.raw && !rawStored.has(key)) { st.put({ id: m.id, raw: m.raw }); rawStored.add(key); } }
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+      db.close();
+    } catch (e) { /* private mode / quota: the meshes simply are not kept */ }
+  };
+  /** After a page reload: rebuilds the meshes listed in the local storage from IndexedDB. Returns the number restored. */
+  APP.restoreMeshes = async function () {
+    let n = 0;
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY) || 'null'); const meta = (o && o.stls) || []; if (!meta.length) return 0;
+      const db = await idbOpen(), st = db.transaction('raw', 'readonly').objectStore('raw');
+      for (const m of meta) {
+        const rec = await reqP(st.get(m.id)); if (!rec || !rec.raw || S.stls.some(x => x.id === m.id)) continue;
+        const raw = rec.raw instanceof Float32Array ? rec.raw : new Float32Array(rec.raw);
+        const s = { id: m.id, name: m.name, format: m.format || 'STL', raw, unit: m.unit || 'mm', offset: m.offset || [0, 0, 0], flip: !!m.flip, visible: m.visible !== false, opacity: m.opacity === undefined ? 0.6 : m.opacity, color: m.color || '#8f9bb0', edges: !!m.edges, grp: m.grp || 0, group: null, mesh: null };
+        APP.buildStl(s); S.stls.push(s); rawStored.add(s.id + ':' + raw.length); n++;
+      }
+      db.close();
+    } catch (e) { return n; }
+    if (n) APP.changed({ tree: true, right: true });
+    return n;
   };
   APP.load = function () {
     try {
@@ -67,7 +100,7 @@
         if (!(o.opt && o.opt.v118)) { S.opt.style = 2; S.opt.inpFull = true; S.opt.v118 = true; }   // new defaults (compact aligned style, complete input file), applied once
         S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
         if (o.filter) S.filter = o.filter;
-        let mx = S.nextId; for (const a of [S.model.bodies, S.model.regions, S.measures, S.model.csys]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
+        let mx = S.nextId; for (const a of [S.model.bodies, S.model.regions, S.measures, S.model.csys, o.stls || []]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
         S.nextId = mx; APP.sanitizeNames();
         return true;
       }
@@ -483,11 +516,40 @@
     return new Float32Array(buf);
   }
   /** Project = model + coordinate systems + measures + settings + the source meshes (STL / OBJ triangles). */
-  APP.exportProject = async function () {
+  APP.exportProject = async function (withMeshes) {
     const stls = [];
-    for (const m of S.stls) stls.push({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, mesh: await packF32(m.raw) });
-    return JSON.stringify({ app: 'fluka-geo-tool', version: 3, model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls });
+    if (withMeshes !== false) for (const m of S.stls) stls.push({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, mesh: await packF32(m.raw) });
+    return JSON.stringify({ app: 'fluka-geo-tool', kind: 'project', version: 4, model: S.model, measures: S.measures, nextId: S.nextId, filter: S.filter, stls });
   };
+  /* ---------- Configuration file (settings only, no geometry) ---------- */
+  const OPT0 = JSON.parse(JSON.stringify(S.opt));
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+    'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
+    'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
+  /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
+  APP.exportConfig = function () {
+    const settings = {};
+    for (const k of APP.CONFIG_KEYS) if (S.opt[k] !== undefined) settings[k] = JSON.parse(JSON.stringify(S.opt[k]));
+    return JSON.stringify({ app: 'fluka-geo-tool', kind: 'config', version: 1, settings, materials: (S.model.materials || []).map(m => m.name) }, null, 1);
+  };
+  /** Applies a configuration file: only known keys of the same type are taken; missing materials are added. Returns { n, materials } or { error }. */
+  APP.importConfig = function (text) {
+    let o; try { o = JSON.parse(text); } catch (e) { return { error: 'Invalid JSON' }; }
+    if (!o || o.app !== 'fluka-geo-tool' || o.kind !== 'config' || !o.settings || typeof o.settings !== 'object') return { error: 'Not a configuration file (a project file holds geometry: use File ▸ Open project)' };
+    APP.snap(); let n = 0;
+    for (const k of APP.CONFIG_KEYS) {
+      if (!(k in o.settings)) continue;
+      const v = o.settings[k], ref = OPT0[k] !== undefined ? OPT0[k] : S.opt[k];
+      if (ref !== undefined && ref !== null && typeof ref !== typeof v) continue;
+      if (typeof v === 'number' && !isFinite(v)) continue;
+      S.opt[k] = JSON.parse(JSON.stringify(v)); n++;
+    }
+    let mats = 0;
+    if (Array.isArray(o.materials)) { S.model.materials = S.model.materials || FK.defaultMaterials(); for (const nm of o.materials) { const c = FK.cleanMaterialName(nm); if (c && !S.model.materials.some(m => m.name === c)) { APP.materialByName(c, true); mats++; } } }
+    return { n, materials: mats };
+  };
+  /** Back to the default settings (the geometry is untouched). */
+  APP.resetConfig = function () { for (const k of APP.CONFIG_KEYS) { if (OPT0[k] !== undefined) S.opt[k] = JSON.parse(JSON.stringify(OPT0[k])); else delete S.opt[k]; } };
   /** Gives a valid name (see FK.cleanObjectName) to the bodies and regions of older projects; the expressions follow. Returns the number renamed. */
   APP.sanitizeNames = function () {
     let n = 0;
@@ -518,7 +580,7 @@
     S.stls = stls; for (const m of stls) APP.buildStl(m);
     S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
     S.measures = o.measures || [];
-    if (o.opt) Object.assign(S.opt, o.opt);
+    // the settings (tolerances, mouse rotation…) live in the configuration file: older projects that carried them are not allowed to overwrite the current ones
     if (o.filter) S.filter = o.filter;
     let mx = o.nextId || 1000; for (const a of [S.model.bodies, S.model.regions, S.model.csys, S.measures, S.stls]) for (const x of a) mx = Math.max(mx, (x.id || 0) + 1);
     S.nextId = Math.max(S.nextId, mx); S.sel = null; S.pick = null; S.fill = null;

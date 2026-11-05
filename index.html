@@ -8,30 +8,28 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.29.2">
+<link rel="stylesheet" href="css/style.css?v=1.30.0">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
-    <button id="btnLeft" class="ib" aria-label="Project tree" title="Project tree">☰</button>
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.29.2</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.30.0</i></b></div>
     <input id="projName" class="pname" type="text" maxlength="60" spellcheck="false" placeholder="Project name" title="Project name: also the title line of the INP file and the name of the saved files" aria-label="Project name">
-    <button id="btnFile" class="pill" title="Project: new / open / save, import / export">File ▾</button>
+    <button id="btnFile" class="pill" title="Project: new / open / save, import / export, settings">File ▾</button>
+    <button id="btnGeom" class="pill" title="Create bodies, planes, regions, components, coordinate systems…">Geometry ▾</button>
+    <button id="btnViewM" class="pill" title="Display commands (same as the toolbar above the 3D view)">View ▾</button>
+    <button id="btnCheckM" class="pill" title="Surface check and INP check">Check ▾</button>
     <div class="spacer"></div>
     <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)">↶</button>
     <button id="btnRedo" class="ib" title="Redo (Ctrl+Y)">↷</button>
-    <button id="btnInstall" class="pill" hidden>Install</button>
     <button id="btnInp" class="pill" title="GEOBEGIN … GEOEND block">.inp <i id="warnBadge" hidden>0</i></button>
-    <button id="btnSurf" class="pill" title="Surface-sampling consistency check: gaps and overlaps between regions">Surface check</button>
     <button id="btnTheme" class="ib" aria-label="Theme" title="Switch to the dark theme">☾</button>
-    <button id="btnSettings" class="ib" aria-label="Settings" title="Settings">⚙</button>
-    <button id="btnRight" class="ib" aria-label="Properties" title="Properties of the selected item">▤</button>
   </header>
 
   <div id="body">
     <aside id="drawerLeft" class="drawer left">
-      <div class="dhead"><b>Project</b><button class="ib closeD" data-close="left">✕</button></div>
+      <div class="dhead"><b>Project</b></div>
       <div class="treebar" id="treeBar"><input id="treeFilter" type="search" placeholder="Filter by name…" aria-label="Filter the tree" autocomplete="off"><button class="tbtn" id="treeExpand" title="Expand all" aria-label="Expand all">⊞</button><button class="tbtn" id="treeCollapse" title="Collapse all" aria-label="Collapse all">⊟</button></div>
       <div class="dbody" id="leftBody"></div>
       <div class="rsz" data-rsz="left" title="Drag to resize · double-click: fit the longest name"></div>
@@ -131,12 +129,11 @@
     </aside>
 
     <aside id="drawerRight" class="drawer right">
-      <div class="dhead"><b>Properties</b><button class="ib closeD" data-close="right">✕</button></div>
+      <div class="dhead"><b>Properties</b></div>
       <div class="dbody" id="rightBody"></div>
       <div class="rsz" data-rsz="right" title="Drag to resize"></div>
     </aside>
   </div>
-  <div id="scrim"></div>
 </div>
 
 <dialog id="dlgImport">
@@ -285,20 +282,21 @@
 <input type="file" id="fileStl" accept=".stl,.STL,.obj,.OBJ" multiple hidden>
 <input type="file" id="fileInp" accept=".inp,.txt" hidden>
 <input type="file" id="fileProj" accept=".json" hidden>
+<input type="file" id="fileCfg" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.29.2"></script>
-<script src="js/core.js?v=1.29.2"></script>
-<script src="js/state.js?v=1.29.2"></script>
-<script src="js/scene.js?v=1.29.2"></script>
-<script src="js/cut.js?v=1.29.2"></script>
-<script src="js/compare.js?v=1.29.2"></script>
-<script src="js/check.js?v=1.29.2"></script>
-<script src="js/snap.js?v=1.29.2"></script>
-<script src="js/graph.js?v=1.29.2"></script>
-<script src="js/surfcheck.js?v=1.29.2"></script>
-<script src="js/tpl.js?v=1.29.2"></script>
-<script src="js/ui.js?v=1.29.2"></script>
-<script src="js/pwa.js?v=1.29.2"></script>
+<script src="js/lib/three.min.js?v=1.30.0"></script>
+<script src="js/core.js?v=1.30.0"></script>
+<script src="js/state.js?v=1.30.0"></script>
+<script src="js/scene.js?v=1.30.0"></script>
+<script src="js/cut.js?v=1.30.0"></script>
+<script src="js/compare.js?v=1.30.0"></script>
+<script src="js/check.js?v=1.30.0"></script>
+<script src="js/snap.js?v=1.30.0"></script>
+<script src="js/graph.js?v=1.30.0"></script>
+<script src="js/surfcheck.js?v=1.30.0"></script>
+<script src="js/tpl.js?v=1.30.0"></script>
+<script src="js/ui.js?v=1.30.0"></script>
+<script src="js/pwa.js?v=1.30.0"></script>
 </body>
 </html>
