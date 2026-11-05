@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.33.0';
+  FK.VERSION = '1.34.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1982,6 +1982,70 @@
     return res;
   };
   /** Copy of the model carrying the INP names (bodies, regions and the body names used in the region expressions). */
+
+  /* ---------------- Compact: identical planes of the generated INP ---------------- */
+  /** Planes that the INP will contain: user planes (PLA / XYP / XZP / YZP, in the export frame) and the cutting planes generated for rotated RPPs.
+   *  n = unit normal, d = n·point, so "+name" is the half-space n·x < d. owner = name of the body that produces the plane. */
+  FK.planeTable = function (model, opts, split) {
+    split = split || FK.splitObox(model, opts);
+    const out = [], seen = new Set();
+    const add = (name, wb, owner, auto) => {
+      if (!wb || seen.has(name)) return; let n, pt;
+      const p = wb.p;
+      if (wb.type === 'PLA') { const L = V.len([p[0], p[1], p[2]]); if (!(L > 1e-12)) return; n = V.mul([p[0], p[1], p[2]], 1 / L); pt = [p[3], p[4], p[5]]; }
+      else if (wb.type === 'XYP') { n = [0, 0, 1]; pt = [0, 0, p[0]]; } else if (wb.type === 'XZP') { n = [0, 1, 0]; pt = [0, p[0], 0]; } else if (wb.type === 'YZP') { n = [1, 0, 0]; pt = [p[0], 0, 0]; } else return;
+      seen.add(name); out.push({ name, n, d: V.dot(n, pt), owner, auto: !!auto, type: wb.type });
+    };
+    for (const b of model.bodies) {
+      if (b.noExport || b.type === 'RAW') continue;
+      const sp = split.get(b.name);
+      if (sp) { for (const pl of sp.planes) add(pl.name, pl.body, b.name, true); continue; }
+      if (FK.isPlaneType(b.type)) add(b.name, opts && opts.resolve ? opts.resolve(b) : b, b.name, false);
+    }
+    return out;
+  };
+  const samePlane = (a, b, tolA, tolD) => {          // → 1 (same), -1 (same plane, opposite side) or 0
+    const dn = Math.hypot(a.n[0] - b.n[0], a.n[1] - b.n[1], a.n[2] - b.n[2]), dp = Math.hypot(a.n[0] + b.n[0], a.n[1] + b.n[1], a.n[2] + b.n[2]);
+    if (dn <= tolA && Math.abs(a.d - b.d) <= tolD) return 1;
+    if (dp <= tolA && Math.abs(a.d + b.d) <= tolD) return -1;
+    return 0;
+  };
+  /** Groups of planes that coincide within tolA (normal difference, radians) and tolD (cm). Returns [{ keep, drops:[{ name, sign, dn, dd, owner }] }]. */
+  FK.findPlaneMerges = function (model, opts, tolA, tolD) {
+    const tab = FK.planeTable(model, opts).sort((a, b) => (a.auto ? 1 : 0) - (b.auto ? 1 : 0)), groups = [];   // user planes first: they are the ones kept
+    for (const p of tab) {
+      let g = null, sg = 0;
+      for (const q of groups) { sg = samePlane(q.keep, p, tolA, tolD); if (sg) { g = q; break; } }
+      if (!g) { groups.push({ keep: p, drops: [] }); continue; }
+      const dn = Math.hypot(p.n[0] - sg * g.keep.n[0], p.n[1] - sg * g.keep.n[1], p.n[2] - sg * g.keep.n[2]);
+      g.drops.push({ name: p.name, sign: sg, dn, dd: Math.abs(sg * p.d - g.keep.d), owner: p.owner, auto: p.auto });
+    }
+    return groups.filter(g => g.drops.length);
+  };
+  /** Accepted merges (model.merges = [{ keep, drop, sign, tolA, tolD }]) that still hold for the current geometry: Map drop → { keep, sign }; `stale` lists the others. */
+  FK.activeMerges = function (model, opts, split) {
+    const act = new Map(), stale = [], ms = model.merges || [];
+    if (!ms.length) return { act, stale };
+    const tab = new Map(FK.planeTable(model, opts, split).map(p => [p.name, p]));
+    for (const m of ms) {
+      const a = tab.get(m.keep), b = tab.get(m.drop);
+      if (a && b && m.keep !== m.drop && !ms.some(x => x.drop === m.keep) && samePlane(a, b, (m.tolA || 1e-7) * 1.0001, (m.tolD || 1e-6) * 1.0001) === m.sign) act.set(m.drop, { keep: m.keep, sign: m.sign });
+      else stale.push(m);
+    }
+    return { act, stale };
+  };
+  /** Replaces merged planes by the plane kept (sign flipped when it is the opposite side) and removes repeated terms. */
+  FK.applyMergesToExpr = function (ast, mg) {
+    for (const z of ast.zones) {
+      const seen = new Set(), out = [];
+      for (const t of z) {
+        if (t.sub) { FK.applyMergesToExpr(t.sub, mg); out.push(t); continue; }
+        const m = mg.get(t.name); if (m) { t.name = m.keep; t.sign = t.sign * m.sign; }
+        const key = (t.sign < 0 ? '-' : '+') + t.name; if (seen.has(key)) continue; seen.add(key); out.push(t);
+      }
+      z.length = 0; z.push(...out);
+    }
+  };
   FK.inpView = function (model) {
     const nm = FK.inpNames(model), byName = new Map();
     const bodies = model.bodies.map(b => { const n = nm.bodies.get(b); byName.set(b.name, n); return n === b.name ? b : Object.assign({}, b, { name: n }); });
@@ -2020,6 +2084,11 @@
         else if (wb.type === 'ICC') w.push(`Body "${b.name}": oblique infinite cylinder → exported as QUA`);
         else if (wb.type === 'PLA' && b.type !== 'PLA') w.push(`Body "${b.name}" (${b.type}): oblique plane exported as PLA`);
       }
+    }
+    if (model.merges && model.merges.length && resolve) {
+      const am = FK.activeMerges(FK.inpView(model), { resolve });
+      if (am.act.size) w.push(`${am.act.size} plane${am.act.size > 1 ? 's' : ''} merged into identical ones on export (Check ▸ Compact)`);
+      if (am.stale.length) w.push(`${am.stale.length} accepted plane merge${am.stale.length > 1 ? 's' : ''} no longer valid (the geometry changed) and ignored: ${am.stale.slice(0, 4).map(m => m.drop + '→' + m.keep).join(', ')}${am.stale.length > 4 ? '…' : ''}`);
     }
     for (const r of model.regions) {
       check(r, 'Region', inm.regions);
@@ -2163,11 +2232,11 @@
     const out = [];
     const title = (model.title || 'Geometry').replace(/\s+$/, '');
     for (const l of FK.geoHeader(title, opts)) out.push(l);
-    const split = FK.splitObox(model, opts);
+    const split = FK.splitObox(model, opts), mg = FK.activeMerges(model, opts, split).act;
     for (const b of model.bodies) {
-      if (b.noExport) continue;
+      if (b.noExport || mg.has(b.name)) continue;
       const sp = split.get(b.name);
-      if (sp) { out.push(FK.exportBodyText(sp.rpp, b.name, style, opts)); sp.planes.forEach(pl => out.push(FK.exportBodyText(pl.body, pl.name, style, opts))); }
+      if (sp) { out.push(FK.exportBodyText(sp.rpp, b.name, style, opts)); sp.planes.forEach(pl => { if (!mg.has(pl.name)) out.push(FK.exportBodyText(pl.body, pl.name, style, opts)); }); }
       else out.push(bodyLine(b, style, opts));
     }
     out.push('END');
@@ -2177,6 +2246,7 @@
       try {
         const ast = FK.parseExpr(expr);
         if (split.size) FK.expandSplitTerms(ast, split);
+        if (mg.size) FK.applyMergesToExpr(ast, mg);
         expr = FK.formatExpr(ast);
       } catch (e) { /* garder tel quel */ }
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);

@@ -8,13 +8,13 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=1.33.0">
+<link rel="stylesheet" href="css/style.css?v=1.34.0">
 </head>
 <body>
 <div id="updBar" hidden><span>A new version <b id="updVer"></b> is available.</span><button id="updGo">Reload</button><button id="updLater">Later</button></div>
 <div id="app">
   <header id="topbar">
-    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.33.0</i></b></div>
+    <div class="brand"><b>Combinatorial Geometry Tool <i id="verTag" class="ver">v1.34.0</i></b></div>
     <input id="projName" class="pname" type="text" maxlength="60" spellcheck="false" placeholder="Project name" title="Project name: also the title line of the INP file and the name of the saved files" aria-label="Project name">
     <button id="btnFile" class="pill" title="Project: new / open / save, import / export, settings">File ▾</button>
     <button id="btnGeom" class="pill" title="Create bodies, planes, regions, components, coordinate systems…">Geometry ▾</button>
@@ -235,6 +235,23 @@
   </form>
   <div class="fw-rs" title="Resize"></div>
 </dialog>
+<dialog id="dlgCompact" class="featwin graphwin surfwin cmpwin">
+  <form method="dialog">
+    <div class="fw-h"><b>Compact <small class="muted">merge duplicates</small></b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
+    <div class="sf-opts">
+      <div class="cmp-tabs"><button type="button" class="pill on" data-cmp="cs">Coordinate systems</button><button type="button" class="pill" data-cmp="pl">Planes of the INP</button></div>
+      <div class="sf-grid">
+        <label title="Two orientations closer than this are considered the same / two plane normals closer than this are the same direction">Angle (°)<input type="number" id="cmpAng" min="0" step="0.001" value="0.02"></label>
+        <label title="Coordinate systems: largest displacement allowed for the bodies when they are moved to the other system. Planes: largest offset between two planes">Distance (cm)<input type="number" id="cmpDist" min="0" step="0.001" value="0.01"></label>
+        <div class="dlgBtns" style="align-self:end;justify-content:flex-start"><button type="button" class="pill primary" id="cmpRun">Analyze</button></div>
+      </div>
+      <div id="cmpHelp" class="muted" style="font-size:12px"></div>
+    </div>
+    <div id="cmpSum" class="sf-sum"></div>
+    <div id="cmpList"></div>
+  </form>
+  <div class="fw-rs" title="Resize"></div>
+</dialog>
 <dialog id="dlgDev" class="featwin devwin">
   <form method="dialog">
     <div class="fw-h"><b>CAD ↔ CG comparison</b><span class="fw-ctl"><button type="button" class="ib" value="close" aria-label="Close">✕</button></span></div>
@@ -285,18 +302,18 @@
 <input type="file" id="fileCfg" accept=".json" hidden>
 <div id="toast" role="status"></div>
 
-<script src="js/lib/three.min.js?v=1.33.0"></script>
-<script src="js/core.js?v=1.33.0"></script>
-<script src="js/state.js?v=1.33.0"></script>
-<script src="js/scene.js?v=1.33.0"></script>
-<script src="js/cut.js?v=1.33.0"></script>
-<script src="js/compare.js?v=1.33.0"></script>
-<script src="js/check.js?v=1.33.0"></script>
-<script src="js/snap.js?v=1.33.0"></script>
-<script src="js/graph.js?v=1.33.0"></script>
-<script src="js/surfcheck.js?v=1.33.0"></script>
-<script src="js/tpl.js?v=1.33.0"></script>
-<script src="js/ui.js?v=1.33.0"></script>
-<script src="js/pwa.js?v=1.33.0"></script>
+<script src="js/lib/three.min.js?v=1.34.0"></script>
+<script src="js/core.js?v=1.34.0"></script>
+<script src="js/state.js?v=1.34.0"></script>
+<script src="js/scene.js?v=1.34.0"></script>
+<script src="js/cut.js?v=1.34.0"></script>
+<script src="js/compare.js?v=1.34.0"></script>
+<script src="js/check.js?v=1.34.0"></script>
+<script src="js/snap.js?v=1.34.0"></script>
+<script src="js/graph.js?v=1.34.0"></script>
+<script src="js/surfcheck.js?v=1.34.0"></script>
+<script src="js/tpl.js?v=1.34.0"></script>
+<script src="js/ui.js?v=1.34.0"></script>
+<script src="js/pwa.js?v=1.34.0"></script>
 </body>
 </html>

@@ -558,10 +558,11 @@
       if (rm === 'cgop') return isMesh ? Math.min(0.3, op) + bump : 1;
       return Math.min(1, op + bump);
     };
+    const hl = (id) => S.hlId === id || (S.hlSet && S.hlSet.has(id));
     const style = (c, item, plane, isSel, col) => {
       const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
-      c.group.visible = shown(item) || S.hlId === item.id;
-      c.mesh.visible = item.opacity > 0.004 || S.hlId === item.id;
+      c.group.visible = shown(item) || hl(item.id);
+      c.mesh.visible = item.opacity > 0.004 || hl(item.id);
       m.color.set(item.color); m.opacity = o;
       const solid = o >= 0.995 && !plane; m.transparent = !solid; m.depthWrite = solid;
       c.lines.visible = edgesOn && rm !== 'wire';
@@ -570,11 +571,11 @@
     };
     for (const b of S.model.bodies) {
       const c = bodyC.get(b.id); if (!c || !c.group) continue;
-      style(c, b, FK.isPlaneType(b.type), (sel && sel.t === 'body' && sel.id === b.id) || S.hlId === b.id);
+      style(c, b, FK.isPlaneType(b.type), (sel && sel.t === 'body' && sel.id === b.id) || hl(b.id));
     }
     for (const r of S.model.regions) {
       const c = regC.get(r.id); if (!c || !c.group) continue;
-      style(c, r, false, sel && sel.t === 'region' && sel.id === r.id);
+      style(c, r, false, (sel && sel.t === 'region' && sel.id === r.id) || hl(r.id));
     }
     for (const s of S.stls) {
       if (!s.group) continue;

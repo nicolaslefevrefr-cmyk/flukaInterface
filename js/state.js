@@ -216,6 +216,62 @@
     }
     return { ok: false, msg: 'Unknown fix' };
   };
+
+  /* ---------- Compact: coordinate systems that are (almost) the same ---------- */
+  const CS_TYPES = new Set(['SPH', 'RCC', 'TRC', 'PLA', 'XYP', 'XZP', 'YZP', 'RPP', 'XCC', 'YCC', 'ZCC']);
+  function localRef(b) {
+    const p = b.p;
+    switch (b.type) {
+      case 'PLA': return [p[3], p[4], p[5]]; case 'XYP': return [0, 0, p[0]]; case 'XZP': return [0, p[0], 0]; case 'YZP': return [p[0], 0, 0];
+      case 'XCC': return [0, p[0], p[1]]; case 'YCC': return [p[1], 0, p[0]]; case 'ZCC': return [p[0], p[1], 0];
+    }
+    const bb = FK.bodyBBox(b); return [0, 1, 2].map(k => (bb.min[k] + bb.max[k]) / 2);
+  }
+  /** Body of frame `from` re-expressed in frame `to` by a pure translation (the small rotation between the frames is dropped). Returns { body, shift } (shift = largest displacement of the corners, cm). */
+  function reexpress(b, rel) {
+    const c = localRef(b), q = M.apply(rel, c), t = [q[0] - c[0], q[1] - c[1], q[2] - c[2]];
+    const nb = FK.worldBody(JSON.parse(JSON.stringify(b)), M.translation(t));
+    let shift = 0;
+    if (!FK.isInfiniteType(b.type)) { const bb = FK.bodyBBox(b); for (const x of [bb.min[0], bb.max[0]]) for (const y of [bb.min[1], bb.max[1]]) for (const z of [bb.min[2], bb.max[2]]) { const a = M.apply(rel, [x, y, z]); shift = Math.max(shift, Math.hypot(a[0] - x - t[0], a[1] - y - t[1], a[2] - z - t[2])); } }
+    return { body: nb, shift };
+  }
+  /** Proposals [{ from, to, deg, shift, bodies:[id], children:[id] }] for csys whose orientation differs by less than tolDeg and whose bodies move by less than tolD (cm). */
+  APP.findCsysMerges = function (tolDeg, tolD) {
+    const cs = S.model.csys, out = [], W = new Map(cs.map(c => [c.id, APP.csysWorld(c.id)]));
+    const nUse = (id) => S.model.bodies.filter(b => b.cs === id).length + cs.filter(c => c.parent === id).length;
+    const pinned = (id) => (S.model.components || []).some(x => x.cs === id) || S.model.exportCs === id;
+    const ang = (A, B) => { let t = 0; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) t += A[i * 4 + j] * B[i * 4 + j]; return Math.acos(Math.max(-1, Math.min(1, (t - 1) / 2))) * 180 / Math.PI; };
+    const order = cs.slice().sort((a, b) => (pinned(b.id) - pinned(a.id)) || (nUse(b.id) - nUse(a.id)));
+    const reps = [];
+    for (const c of order) {
+      let r = null, best = Infinity;
+      for (const q of reps) { const a = ang(W.get(q.id), W.get(c.id)); if (a <= tolDeg && a < best) { r = q; best = a; } }
+      if (!r) { reps.push(c); continue; }
+      if (pinned(c.id)) { reps.push(c); continue; }
+      const rel = M.mul(M.inv(W.get(r.id)), W.get(c.id)), bs = S.model.bodies.filter(b => b.cs === c.id);
+      if (bs.some(b => b.type === 'RAW' || !CS_TYPES.has(b.type))) continue;
+      let shift = 0; for (const b of bs) shift = Math.max(shift, reexpress(b, rel).shift);
+      if (shift > tolD) continue;
+      out.push({ from: c.id, to: r.id, deg: best, shift, bodies: bs.map(b => b.id), children: cs.filter(x => x.parent === c.id).map(x => x.id) });
+    }
+    return out;
+  };
+  APP.applyCsysMerge = function (p) {
+    const from = APP.getCsys(p.from), to = APP.getCsys(p.to); if (!from || !to) return false;
+    APP.snap();
+    const Wt = APP.csysWorld(to.id), rel = M.mul(M.inv(Wt), APP.csysWorld(from.id));
+    for (const b of S.model.bodies) if (b.cs === from.id) { const r = reexpress(b, rel).body; b.type = r.type; b.p = r.p.map(v => +v.toPrecision(12)); b.cs = to.id; }
+    for (const c of S.model.csys) if (c.parent === from.id) { const w = APP.csysWorld(c.id); c.parent = to.id; c.m = M.mul(M.inv(Wt), w); }
+    if (S.model.active === from.id) S.model.active = to.id;
+    if (!S.model.bodies.some(b => b.cs === from.id) && !S.model.csys.some(x => x.parent === from.id)) S.model.csys = S.model.csys.filter(x => x !== from);
+    APP.changed({ tree: true, right: true });
+    return true;
+  };
+  /** Accepted plane merges (see FK.activeMerges). */
+  APP.addPlaneMerge = function (keep, drop, sign, tolA, tolD) {
+    APP.snap(); (S.model.merges = S.model.merges || []).push({ keep, drop, sign, tolA, tolD }); APP.changed({ tree: true, right: true });
+  };
+  APP.removePlaneMerge = function (i) { if (!S.model.merges || !S.model.merges[i]) return; APP.snap(); S.model.merges.splice(i, 1); APP.changed({ tree: true, right: true }); };
   APP.setExportCsys = function (id) {
     id = id || 0; if (id && !APP.getCsys(id)) id = 0;
     if ((S.model.exportCs || 0) === id) return;
