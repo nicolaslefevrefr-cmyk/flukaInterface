@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.30.0';
+  FK.VERSION = '1.31.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -806,6 +806,26 @@
       }
       return new Set(rows.map(r => r.j)).size === 3 ? rows : null;
     }
+  };
+  /** rotation of `deg` degrees about the line through `pivot` with direction `axis` (Rodrigues); null if the axis is degenerate */
+  M.axisAngle = (axis, deg, pivot) => {
+    const l = Math.hypot(axis[0], axis[1], axis[2]); if (!(l > 1e-12)) return null;
+    const x = axis[0] / l, y = axis[1] / l, z = axis[2] / l, a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), t = 1 - c;
+    const R = [t * x * x + c, t * x * y - s * z, t * x * z + s * y, t * x * y + s * z, t * y * y + c, t * y * z - s * x, t * x * z - s * y, t * y * z + s * x, t * z * z + c];
+    const p = pivot || [0, 0, 0];
+    return [R[0], R[1], R[2], p[0] - (R[0] * p[0] + R[1] * p[1] + R[2] * p[2]), R[3], R[4], R[5], p[1] - (R[3] * p[0] + R[4] * p[1] + R[5] * p[2]), R[6], R[7], R[8], p[2] - (R[6] * p[0] + R[7] * p[1] + R[8] * p[2])];
+  };
+  M.translation = (v) => [1, 0, 0, v[0], 0, 1, 0, v[1], 0, 0, 1, v[2]];
+  /** Apply the rigid world transform `mw` (cm) to a mesh stored in file units: world = raw·f + offset. Returns the new raw array (same units / offset). */
+  FK.transformMeshRaw = function (raw, f, offset, mw) {
+    const out = new Float32Array(raw.length), o = offset || [0, 0, 0];
+    for (let i = 0; i < raw.length; i += 3) {
+      const X = raw[i] * f + o[0], Y = raw[i + 1] * f + o[1], Z = raw[i + 2] * f + o[2];
+      out[i] = ((mw[0] * X + mw[1] * Y + mw[2] * Z + mw[3]) - o[0]) / f;
+      out[i + 1] = ((mw[4] * X + mw[5] * Y + mw[6] * Z + mw[7]) - o[1]) / f;
+      out[i + 2] = ((mw[8] * X + mw[9] * Y + mw[10] * Z + mw[11]) - o[2]) / f;
+    }
+    return out;
   };
   FK.M = M;
 

@@ -61,6 +61,13 @@
   const idbOpen = () => new Promise((res, rej) => { if (typeof indexedDB === 'undefined') return rej(new Error('no IndexedDB')); const r = indexedDB.open('fgt-meshes', 1); r.onupgradeneeded = () => r.result.createObjectStore('raw', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const reqP = (rq) => new Promise((res, rej) => { rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
   const rawStored = new Set();
+  /** Rigid transform (world matrix, cm) baked into the triangles of a mesh. Keeps a session-only history so it can be reverted. */
+  APP.transformStl = function (stl, mw, noHist) {
+    stl.raw = FK.transformMeshRaw(stl.raw, APP.UNIT[stl.unit] || 0.1, stl.offset, mw);
+    if (!noHist) { (stl.hist = stl.hist || []).push(FK.M.inv(mw)); if (stl.hist.length > 50) stl.hist.shift(); }
+    for (const x of [...rawStored]) if (x.startsWith(stl.id + ':')) rawStored.delete(x);
+    APP.buildStl(stl);
+  };
   APP.persistMeshes = async function () {
     try {
       const db = await idbOpen(), tx = db.transaction('raw', 'readwrite'), st = tx.objectStore('raw');
