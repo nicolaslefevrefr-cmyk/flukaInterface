@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.32.0';
+  FK.VERSION = '1.33.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1087,6 +1087,7 @@
     let i = 0;
     const isName = (t) => t && /^[A-Za-z_][A-Za-z0-9_]*$/.test(t);
     function union() {
+      while (toks[i] === '|' && i === 0) i++;          // an expression may start with a union sign (the first zone is then empty and ignored)
       const zones = [zone()];
       while (toks[i] === '|') { i++; zones.push(zone()); }
       return { zones };
@@ -2245,7 +2246,7 @@
     }
     if (!foundBegin) { i = 0; warnings.push('GEOBEGIN not found: reading from the start of the text.'); }
     else {
-      while (i < lines.length && /^\s*\*/.test(lines[i])) i++;
+      while (i < lines.length && /^\s*[*!]/.test(lines[i])) i++;
       if (i < lines.length) {
         const l = lines[i++];
         const m = l.match(/^\s*\d+\s+\d+\s+(.*)$/);
@@ -2259,7 +2260,7 @@
     for (; i < lines.length; i++) {
       const raw = lines[i];
       const line = raw.trim();
-      if (!line || line[0] === '*') continue;
+      if (!line || line[0] === '*' || line[0] === '!') continue;
       const toks = line.split(/\s+/);
       if (toks[0].toUpperCase() === 'END') { i++; break; }
       const kw = toks[0].toUpperCase();
@@ -2294,7 +2295,7 @@
     for (; i < lines.length; i++) {
       const raw = lines[i];
       const line = raw.trim();
-      if (!line || line[0] === '*') continue;
+      if (!line || line[0] === '*' || line[0] === '!') continue;
       if (/^END\b/i.test(line)) { i++; break; }
       if (line[0] === '@') { if (!warnedAt) { warnings.push('@… directives ignored in regions.'); warnedAt = true; } continue; }
       const toks = line.split(/\s+/);
