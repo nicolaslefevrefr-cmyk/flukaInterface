@@ -135,6 +135,7 @@ function onOptChange(e) {
   if (k === 'pieceHl') updatePieces(true);
   if (k === 'inpComment' || k === 'inpTransform') { if ($('#inpTransform')) $('#inpTransform').checked = !!S.opt.inpTransform; updateInp(); }
   if (k === 'inpZones') { S.opt.inpZones = v; $('#inpZones').checked = v; updateInp(); }
+  if (k === 'zonesPerLine') { S.opt.zonesPerLine = +v; updateInp(); }
   if (k === 'maxZones') { S.opt.maxZones = +v; APP.changed({ tree: true, right: true }); }
   if (k === 'maxParen') { S.opt.maxParen = +v; APP.changed({ tree: true, right: true }); }
   if (k === 'style') { S.opt.style = +v; $('#inpStyle').value = String(S.opt.style); updateInp(); }

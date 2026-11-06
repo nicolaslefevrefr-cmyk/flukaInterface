@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.40.1)
+# Combinatorial Geometry Tool  (v1.41.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.41.0** — **Zone lines inside parentheses.** With *Zone per line*, the zones of a parenthesised group are also written one per line (`-(zone1`, `|zone2`, … `zoneN)`, indented by 2): the void region around many objects (`+box −( 24 zones )`) no longer comes out as a wall of text. Setting *Zones per line* (1 to 3) for the groups and the region. Lines up to 130 columns in the aligned style. Test on a real input (`tests/vacuum-face-plate.inp`): the lines are read back as the same formulas.
 - **1.40.1** — A region whose definition is written one zone per line (button *One zone per line*, *Into zones*, or typed) keeps that layout in the INP file, without needing the global option. A **combination of regions** can now be shown as plain text (read-only) and has its own *Simplify the formula* and *One zone per line* options next to its *Form* (compact / expanded / flat).
 - **1.40.0** — **Zones, one per line.** INP option *Zone per line* (INP panel and settings): a region with several zones is written with each zone on its own line, every line starting with `|` (the region name and its first zone share the first line), in the three output styles; the INP import reads it back. Setting *Most zones per region* (default 10): a region with more zones gets a warning. In the definition of a region: the button **One zone per line** writes the zones of the expression on separate lines (the text box accepts line breaks and a leading `|`), and **Into zones (no parenthesis)** (formerly *Flatten*) writes the flat form one zone per line.
 - **1.39.0** — **Rename the INP names with one prefix**: in the rename dialog, *Naming* can be *One prefix + kind letter + zero-filled number*. You choose the prefix (the same for everything), a letter per kind (default `p` planes, `b` bodies, `r` regions), the total length (up to 8) and the first number; the number is zero-filled to fill the length (`cave` + `p` + `001` → `cavep001`). The preview checks that the numbers fit and that the names stay unique.

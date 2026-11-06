@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.40.1';
+  FK.VERSION = '1.41.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1124,6 +1124,42 @@
     return set;
   };
 
+  /** Layout of an expression for the INP "zone per line" form: [{ ind, text }], one entry per line before wrapping.
+   * The zones of the region are written `|zone` (the first one only when there are several); the zones inside a parenthesised group go one per line
+   * too (`-(zone1`, `|zone2`, … `zoneN)`), indented by 2 per level. perLine = zones per line (1 or 2). */
+  FK.layoutZones = function (ast, perLine) {
+    perLine = Math.max(1, parseInt(perLine, 10) || 1);
+    const pack = (texts) => { const out = []; for (let i = 0; i < texts.length; i += perLine) out.push(texts.slice(i, i + perLine).join(' ')); return out; };
+    // lines of one zone: its terms, and the groups with several zones broken at each |
+    const zoneLines = (z, depth) => {
+      let lines = [{ ind: depth * 2, text: '' }]; const cur = () => lines[lines.length - 1];
+      const add = (txt) => { const c = cur(); c.text += (c.text && !/\($/.test(c.text) ? ' ' : '') + txt; };
+      for (const t of z) {
+        if (t.name) { add((t.sign < 0 ? '-' : '+') + t.name); continue; }
+        if (t.sub.zones.length === 1 && !t.sub.zones[0].some(x => x.sub && x.sub.zones.length > 1)) { add((t.sign < 0 ? '-' : '+') + '(' + FK.formatExpr(t.sub) + ')'); continue; }
+        const g = groupLines(t.sub, depth + 1);
+        add((t.sign < 0 ? '-' : '+') + '(' + g[0].text);
+        for (let i = 1; i < g.length; i++) lines.push(g[i]);
+        cur().text += ')';
+      }
+      return lines;
+    };
+    // zones one per line (perLine per line); each line starts with | (the very first one only when barFirst)
+    const packZones = (per, barFirst) => {
+      const out = [];
+      for (let k = 0; k < per.length; k += perLine) {
+        const chunk = per.slice(k, k + perLine);
+        chunk.forEach((zl, j) => zl.forEach((l, i) => {
+          const bar = i === 0 && (barFirst || out.length > 0 || j > 0) ? '|' : '';
+          if (j > 0 && i === 0 && chunk[j - 1].length === 1 && zl.length === 1) out[out.length - 1].text += ' |' + l.text;
+          else out.push({ ind: l.ind, text: bar + l.text });
+        }));
+      }
+      return out;
+    };
+    const groupLines = (a, depth) => packZones(a.zones.map(z => zoneLines(z, depth)), false);
+    return packZones(ast.zones.map(z => zoneLines(z, 0)), ast.zones.length > 1);
+  };
   /** The expression with one zone per line, each line starting with "|" (a single zone stays on one line). Same formula. */
   FK.zoneLines = function (expr) {
     const a = FK.parseExpr(expr), z = a.zones.map(x => FK.formatExpr({ zones: [x] }));
@@ -2478,9 +2514,11 @@
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
       // one zone per line, each starting with "|" (also the first one), when the region has several zones
       let zt = null;
-      if (opts.zoneLines || /\n/.test(r.expr || '')) { try { const a = FK.parseExpr(expr); if (a.zones.length > 1) zt = a.zones.map(z => FK.formatExpr({ zones: [z] })); } catch (e) { zt = null; } }
-      const zoned = (first, indent, width) => {        // first: text before the first zone, indent: before the others
-        zt.forEach((z, k) => wrapTerms(z, width - 1, '').forEach((l, i) => out.push((k === 0 && i === 0 ? first : indent) + (i === 0 ? '|' : ' ') + l)));
+      if (opts.zoneLines || /\n/.test(r.expr || '')) {
+        try { const a = FK.parseExpr(expr); if (a.zones.length > 1 || a.zones.some(z => z.some(t => t.sub && t.sub.zones.length > 1))) zt = FK.layoutZones(a, opts.zonesPerLine); } catch (e) { zt = null; }
+      }
+      const zoned = (first, indent, width) => {        // first: text before the first line, indent: before the others
+        zt.forEach((ln, k) => wrapTerms(ln.text, width - ln.ind, '').forEach((l, i) => out.push((k === 0 && i === 0 ? first : indent) + ' '.repeat(ln.ind + (i ? 1 : 0)) + l)));
       };
       if (style === 1) {
         out.push(`${r.name} ${nv}`);
@@ -2492,7 +2530,7 @@
         else { const ls = wrapTerms(expr, 130 - head.length, ''); ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l)); }
       } else {
         const head = r.name.padEnd(13) + nv + ' ';
-        if (zt) zoned(head, ' '.repeat(head.length), 100);
+        if (zt) zoned(head, ' '.repeat(head.length), 130 - head.length);
         else { const ls = wrapTerms(expr, 100, ''); ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l)); }
       }
     }
