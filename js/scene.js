@@ -584,10 +584,10 @@
       if (rm === 'cgop') return isMesh ? Math.min(0.3, op) + bump : 1;
       return Math.min(1, op + bump);
     };
-    const hl = (id) => S.hlId === id || (S.hlSet && S.hlSet.has(id));
+    const hl = (id) => S.hlId === id || !!(S.hlSet && S.hlSet.has(id));   // always a boolean: three.js hides an object only when visible === false (null / undefined would leave it drawn)
     const style = (c, item, plane, isSel, col) => {
       const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
-      c.group.visible = shown(item) || hl(item.id);
+      c.group.visible = !!(shown(item) || hl(item.id));
       c.mesh.visible = item.opacity > 0.004 || hl(item.id);
       const bc = col || item.color;
       m.color.set(bc); m.opacity = o;
@@ -896,7 +896,7 @@
     for (const [layer, root] of L) {
       root.traverse(o => {
         if (seen.has(o) || !(o.isMesh || o.isLine || o.isPoints)) return;
-        let v = true; for (let p = o; p; p = p.parent) if (!p.visible) { v = false; break; }
+        let v = true; for (let p = o; p; p = p.parent) if (p.visible === false) { v = false; break; }
         if (!v) return; seen.add(o);
         const ud = o.userData || {}; const g = (ud.kind && ud.kind !== 'feat') ? ud : (o.parent && o.parent.userData) || {};
         out.push({ layer, kind: ud.kind || '', id: ud.id || 0 });
@@ -923,11 +923,12 @@
   };
 
   /* ---------- Render loop ---------- */
+  APP._gl = { renderer, scene, get camera() { return camera; } };
   let renderFails = 0;
   function loop() {
     if (needRender) {
       needRender = false;
-      try { renderer.render(scene, camera); updateLabels(); renderFails = 0; }
+      try { renderer.render(scene, camera); APP.frames = (APP.frames || 0) + 1; updateLabels(); renderFails = 0; }
       catch (e) {   // a failing frame must not stop the loop (the canvas would freeze on its last image)
         renderer.clear(); console.error('Render error:', e);
         if (renderFails++ < 3 && APP.hooks.toast) APP.hooks.toast('Display error: ' + e.message + ' — try "Redraw the view"');

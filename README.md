@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.37.1)
+# Combinatorial Geometry Tool  (v1.37.2)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.37.2** — **Fix: hidden objects still drawn.** Since 1.34 the highlight test returned `null` / `undefined` instead of `false`, so the visibility flag of every 3D object was set to `null`, and three.js only skips an object when the flag is exactly `false`: hiding an object in the tree did not remove it from the view (it could not be picked either). Visibility flags are now always booleans, with a regression test; the diagnostic of *Redraw the view* was corrected accordingly.
 - **1.37.1** — A frame that fails to render no longer stops the display loop (the canvas used to freeze on its last image, with objects still visible but not pickable); a lost graphics context is rebuilt when it comes back; *Redraw the view* reports what the renderer draws.
 - **1.37.0** — **Redraw the view** (button next to the resolution, also in View): rebuilds every 3D object from the project and removes leftovers; objects that no project item owns any more (seen after undo / redo or reopening) are now swept automatically, so nothing stays displayed when everything is hidden.
 - **1.36.0** — **Source split**: `js/ui.js` became 22 files in `js/ui/` (common, layout, menus, tree, props, files, compact, …), classic scripts sharing one scope, loaded in the order given in `index.html`. **End-of-line comments** in imported INP lines are ignored (everything after `!`). **Clickable messages**: every quoted object name in a warning or error (INP panel, region editor, component notes, INP check results) is a link that selects the object and flashes it in the 3D view. **Colour by material** (View ▸ *Colour regions by material*): regions take a colour per material (grey when none) with a legend over the view.
