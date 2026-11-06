@@ -563,11 +563,12 @@
       const o = effOp(item.opacity, plane, isSel, item, false), m = c.mesh.material;
       c.group.visible = shown(item) || hl(item.id);
       c.mesh.visible = item.opacity > 0.004 || hl(item.id);
-      m.color.set(item.color); m.opacity = o;
+      const bc = col || item.color;
+      m.color.set(bc); m.opacity = o;
       const solid = o >= 0.995 && !plane; m.transparent = !solid; m.depthWrite = solid;
       c.lines.visible = edgesOn && rm !== 'wire';
-      c.lines.material.color.set(isSel ? 0xff6a00 : darker(item.color, 0.55).getHex());
-      wireOf(c.group, c.mesh, rm === 'wire' && !plane, isSel ? 0xff6a00 : darker(item.color, 0.55).getHex());
+      c.lines.material.color.set(isSel ? 0xff6a00 : darker(bc, 0.55).getHex());
+      wireOf(c.group, c.mesh, rm === 'wire' && !plane, isSel ? 0xff6a00 : darker(bc, 0.55).getHex());
     };
     for (const b of S.model.bodies) {
       const c = bodyC.get(b.id); if (!c || !c.group) continue;
@@ -575,7 +576,7 @@
     }
     for (const r of S.model.regions) {
       const c = regC.get(r.id); if (!c || !c.group) continue;
-      style(c, r, false, (sel && sel.t === 'region' && sel.id === r.id) || hl(r.id));
+      style(c, r, false, (sel && sel.t === 'region' && sel.id === r.id) || hl(r.id), S.opt.colorBy === 'material' ? APP.materialColor(r.mat) : null);
     }
     for (const s of S.stls) {
       if (!s.group) continue;

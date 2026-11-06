@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.34.0';
+  FK.VERSION = '1.36.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2046,6 +2046,52 @@
       z.length = 0; z.push(...out);
     }
   };
+
+  /* ---------------- Roto-translation: bodies written in a local frame inside $Start_transform / $End_transform ---------------- */
+  /** ROT-DEFI cards ([what1..what6]) giving r' = A (r + t) for F = [A | o] (local → export frame): t = Aᵀ o, A = Rz·Ry·Rx, one card per axis.
+   *  A card with only Phi (Theta = 0) is x' = x cosΦ + y sinΦ about its axis (right-handed rotation by −Φ); a translation is added before the rotation. */
+  FK.rotDefiCards = function (F) {
+    const A = [[F[0], F[1], F[2]], [F[4], F[5], F[6]], [F[8], F[9], F[10]]], o = [F[3], F[7], F[11]];
+    const t = [0, 1, 2].map(i => A[0][i] * o[0] + A[1][i] * o[1] + A[2][i] * o[2]);
+    const cards = [], deg = (r) => r * 180 / Math.PI;
+    if (t.some(v => Math.abs(v) > 1e-12)) cards.push([0, '', '', t[0], t[1], t[2]]);
+    const be = -Math.asin(Math.max(-1, Math.min(1, A[2][0])));
+    let al, ga;
+    if (Math.abs(Math.cos(be)) < 1e-9) { al = 0; ga = Math.atan2(-A[0][1], A[1][1]); } else { al = Math.atan2(A[2][1], A[2][2]); ga = Math.atan2(A[1][0], A[0][0]); }
+    for (const [j, ang] of [[100, al], [200, be], [300, ga]]) if (Math.abs(ang) > 1e-9) cards.push([j, 0, -deg(ang), '', '', '']);
+    return cards;
+  };
+  const mul3 = (X, Y) => X.map(r => [0, 1, 2].map(k => r[0] * Y[0][k] + r[1] * Y[1][k] + r[2] * Y[2][k]));
+  /** Rotation (3×3 rows, r' = P r) of one ROT-DEFI card; null when the card has no rotation index. */
+  FK.rotDefiRot = function (what) {
+    const w1 = +what[0] || 0; if (!(w1 > 0)) return null;
+    let j;
+    if (w1 > 1000) j = w1 % 1000; else if (w1 === 100) j = 1; else if (w1 > 100) j = Math.floor(w1 / 100); else j = 0;
+    if (j === 0) j = 3; if (j < 1 || j > 3) return null;
+    const th = (+what[1] || 0) * Math.PI / 180, ph = (+what[2] || 0) * Math.PI / 180, c = Math.cos, s = Math.sin;
+    // axis j plays the role of "z" and the azimuth is measured from the next axis (cyclic order x, y, z)
+    const perm = j === 3 ? [0, 1, 2] : j === 1 ? [1, 2, 0] : [2, 0, 1];
+    const P = [[c(ph), s(ph), 0], [-s(ph), c(ph), 0], [0, 0, 1]], T = [[c(th), 0, -s(th)], [0, 1, 0], [s(th), 0, c(th)]];
+    const L = mul3(T, P), R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) R[perm[a]][perm[b]] = L[a][b];
+    return R;
+  };
+  /** Transformation (12-array, r' = A r + o) of consecutive ROT-DEFI cards of one name, applied in order. */
+  FK.rotDefiMatrix = function (cards) {
+    let A = [[1, 0, 0], [0, 1, 0], [0, 0, 1]], o = [0, 0, 0];
+    for (const w of cards) {
+      const t = [+w[3] || 0, +w[4] || 0, +w[5] || 0], P = FK.rotDefiRot(w), q = [o[0] + t[0], o[1] + t[1], o[2] + t[2]];
+      if (P) { A = mul3(P, A); o = [0, 1, 2].map(i => P[i][0] * q[0] + P[i][1] * q[1] + P[i][2] * q[2]); } else o = q;
+    }
+    return [A[0][0], A[0][1], A[0][2], o[0], A[1][0], A[1][1], A[1][2], o[1], A[2][0], A[2][1], A[2][2], o[2]];
+  };
+  /** Short unique transformation names (≤ 8 characters, letters / digits) for the coordinate systems used. */
+  FK.xfName = function (want, used) {
+    let b = String(want || 'T').replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'T';
+    if (!/^[A-Za-z]/.test(b)) b = ('T' + b).slice(0, 8);
+    let n = b, k = 1; while (used.has(n.toLowerCase())) { const sfx = String(k++); n = b.slice(0, 8 - sfx.length) + sfx; }
+    used.add(n.toLowerCase()); return n;
+  };
   FK.inpView = function (model) {
     const nm = FK.inpNames(model), byName = new Map();
     const bodies = model.bodies.map(b => { const n = nm.bodies.get(b); byName.set(b.name, n); return n === b.name ? b : Object.assign({}, b, { name: n }); });
@@ -2058,7 +2104,8 @@
     });
     return Object.assign({}, model, { bodies, regions });
   };
-  FK.validate = function (model, resolve) {
+  FK.validate = function (model, resolve, vopts) {
+    vopts = vopts || {};
     const w = [];
     if ((model.title || '').length > 60) w.push(`Title longer than 60 characters: cut to 60 on export (A60)`);
     const bn = new Set(), rn = new Set(), inm = FK.inpNames(model);
@@ -2080,7 +2127,8 @@
       else if (b.p.some(x => !isFinite(x))) w.push(`Body "${b.name}": non-numeric parameter`);
       else if (resolve) {
         const wb = resolve(b);
-        if (wb.type === 'OBOX') w.push(`Body "${b.name}": RPP defined in a rotated frame → exported as a bounding RPP + cutting planes (PLA), regions adapted`);
+        if (vopts.transform) { /* written in its own frame: nothing to convert */ }
+        else if (wb.type === 'OBOX') w.push(`Body "${b.name}": RPP defined in a rotated frame → exported as a bounding RPP + cutting planes (PLA), regions adapted`);
         else if (wb.type === 'ICC') w.push(`Body "${b.name}": oblique infinite cylinder → exported as QUA`);
         else if (wb.type === 'PLA' && b.type !== 'PLA') w.push(`Body "${b.name}" (${b.type}): oblique plane exported as PLA`);
       }
@@ -2089,6 +2137,10 @@
       const am = FK.activeMerges(FK.inpView(model), { resolve });
       if (am.act.size) w.push(`${am.act.size} plane${am.act.size > 1 ? 's' : ''} merged into identical ones on export (Check ▸ Compact)`);
       if (am.stale.length) w.push(`${am.stale.length} accepted plane merge${am.stale.length > 1 ? 's' : ''} no longer valid (the geometry changed) and ignored: ${am.stale.slice(0, 4).map(m => m.drop + '→' + m.keep).join(', ')}${am.stale.length > 4 ? '…' : ''}`);
+    }
+    if (vopts.transform) {
+      const n = model.bodies.filter(b => !b.noExport && b.type !== 'RAW' && b.cs).length;
+      w.push(n ? `Transform mode: ${n} bod${n > 1 ? 'ies are' : 'y is'} written in the frame of ${n > 1 ? 'their' : 'its'} coordinate system ($Start_transform, ROT-DEFI cards after GEOEND)` : 'Transform mode is on, but no body is defined in a coordinate system');
     }
     for (const r of model.regions) {
       check(r, 'Region', inm.regions);
@@ -2232,7 +2284,25 @@
     const out = [];
     const title = (model.title || 'Geometry').replace(/\s+$/, '');
     for (const l of FK.geoHeader(title, opts)) out.push(l);
-    const split = FK.splitObox(model, opts), mg = FK.activeMerges(model, opts, split).act;
+    const tf = !!(opts.transform && opts.xf);
+    const split = tf ? new Map() : FK.splitObox(model, opts), mg = tf ? new Map() : FK.activeMerges(model, opts, split).act;
+    const blocks = [];                          // transform mode: bodies written in their own frame, one $Start_transform block per coordinate system
+    if (tf) {
+      const names = new Set(), byKey = new Map(), plain = [];
+      for (const b of model.bodies) {
+        if (b.noExport) continue;
+        const x = b.type === 'RAW' ? null : opts.xf(b);
+        if (!x || !x.m || x.m.every((v, i) => Math.abs(v - [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0][i]) < 1e-12)) { plain.push(b); continue; }
+        let bl = byKey.get(x.key); if (!bl) { bl = { name: FK.xfName(x.name, names), m: x.m, bodies: [] }; byKey.set(x.key, bl); blocks.push(bl); }
+        bl.bodies.push(b);
+      }
+      for (const b of plain) out.push(bodyLine(b, style, opts));
+      for (const bl of blocks) {
+        out.push(`$Start_transform ${bl.name}`);
+        for (const b of bl.bodies) out.push(FK.exportBodyText(b, b.name, style, opts));
+        out.push('$End_transform');
+      }
+    } else
     for (const b of model.bodies) {
       if (b.noExport || mg.has(b.name)) continue;
       const sp = split.get(b.name);
@@ -2266,6 +2336,10 @@
     out.push('END');
     for (const t of (model.tail || [])) out.push(t);
     out.push(FK.fixedCard('GEOEND'));
+    if (blocks.length) {
+      out.push("* Roto-translations of the $Start_transform blocks: r' = R (r + t); one rotation card per axis");
+      for (const bl of blocks) for (const w of FK.rotDefiCards(bl.m)) out.push(FK.fixedCard('ROT-DEFI', w, bl.name));
+    }
     return out.join('\n') + '\n';
   };
 
@@ -2305,6 +2379,20 @@
   };
 
   /* ---------------- Lecture d'un bloc INP ---------------- */
+  /** Bodies read inside $Start_transform: expresses them in the file frame (for comparisons). Types that cannot be moved are left as they are. */
+  FK.flattenParsedTransforms = function (model) {
+    const unsupported = [];
+    for (const b of model.bodies) {
+      if (!b.xfm) continue;
+      const nb = FK.worldBody(JSON.parse(JSON.stringify(b)), b.xfm);
+      if (nb.type === b.type && JSON.stringify(nb.p) === JSON.stringify(b.p)) unsupported.push(b.name);       // type that cannot be moved: left as it is
+      else { b.type = nb.type; b.p = nb.p; if (nb.prec) b.prec = nb.prec; }
+      delete b.xfm;
+    }
+    return unsupported;
+  };
+  /** Text of a geometry line without its end-of-line comment (from the first '!'). */
+  const noComment = (s) => { const k = s.indexOf('!'); return k < 0 ? s : s.slice(0, k); };
   FK.parseInp = function (text) {
     const lines = text.split(/\r?\n/);
     const warnings = [];
@@ -2326,13 +2414,20 @@
     const used = new Set();
     let colorIdx = 0;
     // --- corps ---
-    let last = null;
+    let last = null; const xfStack = [], warnedDir = new Set();
     for (; i < lines.length; i++) {
       const raw = lines[i];
-      const line = raw.trim();
+      const line = noComment(raw).trim();
       if (!line || line[0] === '*' || line[0] === '!') continue;
       const toks = line.split(/\s+/);
       if (toks[0].toUpperCase() === 'END') { i++; break; }
+      if (line[0] === '$') {                                        // $Start_transform name / $End_transform (nested ones are composed, inner first)
+        const d = toks[0].toLowerCase();
+        if (d === '$start_transform' && toks[1]) xfStack.push(toks[1]);
+        else if (d === '$end_transform') { if (xfStack.length) xfStack.pop(); else warnings.push('$End_transform without $Start_transform: ignored.'); }
+        else if (!warnedDir.has(d)) { warnedDir.add(d); warnings.push(`Directive ${toks[0]} is not supported: the bodies it contains are read without it.`); }
+        last = null; continue;
+      }
       const kw = toks[0].toUpperCase();
       if (/^[A-Z]{3}$/.test(kw) && isNaN(parseFloat(toks[0]))) {
         const name = toks[1] || ('b' + (model.bodies.length + 1));
@@ -2342,6 +2437,7 @@
         } else {
           last = { id: 0, type: 'RAW', rawType: kw, name, p: [], raw: [raw.replace(/\s+$/, '')], visible: false, opacity: 0.3, color: '#888888', meta: {} };
         }
+        if (xfStack.length) last.xf = xfStack.slice();
         model.bodies.push(last); used.add(name);
       } else if (last) {
         if (last.type === 'RAW') last.raw.push(raw.replace(/\s+$/, ''));
@@ -2364,7 +2460,7 @@
     let warnedAt = false;
     for (; i < lines.length; i++) {
       const raw = lines[i];
-      const line = raw.trim();
+      const line = noComment(raw).trim();
       if (!line || line[0] === '*' || line[0] === '!') continue;
       if (/^END\b/i.test(line)) { i++; break; }
       if (line[0] === '@') { if (!warnedAt) { warnings.push('@… directives ignored in regions.'); warnedAt = true; } continue; }
@@ -2379,10 +2475,33 @@
       if (lines[i].trim()) model.tail.push(lines[i].replace(/\s+$/, ''));
     }
     // --- cards after GEOEND: ASSIGNMA (material / region), the others are not read ---
-    const assign = [];
+    const assign = [], rot = new Map();
     for (i++; i < lines.length; i++) {
       const t = lines[i].trim().split(/\s+/);
       if (/^ASSIGNMA$/i.test(t[0]) && t.length >= 3) assign.push({ material: t[1].toUpperCase(), region: t[2] });
+      else if (/^ROT-DEFI/i.test(t[0])) {
+        const raw = lines[i]; let wh, name;
+        if (raw.includes(',')) { const f = raw.split(',').map(x => x.trim()); wh = f.slice(1, 7); name = f[7] || ''; }
+        else { wh = [0, 1, 2, 3, 4, 5].map(k => raw.slice(10 + 10 * k, 20 + 10 * k).trim()); name = raw.slice(70).trim(); }
+        wh = wh.map(x => x === '' ? 0 : parseFloat(x)); while (wh.length < 6) wh.push(0);
+        if (name && wh.every(isFinite)) { if (!rot.has(name)) rot.set(name, []); rot.get(name).push(wh); }
+        else if (!name) warnings.push('ROT-DEFI card without name ignored (only named transformations are supported).');
+      }
+    }
+    // bodies inside $Start_transform: F maps the local frame to the file frame; "-name" is the inverse transformation
+    const xfM = (nm) => {
+      const inv = nm[0] === '-', key = inv ? nm.slice(1) : nm;
+      let cards = rot.get(key); if (!cards) { for (const [k, v] of rot) if (k.toLowerCase() === key.toLowerCase()) { cards = v; break; } }
+      if (!cards) return null;
+      const F = FK.rotDefiMatrix(cards);
+      return inv ? FK.M.inv(F) : F;
+    };
+    for (const b of model.bodies) {
+      if (!b.xf) continue;
+      let F = FK.M.id(), ok = true;
+      for (const nm of b.xf.slice().reverse()) { const m = xfM(nm); if (!m) { ok = false; warnings.push(`Body ${b.name}: transformation "${nm}" has no ROT-DEFI card: read without it.`); break; } F = FK.M.mul(m, F); }
+      if (ok && !FK.M.isIdentity(F, 1e-12)) { b.xfm = F; b.xfName = b.xf[b.xf.length - 1].replace(/^-/, ''); b.xfKey = b.xf.join('>'); }
+      delete b.xf;
     }
     if (model.tail.length) warnings.push('Lines after the regions block (LATTICE / volumes…) kept without processing.');
     for (const r of model.regions) {

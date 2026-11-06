@@ -58,6 +58,7 @@
     opts = opts || {};
     const N = opts.points || 30000, out = { points: 0, mismatches: [], unsupported: [], missing: [], regionsChecked: 0, ok: true };
     const parsed = FK.parseInp(inpText).model;
+    FK.flattenParsedTransforms(parsed);          // bodies written inside $Start_transform blocks, brought to the file frame
     const mBodies = new Map(), iBodies = new Map();
     for (const b of model.bodies) if (!b.noExport) { const f = b.type === 'RAW' ? FK.insideFn(b) : FK.insideFn(resolve ? resolve(b) : b); mBodies.set(b.name, f); }
     for (const b of parsed.bodies) iBodies.set(b.name, FK.insideFn(b));

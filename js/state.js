@@ -10,11 +10,14 @@
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
     opt: { defV2: true, render: 'opaque', edges: true, invX: false, invY: false, names: 'off', pieceHl: true, snap: true, coplanar: true, coTol: 1, sharp: 20, edgeSoft: true, ptMode: 'vertex', edgeSharpOnly: true, circleAll: false,
-      margin: 10, style: 2, theme: 'light', inpFull: true, v118: true, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
+      margin: 10, style: 2, theme: 'light', inpFull: true, inpTransform: false, v118: true, axes: true, scale: { mode: 'margin', val: 20, unit: 'mm' } }
   };
   APP.nid = () => S.nextId++;
   APP.getBody = (id) => S.model.bodies.find(b => b.id === id);
   APP.getRegion = (id) => S.model.regions.find(r => r.id === id);
+  /** Colour of a material in the "colour by material" view: a fixed palette by position in the list; grey when no material. */
+  const MAT_PAL = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa5b8', '#c9a800', '#e6559e', '#7a9a01', '#8b5a2b', '#5c6bc0', '#00897b', '#d84315', '#6d4c9f', '#43a047', '#ad1457'];
+  APP.materialColor = (id) => { const i = (S.model.materials || []).findIndex(m => m.id === id); return i < 0 ? '#b8bec6' : MAT_PAL[i % MAT_PAL.length]; };
   APP.getMaterial = (id) => (S.model.materials || []).find(m => m.id === id);
   APP.getComp = (id) => (S.model.components || []).find(c => c.id === id);
   APP.getStl = (id) => S.stls.find(s => s.id === id);
@@ -586,9 +589,9 @@
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
-  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
     'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
-    'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
+    'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
   APP.exportConfig = function () {
     const settings = {};
@@ -1217,12 +1220,21 @@
     if (!imp.bodies.length && !imp.regions.length) { APP.toast('No body or region found in this text'); return res; }
     APP.snap();
     if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], components: [], materials: S.model.materials || FK.defaultMaterials(), exportCs: S.model.exportCs || 0 }; S.sel = null; }
-    const used = bodyNames(), map = new Map();
+    const used = bodyNames(), map = new Map(), xfCs = new Map();
     for (const b of imp.bodies) {
       let nm = b.name;
       if (used.has(nm)) nm = FK.uniqueName(nm, used);
       map.set(b.name, nm); used.add(nm);
       b.name = nm; b.id = APP.nid(); b.cs = APP.exportCs(); // INP coordinates are in the export frame
+      if (b.xfm) {                                           // written inside $Start_transform: the body keeps its own coordinates in a new coordinate system
+        let c = xfCs.get(b.xfKey);
+        if (!c) {
+          const E = APP.csysWorld(APP.exportCs()), W = M.mul(E, b.xfm), cl = M.clean(W, 1e-6);
+          c = APP.addCsys(cl.ok ? cl.m : W, { name: FK.uniqueName(String(b.xfName || 'TR').replace(/[^A-Za-z0-9_]/g, '') || 'TR', csysNames()), parent: 0 }); xfCs.set(b.xfKey, c);
+        }
+        b.cs = c.id;
+      }
+      delete b.xfm; delete b.xfName; delete b.xfKey;
       S.model.bodies.push(b);
     }
     const rused = regionNames(), rByOrig = new Map();
@@ -1309,10 +1321,16 @@
   };
   /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
-  APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, { style: S.opt.style, resolve: APP.xbody, comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : '' });
+  /** Options of the INP generator. Transform mode: each body is written in the frame of its coordinate system inside $Start_transform / $End_transform (ROT-DEFI cards after GEOEND). */
+  APP.inpOpts = () => ({
+    style: S.opt.style, resolve: APP.xbody, transform: !!S.opt.inpTransform,
+    xf: (b) => { const cs = b.cs || 0; return { key: cs, name: cs ? APP.csysLabel(cs) : 'Global', m: APP.relM(b) }; },
+    comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
+  });
+  APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, APP.inpOpts());
   /** The checks as records { sev: 'e' | 'w' | 'i', text, t, id } — t / id point to the geometry concerned (body / region) when it can be found. */
   const ERR_RE = /duplicate name|invalid name|unknown body|empty expression|non-numeric|is used by|unexpected|expected|unbalanced|syntax|cannot|unreadable/i;
-  const INFO_RE = /not used by any exported region|written in coordinate system|will be shortened|type not displayed|exported as|cut to 60/i;
+  const INFO_RE = /Transform mode|merged into identical|not used by any exported region|written in coordinate system|will be shortened|type not displayed|exported as|cut to 60/i;
   APP.issues = () => APP.warnings().map(text => {
     const sev = ERR_RE.test(text) ? 'e' : INFO_RE.test(text) ? 'i' : 'w';
     const regFirst = /^Region\b/.test(text), rec = { sev, text };
@@ -1355,7 +1373,7 @@
     APP.changed({ tree: true });
   };
   APP.warnings = () => {
-    const w = FK.validate(S.model, APP.xbody), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
