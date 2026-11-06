@@ -889,6 +889,21 @@
     needRender = true;
   };
   APP.gSel = gSel; APP.gHover = gHover;
+  /** What the renderer would draw right now: [{ layer, kind, id, name }] for every visible mesh / line of the scene. */
+  APP.drawnObjects = function () {
+    const out = [], L = [['mesh', gStl], ['body', gBody], ['region', gRegion], ['overlay', gFeat], ['overlay', gDev], ['overlay', gChk], ['overlay', gPcs], ['overlay', gCut], ['other', scene]];
+    const seen = new Set();
+    for (const [layer, root] of L) {
+      root.traverse(o => {
+        if (seen.has(o) || !(o.isMesh || o.isLine || o.isPoints)) return;
+        let v = true; for (let p = o; p; p = p.parent) if (!p.visible) { v = false; break; }
+        if (!v) return; seen.add(o);
+        const ud = o.userData || {}; const g = (ud.kind && ud.kind !== 'feat') ? ud : (o.parent && o.parent.userData) || {};
+        out.push({ layer, kind: ud.kind || '', id: ud.id || 0 });
+      });
+    }
+    return out;
+  };
   APP.clearHover = () => { clearGroup(gHover); needRender = true; };
 
   /** Statistics of an object (mesh, body or region). */
@@ -908,10 +923,21 @@
   };
 
   /* ---------- Render loop ---------- */
+  let renderFails = 0;
   function loop() {
-    if (needRender) { needRender = false; renderer.render(scene, camera); updateLabels(); }
+    if (needRender) {
+      needRender = false;
+      try { renderer.render(scene, camera); updateLabels(); renderFails = 0; }
+      catch (e) {   // a failing frame must not stop the loop (the canvas would freeze on its last image)
+        renderer.clear(); console.error('Render error:', e);
+        if (renderFails++ < 3 && APP.hooks.toast) APP.hooks.toast('Display error: ' + e.message + ' — try "Redraw the view"');
+      }
+    }
     requestAnimationFrame(loop);
   }
+  // GPU context lost (large scenes, driver reset): the canvas would keep showing the last image; rebuild everything when it comes back
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); if (APP.hooks.toast) APP.hooks.toast('Graphics context lost — redrawing when it is back'); });
+  canvas.addEventListener('webglcontextrestored', () => { try { APP.refreshView(); APP.applyStyles(); } catch (e) { console.error(e); } });
   APP.startLoop = function () { resize(); APP.setProjection(S.opt.proj); loop(); };
   APP.applyCam = applyCam;
 

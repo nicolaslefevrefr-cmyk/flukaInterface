@@ -197,6 +197,9 @@ $$('#viewBtns button').forEach(b => b.onclick = () => {
 function refreshView() {
   const n = APP.refreshView();
   APP.applyStyles(); if (typeof updateLegend === 'function') updateLegend();
-  toast(n ? `View redrawn (${n} leftover object${n > 1 ? 's' : ''} removed)` : 'View redrawn');
+  const d = APP.drawnObjects().filter(o => o.layer !== 'other'), by = {}; d.forEach(o => by[o.layer] = (by[o.layer] || 0) + 1);
+  const det = d.length ? Object.keys(by).map(k => `${by[k]} ${k}`).join(', ') : 'nothing';
+  toast(`View redrawn${n ? ` (${n} leftover removed)` : ''} — drawn: ${det}`);
+  console.info('Drawn objects:', d);
 }
 $('#btnRefresh').onclick = refreshView;
