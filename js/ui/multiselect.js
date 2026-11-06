@@ -92,14 +92,17 @@ function openInpRename(scope) {
   $('#irScope').innerHTML = (d._scope ? `<option value="sel">The ${d._scope.length} selected object${d._scope.length > 1 ? 's' : ''}</option>` : '') + '<option value="all">Every exported object</option>';
   $('#irPb').value = o.pb === undefined ? 'B' : o.pb; $('#irPp').value = o.pp === undefined ? 'P' : o.pp; $('#irPr').value = o.pr === undefined ? 'R' : o.pr;
   $('#irType').checked = !!o.withType; $('#irPad').checked = o.pad !== false; $('#irStart').value = o.start === undefined ? 1 : o.start;
+  $('#irMode').value = o.mode === 'fill' ? 'fill' : 'kind'; $('#irPre').value = o.prefix || ''; $('#irW').value = o.width || FK.INP_NAME_MAX;
+  $('#irLp').value = o.lp === undefined ? 'p' : o.lp; $('#irLb').value = o.lb === undefined ? 'b' : o.lb; $('#irLr').value = o.lr === undefined ? 'r' : o.lr;
   d.returnValue = ''; irRefresh(); if (!d.open) d.showModal();
 }
 function irSpec() {
   const d = $('#dlgInpRename');
-  return { scope: $('#irScope').value === 'sel' ? d._scope : null, pb: $('#irPb').value.trim(), pp: $('#irPp').value.trim(), pr: $('#irPr').value.trim(), withType: $('#irType').checked, pad: $('#irPad').checked, start: $('#irStart').value };
+  return { mode: $('#irMode').value, prefix: $('#irPre').value.trim(), width: $('#irW').value, letters: { planes: $('#irLp').value.trim(), bodies: $('#irLb').value.trim(), regions: $('#irLr').value.trim() }, scope: $('#irScope').value === 'sel' ? d._scope : null, pb: $('#irPb').value.trim(), pp: $('#irPp').value.trim(), pr: $('#irPr').value.trim(), withType: $('#irType').checked, pad: $('#irPad').checked, start: $('#irStart').value };
 }
 function irRefresh() {
-  const sp = irSpec(), pl = FK.planInpRename(S.model, sp), rows = pl.renames.slice(0, 10);
+  const sp = irSpec(); $('#irFill').hidden = sp.mode !== 'fill'; $('#irKind').hidden = sp.mode === 'fill';
+  const pl = FK.planInpRename(S.model, sp), rows = pl.renames.slice(0, 10);
   $('#irPrev').innerHTML = (pl.errors.length ? pl.errors.map(e => `<div class="bad">⚠ ${esc(e)}</div>`).join('') : '') +
     (pl.renames.length ? `<div class="muted" style="margin:4px 0">${pl.renames.length} name${pl.renames.length > 1 ? 's' : ''} will change in the INP file:</div>` + rows.map(r => `<div><span class="muted">${esc(r.item.name)}</span> → <b>${esc(r.name)}</b></div>`).join('') + (pl.renames.length > rows.length ? '<div class="muted">…</div>' : '') : '<div class="muted">No exported object in this scope.</div>');
   $('#irOk').disabled = !!pl.errors.length || !pl.renames.length;
@@ -111,7 +114,7 @@ function irRefresh() {
     const sp = irSpec();
     if (d.returnValue === 'ok') {
       const pl = FK.planInpRename(S.model, sp); if (pl.errors.length || !pl.renames.length) return;
-      S.opt.inpRen = { pb: sp.pb, pp: sp.pp, pr: sp.pr, withType: sp.withType, pad: sp.pad, start: sp.start };
+      S.opt.inpRen = { mode: sp.mode, prefix: sp.prefix, width: sp.width, lp: sp.letters.planes, lb: sp.letters.bodies, lr: sp.letters.regions, pb: sp.pb, pp: sp.pp, pr: sp.pr, withType: sp.withType, pad: sp.pad, start: sp.start };
       APP.snap(); pl.renames.forEach(r => { if (r.name === r.item.name) delete r.item.inpName; else r.item.inpName = r.name; });
       APP.changed({ tree: true, right: true }); APP.save(); toast(`${pl.renames.length} INP name${pl.renames.length > 1 ? 's' : ''} renamed`);
     } else if (d.returnValue === 'reset') {

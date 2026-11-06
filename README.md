@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.38.0)
+# Combinatorial Geometry Tool  (v1.39.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.39.0** — **Rename the INP names with one prefix**: in the rename dialog, *Naming* can be *One prefix + kind letter + zero-filled number*. You choose the prefix (the same for everything), a letter per kind (default `p` planes, `b` bodies, `r` regions), the total length (up to 8) and the first number; the number is zero-filled to fill the length (`cave` + `p` + `001` → `cavep001`). The preview checks that the numbers fit and that the names stay unique.
 - **1.38.0** — **Boolean formulas without too many parentheses.** *Flat* form (union of zones, no parenthesis at all, simplified) in the combinations of regions and in the void region, next to Compact and Expanded. In the definition of a region: its size (depth of parentheses · zones · terms) and the buttons **Simplify** (redundant terms / zones removed, useless parentheses opened), **Flatten** (no parenthesis) and **Split into regions…** (the region becomes several regions with disjoint, parenthesis-free formulas, same material / group / colour, same volume). Setting *Deepest parentheses accepted* (INP block tab, default 1): deeper regions get a warning and the INP panel offers *Flatten the N complex regions*. Equivalence of all the rewritings is tested on random formulas.
 - **1.37.2** — **Fix: hidden objects still drawn.** Since 1.34 the highlight test returned `null` / `undefined` instead of `false`, so the visibility flag of every 3D object was set to `null`, and three.js only skips an object when the flag is exactly `false`: hiding an object in the tree did not remove it from the view (it could not be picked either). Visibility flags are now always booleans, with a regression test; the diagnostic of *Redraw the view* was corrected accordingly.
 - **1.37.1** — A frame that fails to render no longer stops the display loop (the canvas used to freeze on its last image, with objects still visible but not pickable); a lost graphics context is rebuilt when it comes back; *Redraw the view* reports what the renderer draws.

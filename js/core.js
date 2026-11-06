@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.38.0';
+  FK.VERSION = '1.39.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2068,6 +2068,21 @@
       { k: 'bodies', kind: 'body', pre: spec.pb || '', list: model.bodies.filter(b => !FK.isPlaneType(b.type) && inScope(b)) },
       { k: 'regions', kind: 'region', pre: spec.pr || '', list: model.regions.filter(inScope) }];
     const typeOf = (b) => String(b.type === 'RAW' ? (b.rawType || 'RAW') : b.type || '').toLowerCase();
+    if (spec.mode === 'fill') {
+      // one prefix for everything, then a letter per kind, then digits (zero-filled) up to the total length
+      const pre = spec.prefix || '', width = Math.min(FK.INP_NAME_MAX, Math.max(2, parseInt(spec.width, 10) || FK.INP_NAME_MAX)), L = spec.letters || {};
+      if (pre && !/^[A-Za-z][A-Za-z0-9_]*$/.test(pre)) errors.push(`Prefix "${pre}": letters, digits and _ only, starting with a letter`);
+      for (const c of cats) {
+        if (!c.list.length) continue;
+        const letter = (L[c.k] === undefined ? { planes: 'p', bodies: 'b', regions: 'r' }[c.k] : L[c.k]) || '';
+        if (letter && !/^[A-Za-z0-9_]+$/.test(letter)) { errors.push(`Letter "${letter}" (${c.k}): letters, digits and _ only`); continue; }
+        const nd = width - pre.length - letter.length, last = start + c.list.length - 1;
+        if (nd < 1) { errors.push(`Prefix + letter take ${pre.length + letter.length} of the ${width} characters: no room for the number (${c.k})`); continue; }
+        if (String(last).length > nd) { errors.push(`${c.k}: ${c.list.length} objects from ${start} need ${String(last).length} digits but only ${nd} remain (shorten the prefix, or allow more characters)`); continue; }
+        c.list.forEach((it, i) => renames.push({ item: it, kind: c.kind, cat: c.k, name: pre + letter + String(start + i).padStart(nd, '0') }));
+      }
+      cats.length = 0;
+    }
     for (const c of cats) {
       if (!c.list.length) continue;
       if (c.pre && !/^[A-Za-z][A-Za-z0-9_]*$/.test(c.pre)) errors.push(`Prefix "${c.pre}" (${c.k}): letters, digits and _ only, starting with a letter`);
