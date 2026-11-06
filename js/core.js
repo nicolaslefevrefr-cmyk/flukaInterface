@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.40.0';
+  FK.VERSION = '1.40.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2250,7 +2250,7 @@
     const rename = (ast) => { for (const z of ast.zones) for (const t of z) { if (t.sub) rename(t.sub); else if (byName.has(t.name)) t.name = byName.get(t.name); } };
     const regions = model.regions.map(r => {
       const n = nm.regions.get(r); let expr = r.expr;
-      if (any) { try { const ast = FK.parseExpr(r.expr || ''); rename(ast); expr = FK.formatExpr(ast); } catch (e) { /* kept as-is */ } }
+      if (any) { try { const ast = FK.parseExpr(r.expr || ''); rename(ast); expr = FK.formatExpr(ast); if (/\n/.test(r.expr || '')) expr = FK.zoneLines(expr); } catch (e) { /* kept as-is */ } }
       return n === r.name && expr === r.expr ? r : Object.assign({}, r, { name: n, expr });
     });
     return Object.assign({}, model, { bodies, regions });
@@ -2478,7 +2478,7 @@
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
       // one zone per line, each starting with "|" (also the first one), when the region has several zones
       let zt = null;
-      if (opts.zoneLines) { try { const a = FK.parseExpr(expr); if (a.zones.length > 1) zt = a.zones.map(z => FK.formatExpr({ zones: [z] })); } catch (e) { zt = null; } }
+      if (opts.zoneLines || /\n/.test(r.expr || '')) { try { const a = FK.parseExpr(expr); if (a.zones.length > 1) zt = a.zones.map(z => FK.formatExpr({ zones: [z] })); } catch (e) { zt = null; } }
       const zoned = (first, indent, width) => {        // first: text before the first zone, indent: before the others
         zt.forEach((z, k) => wrapTerms(z, width - 1, '').forEach((l, i) => out.push((k === 0 && i === 0 ? first : indent) + (i === 0 ? '|' : ' ') + l)));
       };

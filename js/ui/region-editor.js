@@ -22,7 +22,7 @@ function exprTerms(v) {
   return out;
 }
 /** Chips view (default, always for a linked region) or plain text editing. */
-const exprRich = (lk) => !!lk || S.opt.exprText !== true;
+const exprRich = (lk) => S.opt.exprText !== true;   // a combination can be shown as text too (read-only)
 function renderExprChips() {
   const box = $('#exprChips'), { ta } = exprEls(); if (!box || !ta) return;
   const v = ta.value, tk = exprTokens(v), terms = new Map(exprTerms(v).map(x => [x.s, x])), inm = FK.inpNames(S.model).bodies;

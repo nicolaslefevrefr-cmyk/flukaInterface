@@ -85,6 +85,7 @@ function onField(e) {
       break;
     }
     case 'nvois': { const v = parseInt(t.value, 10); if (isFinite(v) && v >= 0) { APP.snap(key + 'nv'); it.nvois = v; APP.changed({}); } break; }
+    case 'lnkSimp': case 'lnkLines': if (e.type === 'change' && it.meta && it.meta.link) { APP.snap(); it.meta.link[k === 'lnkSimp' ? 'simp' : 'lines'] = t.checked; APP.syncLinks(); APP.changed({ tree: true, right: true }); } break;
     case 'lnkA': case 'lnkOp': case 'lnkReg': case 'lnkMode': if (e.type === 'change' && it.meta && it.meta.link) {
       APP.snap(); const l = it.meta.link, i = +t.dataset.i;
       if (k === 'lnkA') l.a = +t.value; else if (k === 'lnkMode') l.mode = t.value;

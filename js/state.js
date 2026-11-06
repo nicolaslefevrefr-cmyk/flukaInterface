@@ -835,7 +835,7 @@
       let moved = false;
       for (const r of regs) {
         const l = r.meta && r.meta.link; if (!l) continue;
-        let e; try { e = byId.get(l.a).expr; for (const o of APP.linkOps(l)) e = FK.combineExpr(e, byId.get(o.id).expr, o.op, l.mode); l.error = ''; } catch (err) { l.error = err.message; continue; }
+        let e; try { e = byId.get(l.a).expr; for (const o of APP.linkOps(l)) e = FK.combineExpr(e, byId.get(o.id).expr, o.op, l.mode); if (l.simp) e = FK.simplifyExpr(e); if (l.lines) e = FK.zoneLines(e); l.error = ''; } catch (err) { l.error = err.message; continue; }
         if (e !== r.expr) { r.expr = e; moved = true; changed = true; }
       }
       if (!moved) break;
