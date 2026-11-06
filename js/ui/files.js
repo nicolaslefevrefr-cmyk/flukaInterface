@@ -9,12 +9,13 @@ function updateInp() {
   if (inpText.value !== t) inpText.value = t;
   const w = APP.warnings();
   const nun = APP.unusedBodies().length, nsh = FK.inpNames(S.model).shortened.filter(x => !x.noExport).length;
+  const ncx = S.model.regions.filter(r => !r.noExport && APP.regionStats(r).depth > APP.maxParen()).length;
   const iss = APP.issues(), n = { e: 0, w: 0, i: 0 }; iss.forEach(x => n[x.sev]++);
   const IC = { e: '✖', w: '⚠', i: 'ⓘ' };
   $('#isCount').innerHTML = iss.length ? [n.e ? `<span class="e">✖ ${n.e}</span>` : '', n.w ? `<span class="w">⚠ ${n.w}</span>` : '', n.i ? `<span class="i">ⓘ ${n.i}</span>` : ''].join('') : '<span class="ok">✔ no problem</span>';
   $('#inpWarn').innerHTML = (iss.length ? '' : '<div class="isok">Nothing to report.</div>') + iss.sort((a, b) => 'ewi'.indexOf(a.sev) - 'ewi'.indexOf(b.sev)).map(x => x.t
     ? `<button type="button" class="is ${x.sev}${curGo === x.t + ':' + x.id ? ' cur' : ''}" data-go="${x.t}:${x.id}" title="Select it in the project and in the 3D view"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></button>`
-    : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></div>`).join('') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
+    : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></div>`).join('') + (ncx ? `<button type="button" class="pill" data-flatall title="Rewrites without parentheses every formula nested deeper than the limit">Flatten the ${ncx} complex region${ncx > 1 ? 's' : ''}</button> ` : '') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
   const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
 }
 $('#inpWarn').addEventListener('click', e => {
@@ -23,7 +24,7 @@ $('#inpWarn').addEventListener('click', e => {
   const go = e.target.closest('[data-go]');
   if (go) { const [t, id] = go.dataset.go.split(':'); if (findItem(t, +id)) { curGo = go.dataset.go; selectItem(t, +id); const o = findItem(t, +id); if (o && !o.visible) toast(`${o.name} is hidden (use its eye to show it)`); } }
 });
-$('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
+$('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-flatall]')) { const r = APP.flattenAllComplex(); toast(r.done ? `${r.done} region${r.done > 1 ? 's' : ''} flattened` + (r.failed.length ? `; too large to expand: ${r.failed.join(', ')}` : '') : (r.failed.length ? 'Too large to expand: ' + r.failed.join(', ') : 'Nothing to flatten')); APP.changed({ tree: true, right: true }); return; } if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
 $('#inpFull').onchange = (e) => { S.opt.inpFull = e.target.checked; updateInp(); APP.save(); };
 $('#inpTransform').onchange = (e) => { S.opt.inpTransform = e.target.checked; updateInp(); APP.save(); if (dlgSet.open) openSettings(); };
 $('#inpStyle').onchange = (e) => { S.opt.style = +e.target.value; updateInp(); APP.save(); };

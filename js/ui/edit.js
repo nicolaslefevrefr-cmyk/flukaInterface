@@ -200,6 +200,22 @@ function onActClick(e) {
       if (it && S.sel.t === 'body') APP.scaleBody(it, sc.mode, sc.val, sc.unit, act === 'scaleDup');
       break;
     }
+    case 'exprSimplify': case 'exprFlatten': {
+      const r = APP.getRegion(+a.dataset.rid); if (!r) break;
+      const res = act === 'exprSimplify' ? APP.simplifyRegion(r) : APP.flattenRegion(r);
+      if (res.error) { toast(res.error); break; }
+      toast(res.same ? 'Nothing to change' : (act === 'exprSimplify' ? 'Formula simplified' : 'Formula flattened' + (res.zones ? ` (${res.zones} zone${res.zones > 1 ? 's' : ''})` : '')));
+      APP.changed({ tree: true, right: true }); break;
+    }
+    case 'exprSplit': {
+      const r = APP.getRegion(+a.dataset.rid); if (!r) break;
+      const pl = APP.splitPlan(r); if (pl.error) { toast(pl.error); break; }
+      askConfirm(`Split "${r.name}" into ${pl.list.length} region${pl.list.length > 1 ? 's' : ''} without overlap, same material and group?\n\n` + pl.list.map((e, i) => `${pl.names[i]}:  ${e}`).join('\n'), 'Split').then(ok => {
+        if (!ok) return;
+        const res = APP.splitRegion(r); if (res.error) { toast(res.error); return; }
+        toast(`${r.name} split into ${res.regions.length} regions`); APP.changed({ tree: true, right: true });
+      }); break;
+    }
     case 'applyFix': { const r = APP.getRegion(+a.dataset.rid); if (r) { APP.snap(); r.expr = a.dataset.expr; APP.changed({ tree: true, right: true }); } break; }
     case 'flipPlane': if (it && FK.flipPlane(it)) { APP.snap(); if (it.meta) delete it.meta.src; APP.changed({ right: true }); } break;
     case 'replane': if (it) { S.reassign = it.id; setTool('replane'); if (narrow()) setDrawer('right', false); } break;

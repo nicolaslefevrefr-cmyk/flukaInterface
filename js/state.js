@@ -589,7 +589,7 @@
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
-  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
     'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
     'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
@@ -748,6 +748,58 @@
     const regName = FK.uniqueName(BOOL_SYM[op] + '_' + a.name, regionNames());
     const ev = APP.evalRegionNow({ expr }), ea = APP.evalRegionNow(a), eb = APP.evalRegionNow(b);
     return { expr, regName, op, mode, vol: ev.error ? null : ev.vol, volA: ea.error ? null : ea.vol, volB: eb.error ? null : eb.vol, error2: ev.error || null };
+  };
+  /* ---------- Complexity of region formulas: simplify, flatten, split ---------- */
+  /** Deepest nesting of parentheses accepted before a warning (setting; 99 = no limit). */
+  APP.maxParen = () => { const v = S.opt.maxParen; return v === undefined || v === null || v === '' || isNaN(+v) ? 1 : +v; };
+  APP.regionStats = (r) => FK.exprStats(r.expr || '');
+  /** Same region, shorter formula (redundant terms / zones removed, useless parentheses opened). Returns { before, after } or { error }. */
+  APP.simplifyRegion = function (r) {
+    if (r.meta && r.meta.link) return { error: 'This region follows a combination: change the combination instead.' };
+    let e; try { e = FK.simplifyExpr(r.expr); } catch (err) { return { error: err.message }; }
+    if (e === r.expr) return { before: r.expr, after: e, same: true };
+    APP.snap(); const before = r.expr; r.expr = e; return { before, after: e };
+  };
+  /** Formula without any parenthesis (union of zones). A combination keeps following its regions, written in the flat form. */
+  APP.flattenRegion = function (r) {
+    const lk = r.meta && r.meta.link;
+    if (lk) { APP.snap(); lk.mode = 'flat'; APP.syncLinks(); return lk.error ? { error: lk.error } : { after: r.expr }; }
+    let f; try { f = FK.flattenExpr(r.expr); } catch (err) { return { error: err.message }; }
+    if (f.expr === r.expr) return { after: f.expr, same: true };
+    APP.snap(); r.expr = f.expr; return { after: f.expr, zones: f.zones };
+  };
+  /** What "split" would give: the disjoint zones as parenthesis-free formulas, with the names of the regions. */
+  APP.splitPlan = function (r) {
+    let list; try { list = FK.splitExpr(r.expr); } catch (err) { return { error: err.message }; }
+    const taken = regionNames(), names = [r.name];
+    for (let k = 1; k < list.length; k++) { const n = FK.uniqueName(r.name + '_' + (k + 1), taken); taken.add(n); names.push(n); }
+    return { list, names };
+  };
+  /** Replaces the region by several regions with disjoint, parenthesis-free formulas (same material, group, colour…). Returns { regions } or { error }. */
+  APP.splitRegion = function (r) {
+    const pl = APP.splitPlan(r); if (pl.error) return pl;
+    APP.snap();
+    if (r.meta && r.meta.link) delete r.meta.link;           // the formula is cut into pieces: it no longer follows a combination
+    r.expr = pl.list[0];
+    const out = [r], at = S.model.regions.indexOf(r);
+    for (let k = 1; k < pl.list.length; k++) {
+      const c = JSON.parse(JSON.stringify(r)); c.id = APP.nid(); c.name = pl.names[k]; c.expr = pl.list[k]; if (c.meta) delete c.meta.link;
+      S.model.regions.splice(at + k, 0, c); out.push(c);
+    }
+    return { regions: out };
+  };
+  /** Flattens every exported region nested deeper than the limit. Returns { done, failed: [names] }. */
+  APP.flattenAllComplex = function () {
+    const lim = APP.maxParen(), todo = S.model.regions.filter(r => !r.noExport && APP.regionStats(r).depth > lim);
+    if (!todo.length) return { done: 0, failed: [] };
+    APP.snap(); const failed = []; let done = 0;
+    for (const r of todo) {
+      const lk = r.meta && r.meta.link; let ok = true;
+      if (lk) { lk.mode = 'flat'; APP.syncLinks(); ok = !lk.error; }
+      else { try { r.expr = FK.flattenExpr(r.expr).expr; } catch (e) { ok = false; } }
+      if (ok) done++; else failed.push(r.name);
+    }
+    return { done, failed };
   };
   /** Toast summarising the quality check of a freshly created region (the full text is in its properties). */
   APP.reportQuality = function (reg) {
@@ -1373,7 +1425,7 @@
     APP.changed({ tree: true });
   };
   APP.warnings = () => {
-    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform, maxParen: APP.maxParen() }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }

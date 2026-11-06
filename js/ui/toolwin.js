@@ -134,6 +134,7 @@ function onOptChange(e) {
   if (k === 'invX' || k === 'invY') syncToolbar();
   if (k === 'pieceHl') updatePieces(true);
   if (k === 'inpComment' || k === 'inpTransform') { if ($('#inpTransform')) $('#inpTransform').checked = !!S.opt.inpTransform; updateInp(); }
+  if (k === 'maxParen') { S.opt.maxParen = +v; APP.changed({ tree: true, right: true }); }
   if (k === 'style') { S.opt.style = +v; $('#inpStyle').value = String(S.opt.style); updateInp(); }
   APP.save();
 }

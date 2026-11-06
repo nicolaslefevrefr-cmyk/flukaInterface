@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.37.2';
+  FK.VERSION = '1.38.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1185,6 +1185,7 @@
    * Returns the expression string. Throws on an empty operand or if the expansion becomes too large.
    */
   FK.combineExpr = function (a, b, op, mode) {
+    if (mode === 'flat') return FK.flattenExpr(FK.combineExpr(a, b, op, 'compact')).expr;     // no parentheses at all (union of zones), simplified
     const pa = typeof a === 'string' ? FK.parseExpr(a) : a, pb = typeof b === 'string' ? FK.parseExpr(b) : b;
     if (!pa.zones.length || !pa.zones[0].length) throw new Error('The first expression is empty');
     if (!pb.zones.length || !pb.zones[0].length) throw new Error('The second expression is empty');
@@ -1213,6 +1214,136 @@
     else terms.push({ sign: -1, sub: clone(pb) });
     return FK.formatExpr({ zones: [terms] });
   };
+  /* ---------- Flat forms (no parentheses), simplification, complexity ---------- */
+  const DNF_CAP = 400;
+  const tooMany = () => new Error('Too many zones after expansion (more than ' + DNF_CAP + '): keep the compact form');
+  const litId = (l) => l.name || '(' + FK.formatExpr(l.sub) + ')';
+  /** Conjunction x ∧ y of two literal lists; null when they contradict (A and not A). Literals are { sign, name | sub }. */
+  function andLits(x, y) {
+    const m = new Map(), out = [];
+    for (const l of x.concat(y)) {
+      const k = litId(l), o = m.get(k);
+      if (o) { if (o.sign !== l.sign) return null; continue; }
+      m.set(k, l); out.push(l);
+    }
+    return out;
+  }
+  function mulDNF(a, b) {
+    const out = [];
+    for (const x of a) for (const y of b) { const z = andLits(x, y); if (z) { out.push(z); if (out.length > DNF_CAP) throw tooMany(); } }
+    return out;
+  }
+  /** not (z1 | z2 | …) as a DNF. */
+  function negateDNF(zones) {
+    let acc = [[]];
+    for (const z of zones) { acc = mulDNF(acc, z.map(l => [{ sign: -l.sign, name: l.name, sub: l.sub }])); if (!acc.length) break; }
+    return acc;
+  }
+  /** The expression as a union of zones of single bodies (no parentheses), by distribution / De Morgan. */
+  function dnfOf(ast) {
+    const out = [];
+    for (const zone of ast.zones) {
+      let acc = [[]];
+      for (const t of zone) {
+        let alts;
+        if (t.name) alts = [[{ sign: t.sign < 0 ? -1 : 1, name: t.name }]];
+        else { const d = dnfOf(t.sub); alts = t.sign < 0 ? negateDNF(d) : d; }
+        acc = mulDNF(acc, alts);
+        if (!acc.length) break;
+      }
+      for (const z of acc) { out.push(z); if (out.length > DNF_CAP) throw tooMany(); }
+    }
+    return out;
+  }
+  /** Equivalent, shorter union of zones: duplicate terms, impossible zones, absorption (A | A B → A) and merging (A B | A -B → A). */
+  function simplifyZones(zones) {
+    let Z = [];
+    for (const z of zones) { const n = andLits([], z); if (n) Z.push(n); }
+    const key = (z) => new Map(z.map(l => [litId(l), l.sign]));
+    for (let guard = 0; guard < 200; guard++) {
+      let changed = false;
+      const K = Z.map(key);
+      // absorption: a zone that contains all the literals of another one is redundant
+      for (let j = 0; j < Z.length && !changed; j++) for (let i = 0; i < Z.length; i++) {
+        if (i === j) continue;
+        const ki = K[i], kj = K[j];
+        if (ki.size <= kj.size && [...ki].every(([k, sg]) => kj.get(k) === sg) && (ki.size < kj.size || i < j)) { Z.splice(j, 1); changed = true; break; }
+      }
+      if (changed) continue;
+      // merging: two zones identical except for the sign of one literal
+      for (let i = 0; i < Z.length && !changed; i++) for (let j = i + 1; j < Z.length; j++) {
+        const a = K[i], b = K[j]; if (a.size !== b.size) continue;
+        let diff = null, ok = true;
+        for (const [k, sg] of a) { const o = b.get(k); if (o === undefined) { ok = false; break; } if (o !== sg) { if (diff) { ok = false; break; } diff = k; } }
+        if (ok && diff) { Z[i] = Z[i].filter(l => litId(l) !== diff); Z.splice(j, 1); changed = true; break; }
+      }
+      if (!changed) break;
+    }
+    return Z;
+  }
+  /** Same set of points, zones pairwise disjoint (each zone also excludes the earlier ones). */
+  function disjointZones(zones) {
+    const out = [];
+    for (let i = 0; i < zones.length; i++) {
+      let pieces = [zones[i]];
+      for (let j = 0; j < i && pieces.length; j++) {
+        const zj = zones[j], alts = zj.map((l, k) => zj.slice(0, k).concat([{ sign: -l.sign, name: l.name, sub: l.sub }]));
+        pieces = mulDNF(pieces, alts);
+      }
+      for (const p of pieces) { out.push(p); if (out.length > DNF_CAP) throw tooMany(); }
+    }
+    return simplifyZones(out);
+  }
+  const zonesToExpr = (zones) => {
+    if (!zones.length) throw new Error('The expression is empty (no point can satisfy it)');
+    if (zones.some(z => !z.length)) throw new Error('The expression covers the whole space');
+    const ord = (z) => z.slice().sort((a, b) => b.sign - a.sign);
+    return FK.formatExpr({ zones: zones.map(z => ord(z).map(l => ({ sign: l.sign, name: l.name, sub: l.sub }))) });
+  };
+  const asAst = (e) => typeof e === 'string' ? FK.parseExpr(e) : e;
+  /** Complexity of an expression: { depth (nesting of parentheses), parens (number of parenthesised groups), zones (top-level), terms (bodies written) }. */
+  FK.exprStats = function (e) {
+    let ast; try { ast = asAst(e); } catch (err) { return { depth: 0, parens: 0, zones: 0, terms: 0 }; }
+    const walk = (a, d) => {
+      let depth = d, parens = 0, terms = 0;
+      for (const z of a.zones) for (const t of z) {
+        if (t.name) terms++;
+        else { const r = walk(t.sub, d + 1); depth = Math.max(depth, r.depth); parens += 1 + r.parens; terms += r.terms; }
+      }
+      return { depth, parens, terms };
+    };
+    const w = walk(ast, 0);
+    return { depth: w.depth, parens: w.parens, zones: ast.zones.length, terms: w.terms };
+  };
+  /** Same formula without parentheses: a union of zones, simplified. opts.disjoint → the zones do not overlap. Returns { expr, zones, list }. */
+  FK.flattenExpr = function (e, opts) {
+    let Z = simplifyZones(dnfOf(asAst(e)));
+    if (opts && opts.disjoint) Z = disjointZones(Z);
+    return { expr: zonesToExpr(Z), zones: Z.length, list: Z.map(z => zonesToExpr([z])) };
+  };
+  /** Shorter equivalent formula that keeps its structure: redundant terms and zones removed, useless parentheses opened. */
+  FK.simplifyExpr = function (e) {
+    const simp = (ast) => {
+      const zones = [];
+      for (const zone of ast.zones) {
+        const out = [];
+        for (const t of zone) {
+          if (t.name) { out.push({ sign: t.sign, name: t.name }); continue; }
+          const sub = simp(t.sub);
+          if (t.sign > 0 && sub.zones.length === 1) out.push(...sub.zones[0]);                                         // +( a b ) → +a +b
+          else if (t.sign < 0 && sub.zones.length === 1 && sub.zones[0].length === 1) out.push({ sign: -sub.zones[0][0].sign, name: sub.zones[0][0].name, sub: sub.zones[0][0].sub });   // -(+a) → -a
+          else out.push({ sign: t.sign, sub });
+        }
+        zones.push(out);
+      }
+      const Z = simplifyZones(zones);
+      return { zones: Z.length ? Z : ast.zones };
+    };
+    return FK.formatExpr(simp(asAst(e)));
+  };
+  /** The disjoint zones of a region, each one a parenthesis-free expression: used to split a region into several ones. */
+  FK.splitExpr = function (e) { return FK.flattenExpr(e, { disjoint: true }).list; };
+
   /** Exact complement of a region inside a bounding body: "void = box − region". */
   FK.complementExpr = function (expr, boxName, mode) {
     return FK.combineExpr('+' + boxName, expr, 'sub', mode);
@@ -2152,6 +2283,10 @@
         const names = FK.exprNames(FK.parseExpr(r.expr));
         for (const n of names) if (!bn.has(n)) w.push(`Region "${r.name}": unknown body "${n}"`); else if (!r.noExport && model.bodies.some(b => b.name === n && b.noExport)) w.push(`Region "${r.name}": body "${n}" is not exported`);
       } catch (e) { w.push(`Region "${r.name}": ${e.message}`); }
+      if (vopts.maxParen !== undefined && vopts.maxParen !== null && !r.noExport) {
+        const st = FK.exprStats(r.expr);
+        if (st.depth > vopts.maxParen) w.push(`Region "${r.name}": parentheses nested ${st.depth} deep (limit ${vopts.maxParen}) — use Flatten, Simplify or Split in its definition`);
+      }
     }
     return w;
   };

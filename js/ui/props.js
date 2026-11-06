@@ -92,6 +92,17 @@ function liveInfoHTML() {
 }
 /** First sentence of a diagnostic (the advice that follows goes in a tooltip). */
 const brief = (t) => String(t).split(/\.\s+(?=[A-Z+\-(])/)[0].replace(/\.$/, '');
+/** Size of the formula (depth of parentheses, zones, terms) with the tools to reduce it. */
+function cplxHTML(r) {
+  const st = APP.regionStats(r), lim = APP.maxParen(), lk = r.meta && r.meta.link, over = st.depth > lim;
+  let simp = false;
+  if (!lk && st.terms > 1) { try { simp = FK.simplifyExpr(r.expr) !== FK.formatExpr(FK.parseExpr(r.expr)); } catch (e) { simp = false; } }
+  const btn = (act, label, tip) => `<button type="button" class="btn sm" data-act="${act}" data-rid="${r.id}" title="${esc(tip)}">${label}</button>`;
+  const tools = (simp ? btn('exprSimplify', 'Simplify', 'Removes redundant terms and zones, opens useless parentheses. Same region, shorter formula.') : '') +
+    (st.parens ? btn('exprFlatten', 'Flatten', 'Rewrites the formula without any parenthesis (union of zones). Same region; the formula can get longer.') +
+      (lk ? '' : btn('exprSplit', 'Split into regions…', 'Cuts the region into several regions with disjoint, parenthesis-free formulas (same material). Same volume, more regions.')) : '');
+  return `<div class="msg cplx${over ? ' warn' : ''}"><span title="Depth of nested parentheses · zones (separated by |) · bodies written">${over ? '⚠ ' : ''}Parentheses ${st.depth} deep${over ? ` (limit ${lim})` : ''} · ${st.zones} zone${st.zones > 1 ? 's' : ''} · ${st.terms} term${st.terms > 1 ? 's' : ''}</span>${tools ? `<div class="btns">${tools}</div>` : ''}</div>`;
+}
 function regionMsg(r) {
   try {
     const ast = FK.parseExpr(r.expr || '+x');
@@ -109,7 +120,7 @@ function regionMsg(r) {
     const q = (c && c.quality) || [];
     const pq = q.find(x => x.kind === 'gap' || x.kind === 'pieces');
     const pcs = pq ? `<div class="msg"><label class="chk" style="margin:0" title="Each separate piece gets its own colour in the 3D view; the red spot marks where two pieces are closest"><input type="checkbox" data-opt="pieceHl" ${S.opt.pieceHl === false ? '' : 'checked'}>Highlight the ${pq.pieces} pieces${pq.spot ? ` · red spot: closest points, ${FK.fmt(pq.spot.d * 10, 4)} mm apart` : ''}</label> <span class="pieceleg">${PIECE_PAL.slice(0, Math.min(pq.pieces, 8)).map(c => `<i style="background:${c}"></i>`).join('')}</span></div>` : '';
-    return pcs + '<div class="msg ok">Valid expression' + (q.length ? ` <span class="wicon" tabindex="0" title="${esc(q.map(x => x.text).join('\n'))}">⚠${q.length > 1 ? q.length : ''}</span>` : '') + '</div>';
+    return pcs + '<div class="msg ok">Valid expression' + (q.length ? ` <span class="wicon" tabindex="0" title="${esc(q.map(x => x.text).join('\n'))}">⚠${q.length > 1 ? q.length : ''}</span>` : '') + '</div>' + cplxHTML(r);
   } catch (e) { return `<div class="msg bad">${esc(e.message)}</div>`; }
 }
 /** Keeps the style controls of the properties panel in step with changes made elsewhere (tree slider, eye…), without re-rendering it. */
@@ -367,7 +378,7 @@ function regionProps(r) {
     <div class="muted" style="font-size:12px">Operations are applied in order, from the first region: ((A op B) op C) …  The formula below follows these regions and cannot be edited.</div>
     <div class="fields"><div class="fld"><label>Start from</label><select data-k="lnkA">${regOpts(lk.a)}</select></div>
     ${APP.linkOps(lk).map((o, i) => `<div class="fld lop"><div class="lopsel"><select data-k="lnkOp" data-i="${i}" title="Operation">${OPS.map(([v, l]) => `<option value="${v}" ${o.op === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div><div class="lopreg"><select data-k="lnkReg" data-i="${i}" title="Region">${regOpts(o.id)}</select><button class="mn" data-act="lnkDel" data-i="${i}" title="Remove this operation" ${APP.linkOps(lk).length < 2 ? 'disabled' : ''}>✕</button></div></div>`).join('')}
-    <div class="fld"><label>Form</label><select data-k="lnkMode"><option value="compact" ${lk.mode !== 'expanded' ? 'selected' : ''}>Compact</option><option value="expanded" ${lk.mode === 'expanded' ? 'selected' : ''}>Expanded (De Morgan)</option></select></div></div>
+    <div class="fld"><label>Form</label><select data-k="lnkMode"><option value="compact" ${!lk.mode || lk.mode === 'compact' ? 'selected' : ''}>Compact</option><option value="expanded" ${lk.mode === 'expanded' ? 'selected' : ''}>Expanded (De Morgan)</option><option value="flat" ${lk.mode === 'flat' ? 'selected' : ''}>Flat (no parentheses)</option></select></div></div>
     ${lk.error ? `<div class="msg bad">${esc(lk.error)}</div>` : ''}
     <div class="btns"><button class="btn sm primary" data-act="lnkAdd" title="Add another region to the combination">＋ Add an operation</button><button class="btn sm" data-act="unlinkRegion" title="Keep the current formula and make it editable">Unlink (keep formula)</button></div></div>` : '';
   const definition = `${linkBlock}<div class="sec"><h4><span>Definition</span></h4><div class="fields">
