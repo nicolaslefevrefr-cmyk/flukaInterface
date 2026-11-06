@@ -26,6 +26,7 @@ $('#inpWarn').addEventListener('click', e => {
 });
 $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-flatall]')) { const r = APP.flattenAllComplex(); toast(r.done ? `${r.done} region${r.done > 1 ? 's' : ''} flattened` + (r.failed.length ? `; too large to expand: ${r.failed.join(', ')}` : '') : (r.failed.length ? 'Too large to expand: ' + r.failed.join(', ') : 'Nothing to flatten')); APP.changed({ tree: true, right: true }); return; } if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
 $('#inpFull').onchange = (e) => { S.opt.inpFull = e.target.checked; updateInp(); APP.save(); };
+$('#inpZones').onchange = (e) => { S.opt.inpZones = e.target.checked; updateInp(); APP.save(); if (dlgSet.open) openSettings(); };
 $('#inpTransform').onchange = (e) => { S.opt.inpTransform = e.target.checked; updateInp(); APP.save(); if (dlgSet.open) openSettings(); };
 $('#inpStyle').onchange = (e) => { S.opt.style = +e.target.value; updateInp(); APP.save(); };
 $('#btnInpCopy').onclick = () => copyText(APP.inpText());

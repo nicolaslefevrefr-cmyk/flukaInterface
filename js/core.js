@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.39.0';
+  FK.VERSION = '1.40.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1124,6 +1124,11 @@
     return set;
   };
 
+  /** The expression with one zone per line, each line starting with "|" (a single zone stays on one line). Same formula. */
+  FK.zoneLines = function (expr) {
+    const a = FK.parseExpr(expr), z = a.zones.map(x => FK.formatExpr({ zones: [x] }));
+    return z.length > 1 ? z.map(x => '| ' + x).join('\n') : z[0] || '';
+  };
   FK.formatExpr = function (ast, nested) {
     return ast.zones.map(z => z.map(t => (t.sign < 0 ? '-' : '+') + (t.name ? t.name : '(' + FK.formatExpr(t.sub, true) + ')')).join(' ')).join(' | ');
   };
@@ -2298,9 +2303,10 @@
         const names = FK.exprNames(FK.parseExpr(r.expr));
         for (const n of names) if (!bn.has(n)) w.push(`Region "${r.name}": unknown body "${n}"`); else if (!r.noExport && model.bodies.some(b => b.name === n && b.noExport)) w.push(`Region "${r.name}": body "${n}" is not exported`);
       } catch (e) { w.push(`Region "${r.name}": ${e.message}`); }
-      if (vopts.maxParen !== undefined && vopts.maxParen !== null && !r.noExport) {
+      if ((vopts.maxParen !== undefined && vopts.maxParen !== null || vopts.maxZones) && !r.noExport) {
         const st = FK.exprStats(r.expr);
-        if (st.depth > vopts.maxParen) w.push(`Region "${r.name}": parentheses nested ${st.depth} deep (limit ${vopts.maxParen}) — use Flatten, Simplify or Split in its definition`);
+        if (vopts.maxZones && st.zones > vopts.maxZones) w.push(`Region "${r.name}": ${st.zones} zones (recommended: at most ${vopts.maxZones}) — simplify it or split it into several regions`);
+        if (vopts.maxParen !== undefined && vopts.maxParen !== null && st.depth > vopts.maxParen) w.push(`Region "${r.name}": parentheses nested ${st.depth} deep (limit ${vopts.maxParen}) — use Flatten, Simplify or Split in its definition`);
       }
     }
     return w;
@@ -2470,17 +2476,24 @@
         expr = FK.formatExpr(ast);
       } catch (e) { /* garder tel quel */ }
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
+      // one zone per line, each starting with "|" (also the first one), when the region has several zones
+      let zt = null;
+      if (opts.zoneLines) { try { const a = FK.parseExpr(expr); if (a.zones.length > 1) zt = a.zones.map(z => FK.formatExpr({ zones: [z] })); } catch (e) { zt = null; } }
+      const zoned = (first, indent, width) => {        // first: text before the first zone, indent: before the others
+        zt.forEach((z, k) => wrapTerms(z, width - 1, '').forEach((l, i) => out.push((k === 0 && i === 0 ? first : indent) + (i === 0 ? '|' : ' ') + l)));
+      };
       if (style === 1) {
         out.push(`${r.name} ${nv}`);
-        for (const l of wrapTerms(expr, 100, '\t')) out.push(l[0] === '\t' ? l : '\t' + l);
+        if (zt) zoned('\t', '\t', 100);
+        else for (const l of wrapTerms(expr, 100, '\t')) out.push(l[0] === '\t' ? l : '\t' + l);
       } else if (style === 3) {
         const head = r.name.padEnd(8) + ' ' + String(nv).padStart(5) + ' ';
-        const ls = wrapTerms(expr, 130 - head.length, '');
-        ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l));
+        if (zt) zoned(head, ' '.repeat(head.length), 130 - head.length);
+        else { const ls = wrapTerms(expr, 130 - head.length, ''); ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l)); }
       } else {
         const head = r.name.padEnd(13) + nv + ' ';
-        const ls = wrapTerms(expr, 100, '');
-        ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l));
+        if (zt) zoned(head, ' '.repeat(head.length), 100);
+        else { const ls = wrapTerms(expr, 100, ''); ls.forEach((l, i) => out.push(i === 0 ? head + l : ' '.repeat(head.length) + l)); }
       }
     }
     out.push('END');

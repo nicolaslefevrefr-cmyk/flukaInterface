@@ -59,7 +59,7 @@ async function saveConfigFile() {
 /** Re-applies everything that depends on the settings after a configuration was loaded / reset. */
 function afterConfig() {
   applyTheme(); applyPanelW(); APP.setProjection(S.opt.proj || 'persp'); APP.applyStyles(); APP.refreshNames();
-  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform;
+  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform; $('#inpZones').checked = !!S.opt.inpZones;
   syncToolbar(); renderLeft(); renderRight(); updateInp(); APP.changed({ tree: true, right: true }); APP.save();
 }
 $('#fileCfg').onchange = async (e) => {

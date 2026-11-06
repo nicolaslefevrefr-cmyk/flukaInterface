@@ -94,14 +94,15 @@ function liveInfoHTML() {
 const brief = (t) => String(t).split(/\.\s+(?=[A-Z+\-(])/)[0].replace(/\.$/, '');
 /** Size of the formula (depth of parentheses, zones, terms) with the tools to reduce it. */
 function cplxHTML(r) {
-  const st = APP.regionStats(r), lim = APP.maxParen(), lk = r.meta && r.meta.link, over = st.depth > lim;
+  const st = APP.regionStats(r), lim = APP.maxParen(), zl = APP.maxZones(), lk = r.meta && r.meta.link, over = st.depth > lim, overZ = zl && st.zones > zl, lines = /\n/.test(r.expr || '');
   let simp = false;
   if (!lk && st.terms > 1) { try { simp = FK.simplifyExpr(r.expr) !== FK.formatExpr(FK.parseExpr(r.expr)); } catch (e) { simp = false; } }
   const btn = (act, label, tip) => `<button type="button" class="btn sm" data-act="${act}" data-rid="${r.id}" title="${esc(tip)}">${label}</button>`;
   const tools = (simp ? btn('exprSimplify', 'Simplify', 'Removes redundant terms and zones, opens useless parentheses. Same region, shorter formula.') : '') +
-    (st.parens ? btn('exprFlatten', 'Flatten', 'Rewrites the formula without any parenthesis (union of zones). Same region; the formula can get longer.') +
+    (!lk && st.zones > 1 && !lines ? btn('exprLines', 'One zone per line', 'Writes each zone (part between |) on its own line. Same formula; easier to read.') : '') +
+    (st.parens ? btn('exprFlatten', 'Into zones (no parenthesis)', 'Rewrites the formula as zones separated by |, one per line, without any parenthesis. Same region; the formula can get longer.') +
       (lk ? '' : btn('exprSplit', 'Split into regions…', 'Cuts the region into several regions with disjoint, parenthesis-free formulas (same material). Same volume, more regions.')) : '');
-  return `<div class="msg cplx${over ? ' warn' : ''}"><span title="Depth of nested parentheses · zones (separated by |) · bodies written">${over ? '⚠ ' : ''}Parentheses ${st.depth} deep${over ? ` (limit ${lim})` : ''} · ${st.zones} zone${st.zones > 1 ? 's' : ''} · ${st.terms} term${st.terms > 1 ? 's' : ''}</span>${tools ? `<div class="btns">${tools}</div>` : ''}</div>`;
+  return `<div class="msg cplx${over || overZ ? ' warn' : ''}"><span title="Depth of nested parentheses · zones (separated by |) · bodies written">${over || overZ ? '⚠ ' : ''}Parentheses ${st.depth} deep${over ? ` (limit ${lim})` : ''} · ${st.zones} zone${st.zones > 1 ? 's' : ''}${overZ ? ` (recommended ≤ ${zl})` : ''} · ${st.terms} term${st.terms > 1 ? 's' : ''}</span>${tools ? `<div class="btns">${tools}</div>` : ''}</div>`;
 }
 function regionMsg(r) {
   try {

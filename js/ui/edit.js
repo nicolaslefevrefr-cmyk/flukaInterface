@@ -200,6 +200,11 @@ function onActClick(e) {
       if (it && S.sel.t === 'body') APP.scaleBody(it, sc.mode, sc.val, sc.unit, act === 'scaleDup');
       break;
     }
+    case 'exprLines': {
+      const r = APP.getRegion(+a.dataset.rid); if (!r) break;
+      try { APP.snap(); r.expr = FK.zoneLines(r.expr); } catch (err) { toast(err.message); break; }
+      APP.changed({ tree: true, right: true }); break;
+    }
     case 'exprSimplify': case 'exprFlatten': {
       const r = APP.getRegion(+a.dataset.rid); if (!r) break;
       const res = act === 'exprSimplify' ? APP.simplifyRegion(r) : APP.flattenRegion(r);
