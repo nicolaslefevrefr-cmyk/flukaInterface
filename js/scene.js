@@ -542,7 +542,33 @@
     }
     w.visible = true; w.material.color.set(colorHex);
   }
+  /** Removes 3D objects that no project object owns any more (they would stay on screen, hidden from neither the toggles nor the picking). Returns how many were removed. */
+  function sweepOrphans() {
+    const own = new Set();
+    for (const c of bodyC.values()) if (c.group) own.add(c.group);
+    for (const c of regC.values()) if (c.group) own.add(c.group);
+    for (const t of S.stls) if (t.group) own.add(t.group);
+    let n = 0;
+    for (const g of [gStl, gBody, gRegion]) for (const ch of g.children.slice()) if (!own.has(ch)) { disposeObj(ch); n++; }
+    return n;
+  }
+  /** Full redraw: drops every cached 3D object and every temporary overlay, then rebuilds from the model. */
+  APP.refreshView = function () {
+    S.hlId = null; S.hlSet = null; S.pick = null;
+    const orphans = sweepOrphans();
+    for (const c of bodyC.values()) if (c.group) disposeObj(c.group);
+    for (const c of regC.values()) if (c.group) disposeObj(c.group);
+    bodyC.clear(); regC.clear();
+    for (const t of S.stls) { if (t.group) { disposeObj(t.group); t.group = null; t.mesh = null; } if (t.raw && t.raw.length) APP.buildStl(t); }
+    for (const g of [gFeat, gDev, gChk, gPcs]) clearGroup(g);   // temporary overlays: they are redrawn by their own tool when needed
+    lastWsig = null;
+    if (APP.drawHighlight) { APP.drawHighlight(gSel, null); APP.drawHighlight(gHover, null, true); }
+    APP.sync(); if (APP.rebuildCsys) APP.rebuildCsys(); if (APP.rebuildMeasures) APP.rebuildMeasures();
+    needRender = true;
+    return orphans;
+  };
   APP.applyStyles = function () {
+    sweepOrphans();
     const sel = S.sel, rm = S.opt.render || 'shaded', edgesOn = S.opt.edges !== false || rm === 'wire';
     // global render mode: shaded (per-item opacities) · wire (edges only) · opaque (all solids at 1) · ghost (all solids very transparent)
     // presets: 'meshop' = meshes opaque, CG objects slightly transparent · 'cgop' = the reverse; item.look = 'opaque' | 'transparent' overrides the global mode

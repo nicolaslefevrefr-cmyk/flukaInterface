@@ -192,3 +192,11 @@ $$('#viewBtns button').forEach(b => b.onclick = () => {
   if (S.pick && S.pick.kind === 'face') lookAtFace(S.pick);
   else { setTool('viewface'); S.winOpen = true; renderToolWin(); }
 });
+
+/* ---------- Redraw the view ---------- */
+function refreshView() {
+  const n = APP.refreshView();
+  APP.applyStyles(); if (typeof updateLegend === 'function') updateLegend();
+  toast(n ? `View redrawn (${n} leftover object${n > 1 ? 's' : ''} removed)` : 'View redrawn');
+}
+$('#btnRefresh').onclick = refreshView;
