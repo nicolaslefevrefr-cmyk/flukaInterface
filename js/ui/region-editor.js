@@ -4,6 +4,8 @@
 /* ---------- Region definition: chips, object picker, "show used components" ---------- */
 const bodyByName = (n) => S.model.bodies.find(b => b.name === n);
 /** Name written in the INP file for a body (its own name when it is not exported): what chips and the object list show in a region definition. */
+/** Real name of an object, with the name written in the INP file between parentheses when it differs. */
+const objLabel = (b, map) => { if (!b) return ''; const i = inpLabel(b, map); return i && i !== b.name ? `${b.name} (${i})` : b.name; };
 const inpLabel = (b, map) => (b && !b.noExport && (map || FK.inpNames(S.model).bodies).get(b)) || (b ? b.name : '');
 /** Tokens of an expression with their position: [{ t, s, e }]. */
 function exprTokens(v) {
@@ -34,7 +36,7 @@ function renderExprChips() {
     const t = tk[i], term = terms.get(t.s);
     if (term) {
       const b = bodyByName(term.name);
-      h += `<span class="chip ${term.sign < 0 ? 'neg' : 'pos'}${b ? '' : ' bad'}" data-s="${term.s}" data-e="${term.e}" data-n="${esc(term.name)}" title="${b ? esc(term.name + ' · ' + (b.type === 'RAW' ? b.rawType : b.type) + (inpLabel(b, inm) !== term.name ? ' · written ' + inpLabel(b, inm) + ' in the INP file' : '')) : 'Unknown object'}"><i class="cdot" style="background:${b ? b.color : '#bbb'}"></i><b>${term.sign < 0 ? '−' : '+'}</b>${esc(b ? inpLabel(b, inm) : term.name)}</span>`;
+      h += `<span class="chip ${term.sign < 0 ? 'neg' : 'pos'}${b ? '' : ' bad'}" data-s="${term.s}" data-e="${term.e}" data-n="${esc(term.name)}" title="${b ? esc(term.name + ' · ' + (b.type === 'RAW' ? b.rawType : b.type) + (inpLabel(b, inm) !== term.name ? ' · written ' + inpLabel(b, inm) + ' in the INP file' : '')) : 'Unknown object'}"><i class="cdot" style="background:${b ? b.color : '#bbb'}"></i><b>${term.sign < 0 ? '−' : '+'}</b>${esc(b ? objLabel(b, inm) : term.name)}</span>`;
       if (!term.implicit) i++;
     } else if (t.t === '|') h += `<span class="cop" data-e="${t.e}">∪</span>`;
     else if (t.t === '+' || t.t === '-') h += `<span class="cop" data-e="${t.e}">${t.t === '-' ? '−' : '+'}</span>`;
@@ -82,7 +84,7 @@ function setUsedView(on) {
 /** Object list (custom, with colour bullets) grouped as in the tree: Planes / Bodies, then user groups. */
 function termPickerHTML() {
   const cur = bodyByName(S.termSel) ? S.termSel : '', inm = FK.inpNames(S.model).bodies;
-  const opt = (b) => `<button type="button" class="tpopt${b.name === cur ? ' on' : ''}" data-act="tpPick" data-n="${esc(b.name)}" title="${esc(b.name)}"><i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(inpLabel(b, inm))}</span><small>${esc(b.type === 'RAW' ? b.rawType || 'RAW' : b.type)}${b.noExport ? ' · ⊘' : ''}</small></button>`;
+  const opt = (b) => `<button type="button" class="tpopt${b.name === cur ? ' on' : ''}" data-act="tpPick" data-n="${esc(b.name)}" title="${esc(b.name)}"><i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(objLabel(b, inm))}</span><small>${esc(b.type === 'RAW' ? b.rawType || 'RAW' : b.type)}${b.noExport ? ' · ⊘' : ''}</small></button>`;
   let list = '';
   for (const c of [{ k: 'planes', t: 'Planes', f: (b) => FK.isPlaneType(b.type) }, { k: 'bodies', t: 'Bodies', f: (b) => !FK.isPlaneType(b.type) }]) {
     const all = S.model.bodies.filter(c.f); if (!all.length) continue;
@@ -93,7 +95,7 @@ function termPickerHTML() {
   const cb = bodyByName(cur);
   return `<div class="tpick" id="termPick"><input type="hidden" id="termBody" value="${esc(cur)}"><button type="button" class="tpbtn" data-act="tpToggle" title="Object to insert with + add / − subtract">${tpLabel(cb)}</button><div class="tplist" hidden>${list || '<div class="empty">No object</div>'}</div></div>`;
 }
-const tpLabel = (b) => b ? `<i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(inpLabel(b))}</span><span class="car">▾</span>` : '<span class="nm muted">— choose an object —</span><span class="car">▾</span>';
+const tpLabel = (b) => b ? `<i class="cdot" style="background:${b.color}"></i><span class="nm">${esc(objLabel(b))}</span><span class="car">▾</span>` : '<span class="nm muted">— choose an object —</span><span class="car">▾</span>';
 function setTermSel(name) {
   S.termSel = name || ''; const h = $('#termBody'); if (h) h.value = S.termSel;
   const btn = $('#termPick .tpbtn'); if (btn) { btn.innerHTML = tpLabel(bodyByName(S.termSel)); btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 1200); }

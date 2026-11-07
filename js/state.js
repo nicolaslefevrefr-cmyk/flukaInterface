@@ -749,6 +749,33 @@
     const ev = APP.evalRegionNow({ expr }), ea = APP.evalRegionNow(a), eb = APP.evalRegionNow(b);
     return { expr, regName, op, mode, vol: ev.error ? null : ev.vol, volA: ea.error ? null : ea.vol, volB: eb.error ? null : eb.vol, error2: ev.error || null };
   };
+  /* ---------- New region from 6 planes (picked one by one; the signs are worked out) ---------- */
+  APP.reg6Begin = function () {
+    APP.snap(); const r = APP.addRegion(APP.regionNameFor('box'), '', { visible: true });
+    S.reg6 = { rid: r.id, names: [] }; S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true }); return r;
+  };
+  APP.reg6Cancel = function (removeRegion) {
+    const st = S.reg6; S.reg6 = null;
+    if (st && removeRegion) { const r = APP.getRegion(st.rid); if (r && !r.expr) { S.model.regions.splice(S.model.regions.indexOf(r), 1); S.sel = null; } }
+    APP.changed({ tree: true, right: true });
+  };
+  APP.reg6Undo = function () { if (S.reg6 && S.reg6.names.length) { S.reg6.names.pop(); APP.changed({ right: true }); } };
+  /** Adds a plane (body name) to the pending region; with the sixth, writes the formula. Returns { done, error, expr }. */
+  APP.reg6Add = function (name) {
+    const st = S.reg6; if (!st) return { error: 'No region is waiting for planes' };
+    const b = APP.getBodyByName ? APP.getBodyByName(name) : S.model.bodies.find(x => x.name === name);
+    if (!b || !FK.isPlaneType(b.type)) return { error: 'Only planes can be used here' };
+    if (st.names.includes(b.name)) return { error: b.name + ' is already in the list' };
+    st.names.push(b.name);
+    if (st.names.length < 6) return { done: false, count: st.names.length };
+    const r = APP.getRegion(st.rid); if (!r) { S.reg6 = null; return { error: 'The region no longer exists' }; }
+    const pls = st.names.map(nm => { const pl = FK.planeOf(APP.wbody(S.model.bodies.find(x => x.name === nm))), L = V.len(pl.H); const n = V.mul(pl.H, 1 / L); return { n, d: V.dot(n, pl.V) }; });
+    const cell = FK.cellFromPlanes(pls);
+    if (cell.error) { st.names.pop(); return { error: cell.error }; }
+    r.expr = st.names.map((nm, i) => (cell.signs[i] < 0 ? '-' : '+') + nm).join(' ');
+    S.reg6 = null; S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true });
+    return { done: true, expr: r.expr, alternatives: cell.alternatives, region: r };
+  };
   /* ---------- Complexity of region formulas: simplify, flatten, split ---------- */
   /** Deepest nesting of parentheses accepted before a warning (setting; 99 = no limit). */
   APP.maxParen = () => { const v = S.opt.maxParen; return v === undefined || v === null || v === '' || isNaN(+v) ? 1 : +v; };

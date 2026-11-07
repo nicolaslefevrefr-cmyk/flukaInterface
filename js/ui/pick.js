@@ -208,6 +208,14 @@ function processHit(hit, x, y) {
         if (narrow()) setDrawer('right', true);
         break;
       }
+      case 'reg6': {
+        if (!S.reg6) { setTool('select'); break; }
+        const o = APP.ownerOf(hit); let name = '';
+        if (o.kind === 'body' && APP.getBody(o.id) && FK.isPlaneType(APP.getBody(o.id).type)) name = APP.getBody(o.id).name;
+        else if (o.kind === 'body' && S.opt.reg6Face === false) { toast('Click a plane'); break; }
+        else { const pk = APP.makePick(hit, 'face', x, y); APP.snap(); const pl = APP.planeForCut(pk); if (pl.created) pl.body.visible = false; name = pl.body.name; if (pl.created) toast(`Plane ${name} created from the face`); }
+        reg6Take(name); break;
+      }
       case 'regcut': {
         const r = APP.getRegion(S.cutRid); if (!r) { setTool('select'); break; }
         const pk = APP.makePick(hit, 'face', x, y);
@@ -269,4 +277,15 @@ function openPickPop(hits, x, y, onSelect) {
   };
   document.addEventListener('pointerdown', pickPop.outside, true); document.addEventListener('keydown', pickPop.key, true);
   mark(); hoverHit(hits[0]);
+}
+
+/** A plane was chosen for the region being built from 6 planes (view click or list click). */
+function reg6Take(name) {
+  const res = APP.reg6Add(name);
+  if (res.error) { toast(res.error); return; }
+  if (res.done) {
+    setTool('select'); S.sel = { t: 'region', id: res.region.id }; S.rtab = 'definition'; APP.changed({ tree: true, right: true });
+    toast(`${res.region.name}: ${res.expr}` + (res.alternatives ? ` (${res.alternatives} other closed cell${res.alternatives > 1 ? 's' : ''} possible: the largest was kept)` : ''));
+    if (narrow()) setDrawer('right', true);
+  } else { renderToolOpts(); updateStatus(); toast(`${name} — ${res.count} / 6`); }
 }

@@ -25,6 +25,8 @@ function grpMenu0(id) {
     { sep: 1 }, { label: 'Delete group (items are kept)', danger: true, fn: () => { APP.deleteGroup(id); APP.changed({ tree: true }); } }];
 }
 const groupMenu = (k) => groupMenu0(k).concat(catExtra(k));
+/** New region whose formula is worked out from 6 planes picked one by one. */
+function startReg6() { APP.reg6Begin(); setTool('reg6'); if (narrow()) setDrawer('left', false); }
 function groupMenu0(k) {
   switch (k) {
     case 'meshes': return [{ label: 'Import STL / OBJ…', fn: () => $('#fileStl').click() }, newGrp(k)].concat(visItems(k));
@@ -40,7 +42,7 @@ function groupMenu0(k) {
       { label: 'PLA from a mesh face…', fn: () => setTool('plane') }, newGrp(k)].concat(visItems(k));
     case 'bodies': return ['RPP', 'SPH', 'RCC', 'TRC', 'XCC', 'YCC', 'ZCC'].map(t => ({ label: 'New ' + FK.BODY_TYPES[t].label, fn: () => newBody(t) }))
       .concat([{ label: 'RPP from 2 points in the view…', fn: () => setTool('rpp') }, { label: 'Add void / blackhole envelope', fn: () => APP.addEnvelope() }, newGrp(k)]).concat(visItems(k));
-    case 'regions': return [{ label: 'New region', fn: () => { APP.snap(); const r = APP.addRegion(null, '', { visible: true }); S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true }); } }, newGrp(k)].concat(visItems(k));
+    case 'regions': return [{ label: 'New region from 6 planes…', fn: startReg6 }, { label: 'New region', fn: () => { APP.snap(); const r = APP.addRegion(null, '', { visible: true }); S.sel = { t: 'region', id: r.id }; APP.changed({ tree: true, right: true }); } }, newGrp(k)].concat(visItems(k));
     case 'measures': return [{ label: 'Measure a distance…', fn: () => setTool('measure') }, newGrp(k), { label: 'Delete all measures', danger: true, fn: () => { APP.snap(); S.measures = []; APP.changed({ tree: true, measures: true, right: true }); } }].concat(visItems(k));
   }
   return [];
@@ -67,6 +69,7 @@ function itemMenuBase(t, id) {
       return m.concat([{ sep: 1 }, del]);
     }
     case 'region': return [rename, toggle, { label: 'Duplicate', fn: () => { const c = APP.duplicateRegion(o); S.sel = { t: 'region', id: c.id }; APP.changed({ tree: true, right: true }); } },
+      { label: 'New region from 6 planes…', fn: startReg6 },
       { label: 'Combine with another region… (A − B, A ∩ B, A ∪ B) (experimental)', fn: () => openBoolDlg(o) },
       { label: 'Create void region around this one… (experimental)', fn: () => openVoidDlg(o) }, { sep: 1 }, del];
     case 'csys': return [rename, toggle, { label: 'Set as active', fn: () => APP.setActiveCsys(o.id) },

@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.41.0';
+  FK.VERSION = '1.42.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1159,6 +1159,39 @@
     };
     const groupLines = (a, depth) => packZones(a.zones.map(z => zoneLines(z, depth)), false);
     return packZones(ast.zones.map(z => zoneLines(z, 0)), ast.zones.length > 1);
+  };
+  /** The convex cell bounded by the given planes (inside of a plane = n·x < d, the "+" side). planes: [{ n (unit), d }].
+   * Tries every choice of sides, keeps the bounded, non-empty cells and returns the one with the largest inscribed radius:
+   * { signs: [+1 | -1 per plane] (+ = the "+" side), center, radius, alternatives } or { error }. */
+  FK.cellFromPlanes = function (planes) {
+    const n = planes.length; if (n < 4) return { error: 'At least 4 planes are needed' };
+    let scale = 1; for (const p of planes) scale = Math.max(scale, Math.abs(p.d));
+    const tol = 1e-9 * scale;
+    // vertices: intersection of every triple of planes
+    const verts = [], det3 = (a, b, c) => V.dot(a, V.cross(b, c));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (let k = j + 1; k < n; k++) {
+      const a = planes[i].n, b = planes[j].n, c = planes[k].n, D = det3(a, b, c);
+      if (Math.abs(D) < 1e-9) continue;
+      const bc = V.cross(b, c), ca = V.cross(c, a), ab = V.cross(a, b);
+      verts.push(V.mul(V.add(V.add(V.mul(bc, planes[i].d), V.mul(ca, planes[j].d)), V.mul(ab, planes[k].d)), 1 / D));
+    }
+    if (verts.length < 4) return { error: 'These planes do not enclose a volume (too many are parallel)' };
+    let best = null, alt = 0;
+    for (let mask = 0; mask < (1 << n); mask++) {
+      const sg = planes.map((_, i) => (mask >> i & 1) ? -1 : 1);
+      // the cell must be bounded: no direction u with s_i n_i · u ≤ 0 for every plane
+      const dirs = [], sn = planes.map((p, i) => V.mul(p.n, sg[i]));
+      for (let i = 0; i < n; i++) { dirs.push(sn[i], V.mul(sn[i], -1)); for (let j = i + 1; j < n; j++) { const cr = V.cross(sn[i], sn[j]), L = V.len(cr); if (L > 1e-9) { dirs.push(V.mul(cr, 1 / L), V.mul(cr, -1 / L)); } } }
+      let open = false; for (const u of dirs) { const L = V.len(u); if (!(L > 1e-12)) continue; if (sn.every(q => V.dot(q, u) / L <= 1e-9)) { open = true; break; } }
+      if (open) continue;
+      const vs = verts.filter(v => planes.every((p, i) => sg[i] * (V.dot(p.n, v) - p.d) <= tol)); if (vs.length < 4) continue;
+      let c = [0, 0, 0]; for (const v of vs) c = V.add(c, v); c = V.mul(c, 1 / vs.length);
+      let r = Infinity; planes.forEach((p, i) => { r = Math.min(r, -sg[i] * (V.dot(p.n, c) - p.d)); });
+      if (!(r > tol)) continue;
+      alt++; if (!best || r > best.radius) best = { signs: sg, center: c, radius: r };
+    }
+    if (!best) return { error: 'These planes do not bound a closed volume: check that they enclose a region together' };
+    best.alternatives = alt - 1; return best;
   };
   /** The expression with one zone per line, each line starting with "|" (a single zone stays on one line). Same formula. */
   FK.zoneLines = function (expr) {

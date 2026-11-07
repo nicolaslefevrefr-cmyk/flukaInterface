@@ -14,4 +14,4 @@ function init() {
   APP.restoreMeshes().then(n => { if (n) { renderLeft(); renderRight(); toast(`${n} mesh${n > 1 ? 'es' : ''} restored`); } });
 }
 init();
-window.APP_DEBUG = { openInpRename, refreshView, drawn: () => APP.drawnObjects(), linkify, toggleColorBy,  openCompact: (t) => openCompact(t), CMP, openSettings, openSurf: () => toggleSurf(), saveConfigFile, afterConfig, sfRun, sfGo, grDraw, grSelect, GR, startFill, processHit, newCsysEditable, resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };
+window.APP_DEBUG = { setTool, objLabel, openInpRename, refreshView, drawn: () => APP.drawnObjects(), linkify, toggleColorBy,  openCompact: (t) => openCompact(t), CMP, openSettings, openSurf: () => toggleSurf(), saveConfigFile, afterConfig, sfRun, sfGo, grDraw, grSelect, GR, startFill, processHit, newCsysEditable, resolvePoint, ptRefreshPending, suggestSnap, chkSolve, chkRun, openDevDlg, devRun, splitStl, guidedToggle, guidedArm, openFeatDlg, loadStlFiles, setTool, setFilter, setPick, flush, renderRight };

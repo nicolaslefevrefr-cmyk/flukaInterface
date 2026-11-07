@@ -31,6 +31,7 @@ function updateStatus() {
   else if (S.tool === 'csys3') t = 'Coordinate system: click ' + ['the origin', 'a point on the X axis', 'a point in the XY plane (+Y side)'][(S.cs3 || []).length] + modeHint();
   else if (S.tool === 'rpp') t = (S.pending ? 'RPP: click the opposite corner (point 2)' : 'RPP: click the first corner (point 1)') + modeHint();
   else if (S.tool === 'regpick') { const r = APP.getRegion(S.cutRid); t = `Pick a body or plane for ${r ? esc(r.name) : 'the region'}: click it in the view · <a href="#" data-act="cancelTool">Cancel (Esc)</a>`; }
+  else if (S.tool === 'reg6') { const r = APP.getRegion(S.reg6 && S.reg6.rid); t = `Plane ${S.reg6 ? S.reg6.names.length + 1 : '?'} of 6 for ${r ? esc(r.name) : 'the region'}: click a plane or a face in the view, or a plane in the list · <a href="#" data-act="cancelTool">Cancel (Esc)</a>`; }
   else if (S.tool === 'regcut') { const r = APP.getRegion(S.cutRid); t = `Cut ${r ? esc(r.name) : 'the region'}: click a face of a mesh or object · <a href="#" data-act="cancelTool">Done (Esc)</a>`; }
   else if (S.tool === 'plane') t = 'Plane: click a triangle / face — its normal gives the PLA vector H';
   else if (S.tool === 'viewface') t = 'Click a face to look at it · <a href="#" data-act="cancelTool">Cancel (Esc)</a>';

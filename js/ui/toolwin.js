@@ -5,7 +5,7 @@
 function winTitle() {
   if (S.fill) return 'Pick a value';
   return { select: 'Selection · ' + ({ point: 'points', edge: 'edges', face: 'faces', object: 'objects' }[S.filter]), measure: 'Distance', rpp: 'RPP from 2 points',
-    regcut: 'Cut a region with a face', regpick: 'Pick objects for a region', plane: 'PLA from a face', replane: 'Re-pick a plane', csys3: 'Coordinate system from 3 points', viewface: 'Look at a face' }[S.tool] || 'Tool';
+    regcut: 'Cut a region with a face', reg6: 'Region from 6 planes', regpick: 'Pick objects for a region', plane: 'PLA from a face', replane: 'Re-pick a plane', csys3: 'Coordinate system from 3 points', viewface: 'Look at a face' }[S.tool] || 'Tool';
 }
 /* Point source for the tools that pick a position (csys from 3 points, csys position, distance, RPP) */
 const PT_MODES = [['vertex', 'Vertex / point on a surface'], ['arc', 'Centre of a circular edge (arc / rim)'], ['mid', 'Midpoint of an edge'], ['planes3', 'Intersection of 3 faces']];
@@ -79,6 +79,11 @@ function toolOptsHTML() {
   else if (S.tool === 'regpick') {
     const r = APP.getRegion(S.cutRid);
     h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a body or plane in the view; if several overlap, a list lets you choose. It is then selected in the body list, ready for + / − / union.</label>`;
+  } else if (S.tool === 'reg6') {
+    const r = APP.getRegion(S.reg6 && S.reg6.rid), nm = S.reg6 ? S.reg6.names : [];
+    h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: pick 6 planes (click a plane or a face in the view, or a plane in the list). The sides (+ / −) are worked out so that the planes enclose a volume.</label>
+      <div class="msg">${nm.length ? nm.map((n, i) => `${i + 1}. ${esc(n)}`).join('<br>') : '<span class="muted">No plane yet</span>'}<br><b>${nm.length} / 6</b></div>
+      <div class="btns"><button class="btn sm" data-act="reg6Undo" ${nm.length ? '' : 'disabled'}>Remove the last</button><button class="btn sm" data-act="cancelTool">Cancel</button></div>`;
   } else if (S.tool === 'regcut') {
     const r = APP.getRegion(S.cutRid); let nz = 1; try { nz = Math.max(1, FK.parseExpr(r ? r.expr : '').zones.length); } catch (e) { /* ignored */ }
     h += `<label class="muted">Region <b>${r ? esc(r.name) : '?'}</b>: click a face; its plane is created (or reused) and added to the formula</label>
@@ -143,3 +148,8 @@ function onOptChange(e) {
 }
 $('#toolwin').addEventListener('change', onOptChange);
 $('#toolwin').addEventListener('input', e => { if (e.target.type === 'number') onOptChange(e); });
+$('#toolwin').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'cancelTool') setTool('select');
+  else if (b.dataset.act === 'reg6Undo') { APP.reg6Undo(); renderToolOpts(); updateStatus(); }
+});

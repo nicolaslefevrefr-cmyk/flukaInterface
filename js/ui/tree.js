@@ -106,6 +106,7 @@ function renderLeft() {
 }
 
 function selectItem(t, id) {
+  if (S.reg6 && S.tool === 'reg6' && t === 'body') { const b = APP.getBody(id); if (b && FK.isPlaneType(b.type)) { reg6Take(b.name); return; } }
   S.sel = { t, id };
   APP.changed({ tree: true, right: true });
   if (narrow()) { setDrawer('left', false); setDrawer('right', true); }

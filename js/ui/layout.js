@@ -147,6 +147,7 @@ function cutEnd() {
   APP.applyStyles(); APP.changed({ tree: true, right: true });
 }
 function setTool(t) {
+  if (S.reg6 && t !== 'reg6') APP.reg6Cancel(true);
   if (S.cutSnap && t !== 'regcut' && t !== 'regpick') cutEnd();
   S.fill = null; S.tool = t; S.info = false; if (t !== 'select') S.winOpen = true; S.pending = null; S.cs3 = []; S.ptPlanes = []; if (t !== 'replane') S.reassign = null;
   APP.setPending(null); APP.clearHover(); hoverText = '';
