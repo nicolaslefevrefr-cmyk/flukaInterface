@@ -190,8 +190,7 @@ function partsHTML(b) {
   const lines = ps.map(pt => pt.mergedInto ? `* ${pt.name}: identical to ${pt.mergedInto} (merged, not written)` : pt.text).join('\n');
   const main = ps[0], cuts = ps.filter(x => x.role === 'cut');
   const note = ps.length > 1 ? `<div class="muted" style="font-size:12px">Rotated RPP: written as a bounding RPP and ${cuts.length} cutting plane${cuts.length === 1 ? '' : 's'}${main.uses && main.uses.length ? `; the regions use <code>${esc(main.name)} ${esc(main.uses.join(' '))}</code>` : ''}. A plane identical to one of yours is reused instead of being written again.</div>` : ps[0].type !== b.type ? `<div class="muted" style="font-size:12px">${esc(b.type)} written as ${esc(ps[0].type === 'ICC' ? 'QUA' : ps[0].type)}.</div>` : '';
-  return `<div class="fld full"><label>Exported as <span class="muted">(read-only)</span></label><textarea class="expr" readonly rows="${Math.min(8, lines.split('\n').length + 1)}">${esc(lines)}</textarea>${note}
-    <label class="chk" style="margin-top:4px"><input type="checkbox" data-opt="showParts" ${S.opt.showParts ? 'checked' : ''}>Show these sub-objects in the view</label></div>`;
+  return `<div class="fld full partsBox"><label>Exported as <span class="muted">(read-only)</span></label><textarea class="expr" readonly rows="${Math.min(8, lines.split('\n').length + 1)}">${esc(lines)}</textarea>${note}</div><div class="fld full"><label title="Blue: bounding RPP · orange: cutting planes">Show these sub-objects in the view</label><input type="checkbox" class="pchk" data-opt="showParts" ${S.opt.showParts ? 'checked' : ''}></div>`;
 }
 function bodyProps(b) {
   const info = FK.BODY_TYPES[b.type];
@@ -228,7 +227,7 @@ function bodyProps(b) {
   const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
     <div class="fld full"><label title="Maximum 8 characters in the INP file">Name</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
     <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
-  const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}${partsHTML(b)}</div>${planeBtns}</div>`;
+  const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${partsHTML(b) ? '' : inpLine}${partsHTML(b)}</div>${planeBtns}</div>`;
   const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
   const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
     <div class="btns">${b.type !== 'RAW' ? '<button class="btn" data-act="regFromBodyCut" title="Creates a region made of this body, then lets you click faces to cut it with planes">New region from this body + cut by faces…</button><button class="btn" data-act="snapCheck" title="Propose exact values: axis on X / Y / Z, coaxial / parallel with other cylinders, equal radii, faces and ends coincident with other objects">Check alignment with other objects…</button>' : ''}<button class="btn" data-act="dup">Duplicate</button></div>
