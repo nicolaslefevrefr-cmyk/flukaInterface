@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.42.0';
+  FK.VERSION = '1.43.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1415,6 +1415,40 @@
     };
     return FK.formatExpr(simp(asAst(e)));
   };
+  /** True when the formula has a parenthesis that is negated and holds a union: -( +a | +b ). */
+  FK.hasNegUnion = function (e) {
+    let ast; try { ast = asAst(e); } catch (err) { return false; }
+    const walk = (a) => a.zones.some(z => z.some(t => t.sub && ((t.sign < 0 && t.sub.zones.length > 1) || walk(t.sub))));
+    return walk(ast);
+  };
+  /** Rewrites the negated parentheses that hold a union (CG handles -( … | … ) badly), by De Morgan: -(+a | +b) = -a -b.
+   *  1) cheap rule, structure kept: every zone of the group is a single term; 2) otherwise the whole formula is expanded into zones when it stays within maxZones.
+   *  Returns { expr, changed, left } — left: a negated union remains. */
+  FK.denegate = function (e, maxZones) {
+    let ast; try { ast = asAst(e); } catch (err) { return { expr: String(e), changed: false, left: false }; }
+    const orig = FK.formatExpr(ast);
+    if (!FK.hasNegUnion(ast)) return { expr: orig, changed: false, left: false };
+    const flip = (l) => l.name ? { sign: -l.sign, name: l.name } : { sign: -l.sign, sub: l.sub };
+    const push = (a) => ({
+      zones: a.zones.map(z => {
+        const out = [];
+        for (const t of z) {
+          if (t.name) { out.push(t); continue; }
+          const sub = push(t.sub), single = sub.zones.every(zz => zz.length === 1);
+          if (t.sign < 0 && single) sub.zones.forEach(zz => out.push(flip(zz[0])));                       // -(a | b) = -a -b ; -(a) = -a
+          else if (t.sign > 0 && sub.zones.length === 1) out.push(...sub.zones[0]);                       // +(a b) = +a +b
+          else out.push({ sign: t.sign, sub });
+        }
+        return out;
+      })
+    });
+    let cur = ast, txt = FK.formatExpr(cur);
+    for (let k = 0; k < 6; k++) { const nx = push(cur), nt = FK.formatExpr(nx); cur = nx; if (nt === txt) break; txt = nt; }
+    if (FK.hasNegUnion(cur)) {
+      try { const f = FK.flattenExpr(cur); if (!(maxZones > 0) || f.zones <= maxZones) return { expr: f.expr, changed: f.expr !== orig, left: false }; } catch (err) { /* too large: kept */ }
+    }
+    return { expr: txt, changed: txt !== orig, left: FK.hasNegUnion(cur) };
+  };
   /** The disjoint zones of a region, each one a parenthesis-free expression: used to split a region into several ones. */
   FK.splitExpr = function (e) { return FK.flattenExpr(e, { disjoint: true }).list; };
 
@@ -2374,6 +2408,7 @@
       } catch (e) { w.push(`Region "${r.name}": ${e.message}`); }
       if ((vopts.maxParen !== undefined && vopts.maxParen !== null || vopts.maxZones) && !r.noExport) {
         const st = FK.exprStats(r.expr);
+        if (vopts.noNegParen && FK.denegate(r.expr, vopts.maxZones || 10).left) w.push(`Region "${r.name}": negated parenthesis holding a union -( … | … ) that cannot be expanded (more than ${vopts.maxZones || 10} zones): CG may reject it — split the region into several ones`);
         if (vopts.maxZones && st.zones > vopts.maxZones) w.push(`Region "${r.name}": ${st.zones} zones (recommended: at most ${vopts.maxZones}) — simplify it or split it into several regions`);
         if (vopts.maxParen !== undefined && vopts.maxParen !== null && st.depth > vopts.maxParen) w.push(`Region "${r.name}": parentheses nested ${st.depth} deep (limit ${vopts.maxParen}) — use Flatten, Simplify or Split in its definition`);
       }
@@ -2543,6 +2578,7 @@
         if (split.size) FK.expandSplitTerms(ast, split);
         if (mg.size) FK.applyMergesToExpr(ast, mg);
         expr = FK.formatExpr(ast);
+        if (opts.noNegParen) expr = FK.denegate(expr, opts.maxZones || 10).expr;
       } catch (e) { /* garder tel quel */ }
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
       // one zone per line, each starting with "|" (also the first one), when the region has several zones
@@ -2718,6 +2754,7 @@
         if (raw.includes(',')) { const f = raw.split(',').map(x => x.trim()); wh = f.slice(1, 7); name = f[7] || ''; }
         else { wh = [0, 1, 2, 3, 4, 5].map(k => raw.slice(10 + 10 * k, 20 + 10 * k).trim()); name = raw.slice(70).trim(); }
         wh = wh.map(x => x === '' ? 0 : parseFloat(x)); while (wh.length < 6) wh.push(0);
+        if (name && wh.every(isFinite) && wh[0] > 0 && (wh[3] || wh[4] || wh[5])) warnings.push(`ROT-DEFI ${name}: a card holding both a rotation and a translation is read as translation then rotation (the export writes them on separate cards).`);
         if (name && wh.every(isFinite)) { if (!rot.has(name)) rot.set(name, []); rot.get(name).push(wh); }
         else if (!name) warnings.push('ROT-DEFI card without name ignored (only named transformations are supported).');
       }

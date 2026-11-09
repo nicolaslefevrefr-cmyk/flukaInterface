@@ -85,11 +85,12 @@ function grpExtra(g) {
 }
 
 /* ---------- Rename the INP names (prefix + number) ---------- */
-function openInpRename(scope) {
+function openInpRename(scope, preferAll) {
   const d = $('#dlgInpRename'), o = S.opt.inpRen || {};
   d._scope = scope ? scope.filter(x => x.t === 'body' || x.t === 'region').map(x => x.o) : null;
   if (d._scope && !d._scope.length) d._scope = null;
   $('#irScope').innerHTML = (d._scope ? `<option value="sel">The ${d._scope.length} selected object${d._scope.length > 1 ? 's' : ''}</option>` : '') + '<option value="all">Every exported object</option>';
+  if (d._scope && preferAll) $('#irScope').value = 'all';
   $('#irPb').value = o.pb === undefined ? 'B' : o.pb; $('#irPp').value = o.pp === undefined ? 'P' : o.pp; $('#irPr').value = o.pr === undefined ? 'R' : o.pr;
   $('#irType').checked = !!o.withType; $('#irPad').checked = o.pad !== false; $('#irStart').value = o.start === undefined ? 1 : o.start;
   $('#irMode').value = o.mode === 'fill' ? 'fill' : 'kind'; $('#irPre').value = o.prefix || ''; $('#irW').value = o.width || FK.INP_NAME_MAX;

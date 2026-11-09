@@ -44,7 +44,7 @@ async function saveProject(withMeshes) {
     const txt = await APP.exportProject(withMeshes !== false);
     const blob = new Blob([txt], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = (S.model.title || 'geometry').replace(/[^\w\-]+/g, '_') + '.fgt.json';
+    a.download = APP.fileBase() + '.json';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast(withMeshes === false ? `Project saved (geometry only, ${(txt.length / 1048576).toFixed(2)} MB)` : `Project saved (${S.stls.length} mesh${S.stls.length === 1 ? '' : 'es'} embedded, ${(txt.length / 1048576).toFixed(1)} MB)`);
   } catch (e) { console.error(e); toast('Save failed: ' + e.message); }
@@ -59,7 +59,7 @@ async function saveConfigFile() {
 /** Re-applies everything that depends on the settings after a configuration was loaded / reset. */
 function afterConfig() {
   applyTheme(); applyPanelW(); APP.setProjection(S.opt.proj || 'persp'); APP.applyStyles(); APP.refreshNames();
-  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform; $('#inpZones').checked = !!S.opt.inpZones;
+  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform; $('#inpZones').checked = S.opt.inpZones !== false;
   syncToolbar(); renderLeft(); renderRight(); updateInp(); APP.changed({ tree: true, right: true }); APP.save();
 }
 $('#fileCfg').onchange = async (e) => {

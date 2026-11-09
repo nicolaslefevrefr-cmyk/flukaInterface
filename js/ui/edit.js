@@ -229,7 +229,7 @@ function onActClick(e) {
       if (!it || S.sel.t !== 'region') break;
       const n = $('#termBody').value;
       if ((act === 'termAdd' || act === 'termSub') && !n) { toast('Choose a body in the list first'); break; }
-      insertInExpr(act === 'termAdd' ? 'term' : act === 'termSub' ? 'term' : act === 'termUnion' ? 'union' : 'paren', (act === 'termSub' ? '-' : '+') + n);
+      insertInExpr(act === 'termAdd' ? 'term' : act === 'termSub' ? 'term' : act === 'termUnion' ? 'union' : 'paren', act === 'termUnion' ? (n ? '+' + n : '') : (act === 'termSub' ? '-' : '+') + n);
       break;
     }
     case 'termDel': {

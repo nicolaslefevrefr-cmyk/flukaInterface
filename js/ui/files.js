@@ -25,6 +25,9 @@ $('#inpWarn').addEventListener('click', e => {
   if (go) { const [t, id] = go.dataset.go.split(':'); if (findItem(t, +id)) { curGo = go.dataset.go; selectItem(t, +id); const o = findItem(t, +id); if (o && !o.visible) toast(`${o.name} is hidden (use its eye to show it)`); } }
 });
 $('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-flatall]')) { const r = APP.flattenAllComplex(); toast(r.done ? `${r.done} region${r.done > 1 ? 's' : ''} flattened` + (r.failed.length ? `; too large to expand: ${r.failed.join(', ')}` : '') : (r.failed.length ? 'Too large to expand: ' + r.failed.join(', ') : 'Nothing to flatten')); APP.changed({ tree: true, right: true }); return; } if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
+function applyChecksFold() { const f = !!S.opt.checksFold, a = $('#inpIssues'); if (!a) return; a.classList.toggle('fold', f); $('#isFold').setAttribute('aria-expanded', String(!f)); }
+$('#isFold').onclick = () => { S.opt.checksFold = !S.opt.checksFold; applyChecksFold(); APP.save(); };
+applyChecksFold();
 $('#inpFull').onchange = (e) => { S.opt.inpFull = e.target.checked; updateInp(); APP.save(); };
 $('#inpZones').onchange = (e) => { S.opt.inpZones = e.target.checked; updateInp(); APP.save(); if (dlgSet.open) openSettings(); };
 $('#inpTransform').onchange = (e) => { S.opt.inpTransform = e.target.checked; updateInp(); APP.save(); if (dlgSet.open) openSettings(); };
@@ -33,7 +36,7 @@ $('#btnInpCopy').onclick = () => copyText(APP.inpText());
 $('#btnInpSave').onclick = () => {
   const blob = new Blob([APP.inpText()], { type: 'text/plain' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = (S.model.title || 'geometrie').replace(/[^\w\-]+/g, '_') + '.inp';
+  a.download = APP.fileBase() + '.inp';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
 const dlg = $('#dlgImport');

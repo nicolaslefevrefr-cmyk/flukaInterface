@@ -589,7 +589,7 @@
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
-  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpNoNeg', 'checksFold', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
     'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
     'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
@@ -780,6 +780,8 @@
   /** Deepest nesting of parentheses accepted before a warning (setting; 99 = no limit). */
   APP.maxParen = () => { const v = S.opt.maxParen; return v === undefined || v === null || v === '' || isNaN(+v) ? 1 : +v; };
   /** Most zones (parts separated by |) recommended for one region (setting; 0 = no limit). */
+  /** File name (no extension) taken from the project title: the extensions of project files (.fgt, .json) and spaces are dropped. */
+  APP.fileBase = () => (String(S.model.title || 'geometry').replace(/\.(fgt\.)?json$/i, '').replace(/\.fgt$/i, '').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '')) || 'geometry';
   APP.maxZones = () => { const v = S.opt.maxZones; return v === undefined || v === null || v === '' || isNaN(+v) ? 10 : +v; };
   APP.regionStats = (r) => FK.exprStats(r.expr || '');
   /** Same region, shorter formula (redundant terms / zones removed, useless parentheses opened). Returns { before, after } or { error }. */
@@ -1404,7 +1406,7 @@
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   /** Options of the INP generator. Transform mode: each body is written in the frame of its coordinate system inside $Start_transform / $End_transform (ROT-DEFI cards after GEOEND). */
   APP.inpOpts = () => ({
-    style: S.opt.style, zoneLines: !!S.opt.inpZones, zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform,
+    style: S.opt.style, zoneLines: S.opt.inpZones !== false, noNegParen: S.opt.inpNoNeg !== false, maxZones: APP.maxZones(), zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform,
     xf: (b) => { const cs = b.cs || 0; return { key: cs, name: cs ? APP.csysLabel(cs) : 'Global', m: APP.relM(b) }; },
     comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
   });
@@ -1454,7 +1456,7 @@
     APP.changed({ tree: true });
   };
   APP.warnings = () => {
-    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform, maxParen: APP.maxParen(), maxZones: APP.maxZones() }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform, maxParen: APP.maxParen(), maxZones: APP.maxZones(), noNegParen: S.opt.inpNoNeg !== false }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }

@@ -13,6 +13,7 @@ $('#btnTools').onclick = (e) => { const sd = $('#dlgSurf'); menuAt(e.currentTarg
       { label: 'Show the INP block and its warnings', icon: '≡', checked: sheet.classList.contains('open'), fn: () => $('#btnInp').click() },
       { label: 'Compact — merge duplicates…', icon: '⛓', fn: () => openCompact() }] },
     { sep: 1 },
+    { label: 'Rename the INP names…', icon: 'Ab', fn: () => { const ml = multiList(); openInpRename(ml || (S.sel ? [{ t: S.sel.t, o: APP.selItem() }] : null), true); } },
     { label: 'Settings…', icon: '⚙', fn: () => openSettings() }]); };
 /* ---- View menu: the toolbar commands as text (+ icon), in step with the toolbar buttons ---- */
 function viewMenu() {
@@ -60,7 +61,8 @@ function openSettings(tab) {
         <option value="1" ${o.style == 1 ? 'selected' : ''}>Multi-line style (REGION + line)</option>
         <option value="2" ${o.style == 2 ? 'selected' : ''}>Compact aligned style</option>
         <option value="3" ${o.style == 3 ? 'selected' : ''}>Fixed columns (Fortran-like, ≤132 col)</option></select></div>
-      <label class="chk" title="A region with several zones is written one zone per line, each starting with |; the zones of a parenthesised group (e.g. the void around many objects) go one per line too"><input type="checkbox" data-opt="inpZones" ${S.opt.inpZones ? 'checked' : ''}> One zone per line (each starting with |, also inside parentheses)</label>
+      <label class="chk" title="A region with several zones is written one zone per line, each starting with |; the zones of a parenthesised group (e.g. the void around many objects) go one per line too"><input type="checkbox" data-opt="inpZones" ${S.opt.inpZones !== false ? 'checked' : ''}> One zone per line (each starting with |, also inside parentheses)</label>
+      <label class="chk" title="A negated parenthesis holding a union, -( +a | +b ), is rewritten without parentheses in the INP file (-a -b) when the result stays within the zone limit; your formulas are not changed"><input type="checkbox" data-opt="inpNoNeg" ${S.opt.inpNoNeg !== false ? 'checked' : ''}> No negated parenthesis with unions (-( … | … ) rewritten for CG)</label>
       <div class="fld"><label title="Zones written on the same line">Zones per line</label><select data-opt="zonesPerLine">${[1, 2, 3].map(n => `<option value="${n}" ${(S.opt.zonesPerLine || 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <div class="fld" style="margin-top:6px"><label title="A region with more zones (parts separated by |) than this gets a warning; 0 = no limit">Most zones per region ⓘ</label><input type="number" data-opt="maxZones" min="0" step="1" value="${APP.maxZones()}" style="width:80px"></div>
       <div class="fld" style="margin-top:6px"><label title="A region whose formula nests parentheses deeper than this gets a warning (FLUKA copes badly with many nested parentheses). Flatten, Simplify and Split are in the region definition.">Deepest parentheses accepted ⓘ</label><select data-opt="maxParen">${[[99, 'No limit'], [0, '0 (no parenthesis)'], [1, '1 (default)'], [2, '2'], [3, '3']].map(([v, l]) => `<option value="${v}" ${APP.maxParen() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
