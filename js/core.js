@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.44.1';
+  FK.VERSION = '1.45.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -1289,7 +1289,8 @@
     return FK.formatExpr({ zones: [terms] });
   };
   /* ---------- Flat forms (no parentheses), simplification, complexity ---------- */
-  const DNF_CAP = 400;
+  let DNF_CAP = 400;
+  FK.setDnfCap = (n) => { const o = DNF_CAP; if (n > 0) DNF_CAP = n; return o; };
   const tooMany = () => new Error('Too many zones after expansion (more than ' + DNF_CAP + '): keep the compact form');
   const litId = (l) => l.name || '(' + FK.formatExpr(l.sub) + ')';
   /** Conjunction x ∧ y of two literal lists; null when they contradict (A and not A). Literals are { sign, name | sub }. */
@@ -1304,13 +1305,15 @@
   }
   function mulDNF(a, b) {
     const out = [];
-    for (const x of a) for (const y of b) { const z = andLits(x, y); if (z) { out.push(z); if (out.length > DNF_CAP) throw tooMany(); } }
+    for (const x of a) for (const y of b) { const z = andLits(x, y); if (z) { out.push(z); if (out.length > DNF_CAP * 10) throw tooMany(); } }
     return out;
   }
+  // every product is simplified at once (duplicates, absorption, merging): the intermediate size stays small where a plain expansion would explode
+  const mulS = (a, b) => simplifyZones(mulDNF(a, b));
   /** not (z1 | z2 | …) as a DNF. */
   function negateDNF(zones) {
     let acc = [[]];
-    for (const z of zones) { acc = mulDNF(acc, z.map(l => [{ sign: -l.sign, name: l.name, sub: l.sub }])); if (!acc.length) break; }
+    for (const z of zones) { acc = mulS(acc, z.map(l => [{ sign: -l.sign, name: l.name, sub: l.sub }])); if (!acc.length) break; }
     return acc;
   }
   /** The expression as a union of zones of single bodies (no parentheses), by distribution / De Morgan. */
@@ -1322,12 +1325,13 @@
         let alts;
         if (t.name) alts = [[{ sign: t.sign < 0 ? -1 : 1, name: t.name }]];
         else { const d = dnfOf(t.sub); alts = t.sign < 0 ? negateDNF(d) : d; }
-        acc = mulDNF(acc, alts);
+        acc = mulS(acc, alts);
         if (!acc.length) break;
       }
-      for (const z of acc) { out.push(z); if (out.length > DNF_CAP) throw tooMany(); }
+      for (const z of acc) { out.push(z); if (out.length > DNF_CAP * 10) throw tooMany(); }
     }
-    return out;
+    const res = simplifyZones(out); if (res.length > DNF_CAP) throw tooMany();
+    return res;
   }
   /** Equivalent, shorter union of zones: duplicate terms, impossible zones, absorption (A | A B → A) and merging (A B | A -B → A). */
   function simplifyZones(zones) {
@@ -1357,14 +1361,16 @@
   }
   /** Same set of points, zones pairwise disjoint (each zone also excludes the earlier ones). */
   function disjointZones(zones) {
+    const clash = (x, y) => { const m = new Map(x.map(l => [litId(l), l.sign])); return y.some(l => m.has(litId(l)) && m.get(litId(l)) !== l.sign); };
+    if (zones.every((z, i) => zones.every((y, j) => j <= i || clash(z, y)))) return zones;       // already pairwise disjoint (a body and its negation)
     const out = [];
     for (let i = 0; i < zones.length; i++) {
       let pieces = [zones[i]];
       for (let j = 0; j < i && pieces.length; j++) {
         const zj = zones[j], alts = zj.map((l, k) => zj.slice(0, k).concat([{ sign: -l.sign, name: l.name, sub: l.sub }]));
-        pieces = mulDNF(pieces, alts);
+        pieces = mulS(pieces, alts);
       }
-      for (const p of pieces) { out.push(p); if (out.length > DNF_CAP) throw tooMany(); }
+      for (const p of pieces) { out.push(p); if (out.length > DNF_CAP * 10) throw tooMany(); }
     }
     return simplifyZones(out);
   }
@@ -1450,7 +1456,13 @@
     return { expr: txt, changed: txt !== orig, left: FK.hasNegUnion(cur) };
   };
   /** The disjoint zones of a region, each one a parenthesis-free expression: used to split a region into several ones. */
-  FK.splitExpr = function (e) { return FK.flattenExpr(e, { disjoint: true }).list; };
+  FK.splitExpr = function (e, perRegion) {
+    const f = FK.flattenExpr(e, { disjoint: true }), n = perRegion > 1 ? Math.floor(perRegion) : 1;
+    if (n <= 1) return f.list;
+    const Z = FK.parseExpr(f.expr).zones, out = [];
+    for (let i = 0; i < Z.length; i += n) out.push(FK.formatExpr({ zones: Z.slice(i, i + n) }));        // zones are disjoint: any grouping gives regions without overlap
+    return out;
+  };
 
   /** Exact complement of a region inside a bounding body: "void = box − region". */
   FK.complementExpr = function (expr, boxName, mode) {
@@ -2408,7 +2420,7 @@
       } catch (e) { w.push(`Region "${r.name}": ${e.message}`); }
       if ((vopts.maxParen !== undefined && vopts.maxParen !== null || vopts.maxZones) && !r.noExport) {
         const st = FK.exprStats(r.expr);
-        if (vopts.noNegParen && FK.denegate(r.expr, vopts.maxZones || 10).left) w.push(`Region "${r.name}": negated parenthesis holding a union -( … | … ) that cannot be expanded (more than ${vopts.maxZones || 10} zones): CG may reject it — split the region into several ones`);
+        if (vopts.noNegParen && FK.denegate(r.expr, vopts.maxZones || 10).left) w.push(`Region "${r.name}": negated parenthesis holding a union -( … | … ) that cannot be expanded (more than ${vopts.maxZones || 10} zones): CG may reject it — use "Simplify the complex regions" (cuts it into several regions)`);
         if (vopts.maxZones && st.zones > vopts.maxZones) w.push(`Region "${r.name}": ${st.zones} zones (recommended: at most ${vopts.maxZones}) — simplify it or split it into several regions`);
         if (vopts.maxParen !== undefined && vopts.maxParen !== null && st.depth > vopts.maxParen) w.push(`Region "${r.name}": parentheses nested ${st.depth} deep (limit ${vopts.maxParen}) — use Flatten, Simplify or Split in its definition`);
       }

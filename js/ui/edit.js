@@ -216,9 +216,9 @@ function onActClick(e) {
     case 'exprSplit': {
       const r = APP.getRegion(+a.dataset.rid); if (!r) break;
       const pl = APP.splitPlan(r); if (pl.error) { toast(pl.error); break; }
-      askConfirm(`Split "${r.name}" into ${pl.list.length} region${pl.list.length > 1 ? 's' : ''} without overlap, same material and group?\n\n` + pl.list.map((e, i) => `${pl.names[i]}:  ${e}`).join('\n'), 'Split').then(ok => {
+      askConfirm(`Split "${r.name}" into ${pl.list.length} region${pl.list.length > 1 ? 's' : ''} (at most ${APP.maxZones() || 1} zone${APP.maxZones() > 1 ? 's' : ''} each, no parenthesis, no overlap, same material and group)?\n\n` + pl.list.map((e, i) => `${pl.names[i]}:  ${e}`).join('\n'), 'Split').then(ok => {
         if (!ok) return;
-        const res = APP.splitRegion(r); if (res.error) { toast(res.error); return; }
+        const res = APP.splitRegion(r, APP.maxZones()); if (res.error) { toast(res.error); return; }
         toast(`${r.name} split into ${res.regions.length} regions`); APP.changed({ tree: true, right: true });
       }); break;
     }

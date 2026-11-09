@@ -9,13 +9,13 @@ function updateInp() {
   if (inpText.value !== t) inpText.value = t;
   const w = APP.warnings();
   const nun = APP.unusedBodies().length, nsh = FK.inpNames(S.model).shortened.filter(x => !x.noExport).length;
-  const ncx = S.model.regions.filter(r => !r.noExport && APP.regionStats(r).depth > APP.maxParen()).length;
+  const cp = APP.complexPlan(), ncx = cp.flat.length + cp.split.length + cp.fail.length;
   const iss = APP.issues(), n = { e: 0, w: 0, i: 0 }; iss.forEach(x => n[x.sev]++);
   const IC = { e: '✖', w: '⚠', i: 'ⓘ' };
   $('#isCount').innerHTML = iss.length ? [n.e ? `<span class="e">✖ ${n.e}</span>` : '', n.w ? `<span class="w">⚠ ${n.w}</span>` : '', n.i ? `<span class="i">ⓘ ${n.i}</span>` : ''].join('') : '<span class="ok">✔ no problem</span>';
   $('#inpWarn').innerHTML = (iss.length ? '' : '<div class="isok">Nothing to report.</div>') + iss.sort((a, b) => 'ewi'.indexOf(a.sev) - 'ewi'.indexOf(b.sev)).map(x => x.t
     ? `<button type="button" class="is ${x.sev}${curGo === x.t + ':' + x.id ? ' cur' : ''}" data-go="${x.t}:${x.id}" title="Select it in the project and in the 3D view"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></button>`
-    : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></div>`).join('') + (ncx ? `<button type="button" class="pill" data-flatall title="Rewrites without parentheses every formula nested deeper than the limit">Flatten the ${ncx} complex region${ncx > 1 ? 's' : ''}</button> ` : '') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
+    : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></div>`).join('') + (ncx ? `<button type="button" class="pill" data-flatall title="Rewrites the too complex formulas as zones without parentheses; when a region would keep more zones than the limit, cuts it into several regions (same material, no overlap)">Simplify the ${ncx} complex region${ncx > 1 ? 's' : ''}</button> ` : '') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
   const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
 }
 $('#inpWarn').addEventListener('click', e => {
@@ -24,7 +24,14 @@ $('#inpWarn').addEventListener('click', e => {
   const go = e.target.closest('[data-go]');
   if (go) { const [t, id] = go.dataset.go.split(':'); if (findItem(t, +id)) { curGo = go.dataset.go; selectItem(t, +id); const o = findItem(t, +id); if (o && !o.visible) toast(`${o.name} is hidden (use its eye to show it)`); } }
 });
-$('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-flatall]')) { const r = APP.flattenAllComplex(); toast(r.done ? `${r.done} region${r.done > 1 ? 's' : ''} flattened` + (r.failed.length ? `; too large to expand: ${r.failed.join(', ')}` : '') : (r.failed.length ? 'Too large to expand: ' + r.failed.join(', ') : 'Nothing to flatten')); APP.changed({ tree: true, right: true }); return; } if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
+$('#inpWarn').addEventListener('click', e => { if (e.target.closest('[data-flatall]')) {
+    const pl = APP.complexPlan(), lines = [];
+    if (pl.flat.length) lines.push(`• ${pl.flat.length} region${pl.flat.length > 1 ? 's' : ''} rewritten as zones without parentheses: ${pl.flat.map(r => r.name).join(', ')}`);
+    for (const x of pl.split) lines.push(`• ${x.r.name}: cut into ${x.n} regions of at most ${APP.maxZones()} zones (same material, no overlap)`);
+    if (pl.fail.length) lines.push(`• too large to expand, unchanged: ${pl.fail.map(r => r.name).join(', ')}`);
+    if (!pl.flat.length && !pl.split.length) { toast(pl.fail.length ? 'Too large to expand: ' + pl.fail.map(r => r.name).join(', ') : 'Nothing to simplify'); return; }
+    askConfirm('Bring the formulas within the limits?\n\n' + lines.join('\n'), 'Simplify').then(ok => { if (!ok) return; const r = APP.fixComplex(); toast(`${r.flat} region${r.flat > 1 ? 's' : ''} rewritten` + (r.split ? `, ${r.split} cut into ${r.split + r.added} regions` : '') + (r.failed.length ? `; too large to expand: ${r.failed.join(', ')}` : '')); APP.changed({ tree: true, right: true }); });
+    return; } if (e.target.closest('[data-autoall]')) { const n = APP.autoInpAll(); toast(`${n} object${n > 1 ? 's' : ''} renamed for the INP file`); } if (e.target.closest('[data-skipunused]')) { const n = APP.skipUnusedBodies(); toast(`${n} unused object${n > 1 ? 's' : ''} no longer exported`); } });
 function applyChecksFold() { const f = !!S.opt.checksFold, a = $('#inpIssues'); if (!a) return; a.classList.toggle('fold', f); $('#isFold').setAttribute('aria-expanded', String(!f)); }
 $('#isFold').onclick = () => { S.opt.checksFold = !S.opt.checksFold; applyChecksFold(); APP.save(); };
 applyChecksFold();

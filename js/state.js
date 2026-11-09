@@ -804,15 +804,15 @@
     APP.snap(); r.expr = f.zones > 1 ? FK.zoneLines(f.expr) : f.expr; return { after: f.expr, zones: f.zones };
   };
   /** What "split" would give: the disjoint zones as parenthesis-free formulas, with the names of the regions. */
-  APP.splitPlan = function (r) {
-    let list; try { list = FK.splitExpr(r.expr); } catch (err) { return { error: err.message }; }
+  APP.splitPlan = function (r, per) {
+    let list; try { list = FK.splitExpr(r.expr, per === undefined ? APP.maxZones() : per); } catch (err) { return { error: err.message }; }
     const taken = regionNames(), names = [r.name];
     for (let k = 1; k < list.length; k++) { const n = FK.uniqueName(r.name + '_' + (k + 1), taken); taken.add(n); names.push(n); }
     return { list, names };
   };
   /** Replaces the region by several regions with disjoint, parenthesis-free formulas (same material, group, colour…). Returns { regions } or { error }. */
-  APP.splitRegion = function (r) {
-    const pl = APP.splitPlan(r); if (pl.error) return pl;
+  APP.splitRegion = function (r, per) {
+    const pl = APP.splitPlan(r, per); if (pl.error) return pl;
     APP.snap();
     if (r.meta && r.meta.link) delete r.meta.link;           // the formula is cut into pieces: it no longer follows a combination
     r.expr = pl.list[0];
@@ -822,6 +822,32 @@
       S.model.regions.splice(at + k, 0, c); out.push(c);
     }
     return { regions: out };
+  };
+  /** What it takes to bring every exported region within the limits (parentheses depth, zones per region, no negated union):
+   *  flat = rewritten as zones; split = cut into several regions of at most maxZones zones (no overlap); fail = too large to expand. */
+  APP.complexPlan = function () {
+    const lim = APP.maxParen(), zl = APP.maxZones(), out = { flat: [], split: [], fail: [] };
+    for (const r of S.model.regions) {
+      if (r.noExport) continue;
+      const st = APP.regionStats(r); let neg = false;
+      try { neg = FK.hasNegUnion(r.expr); } catch (e) { neg = false; }
+      if (!(st.depth > lim || (zl && st.zones > zl) || neg)) continue;
+      let f; try { f = FK.flattenExpr(r.expr); } catch (e) { out.fail.push(r); continue; }
+      if (!zl || f.zones <= zl) { if (st.depth > lim || neg) out.flat.push(r); }
+      else { const pl = APP.splitPlan(r, zl); if (pl.error) out.fail.push(r); else out.split.push({ r, n: pl.list.length }); }
+    }
+    return out;
+  };
+  /** Applies complexPlan: flattens, and splits the regions that stay too long. Returns { flat, split, added, failed }. */
+  APP.fixComplex = function () {
+    const pl = APP.complexPlan(); if (!pl.flat.length && !pl.split.length) return { flat: 0, split: 0, added: 0, failed: pl.fail.map(r => r.name) };
+    APP.snap(); let flat = 0, added = 0;
+    for (const r of pl.flat) {
+      const lk = r.meta && r.meta.link;
+      if (lk) { lk.mode = 'flat'; APP.syncLinks(); if (!lk.error) flat++; } else { try { const f = FK.flattenExpr(r.expr); r.expr = f.zones > 1 ? FK.zoneLines(f.expr) : f.expr; flat++; } catch (e) { /* kept */ } }
+    }
+    for (const x of pl.split) { const res = APP.splitRegion(x.r, APP.maxZones()); if (!res.error) added += res.regions.length - 1; }
+    return { flat, split: pl.split.length, added, failed: pl.fail.map(r => r.name) };
   };
   /** Flattens every exported region nested deeper than the limit. Returns { done, failed: [names] }. */
   APP.flattenAllComplex = function () {
