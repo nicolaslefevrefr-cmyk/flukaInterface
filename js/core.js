@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.43.0';
+  FK.VERSION = '1.43.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2669,28 +2669,40 @@
     const model = { title: 'Geometry', bodies: [], regions: [], tail: [] };
     let i = 0;
     let foundBegin = false;
+    const rot = new Map();                                        // ROT-DEFI cards by transformation name (after GEOEND, or inside the geometry before / between the bodies)
+    const rotCard = (raw) => {
+      let wh, name;
+      if (raw.includes(',')) { const f = raw.split(',').map(x => x.trim()); wh = f.slice(1, 7); name = f[7] || ''; }
+      else { wh = [0, 1, 2, 3, 4, 5].map(k => raw.slice(10 + 10 * k, 20 + 10 * k).trim()); name = raw.slice(70).trim(); }
+      wh = wh.map(x => x === '' ? 0 : parseFloat(x)); while (wh.length < 6) wh.push(0);
+      if (name && wh.every(isFinite) && wh[0] > 0 && (wh[3] || wh[4] || wh[5])) warnings.push(`ROT-DEFI ${name}: a card holding both a rotation and a translation is read as translation then rotation (the export writes them on separate cards).`);
+      if (name && wh.every(isFinite)) { if (!rot.has(name)) rot.set(name, []); rot.get(name).push(wh); }
+      else if (!name) warnings.push('ROT-DEFI card without name ignored (only named transformations are supported).');
+    };
+    for (const l of lines) { const m = l.match(/^\s*TITLE\b/i); if (m) { const k = lines.indexOf(l); const t = (lines[k + 1] || '').trim(); if (t && !/^\s*GEOBEGIN/i.test(t)) { model.title = t.slice(0, 60); } break; } if (/^\s*GEOBEGIN\b/i.test(l)) break; }
     for (; i < lines.length; i++) {
-      if (/^\s*GEOBEGIN\b/i.test(lines[i])) { foundBegin = true; if (!/COMBNAME/i.test(lines[i])) warnings.push('GEOBEGIN without COMBNAME: only the name-based format is supported.'); i++; break; }
+      if (/^\s*GEOBEGIN\b/i.test(lines[i])) { foundBegin = true; if (!/COMBNAME/i.test(lines[i])) warnings.push('GEOBEGIN without COMBNAME: read as the free (name-based) format.'); i++; break; }
     }
     if (!foundBegin) { i = 0; warnings.push('GEOBEGIN not found: reading from the start of the text.'); }
     else {
       while (i < lines.length && /^\s*[*!]/.test(lines[i])) i++;
-      if (i < lines.length) {
+      if (i < lines.length && !/^\s*(ROT-DEFI\b|\$|END\b)/i.test(lines[i]) && !/^\s*[A-Z]{3}\s+\S+\s+[-+\d.]/.test(lines[i])) {       // title line (absent in some files: the geometry then starts at once)
         const l = lines[i++];
         const m = l.match(/^\s*\d+\s+\d+\s+(.*)$/);
-        model.title = (m ? m[1] : l).trim() || 'Geometry';
+        model.title = (m ? m[1] : l).trim() || model.title;
       }
     }
     const used = new Set();
     let colorIdx = 0;
     // --- corps ---
-    let last = null; const xfStack = [], warnedDir = new Set();
+    let last = null, skippedEnd = false; const xfStack = [], warnedDir = new Set();
     for (; i < lines.length; i++) {
       const raw = lines[i];
       const line = noComment(raw).trim();
       if (!line || line[0] === '*' || line[0] === '!') continue;
       const toks = line.split(/\s+/);
-      if (toks[0].toUpperCase() === 'END') { i++; break; }
+      if (/^ROT-DEFI/i.test(toks[0])) { rotCard(raw); last = null; continue; }
+      if (toks[0].toUpperCase() === 'END') { if (!model.bodies.length && rot.size) { skippedEnd = true; continue; } i++; break; }       // an END after the ROT-DEFI cards only (no body yet) does not close the bodies
       if (line[0] === '$') {                                        // $Start_transform name / $End_transform (nested ones are composed, inner first)
         const d = toks[0].toLowerCase();
         if (d === '$start_transform' && toks[1]) xfStack.push(toks[1]);
@@ -2699,6 +2711,7 @@
         last = null; continue;
       }
       const kw = toks[0].toUpperCase();
+      if (skippedEnd && !BODY_TYPES[kw] && toks.length >= 2 && /^\d+$/.test(toks[1]) && isNaN(parseFloat(toks[0]))) break;       // regions follow the bodies (file without the END between them)
       if (/^[A-Z]{3}$/.test(kw) && isNaN(parseFloat(toks[0]))) {
         const name = toks[1] || ('b' + (model.bodies.length + 1));
         const nums = toks.slice(2).map(parseFloat);
@@ -2745,19 +2758,11 @@
       if (lines[i].trim()) model.tail.push(lines[i].replace(/\s+$/, ''));
     }
     // --- cards after GEOEND: ASSIGNMA (material / region), the others are not read ---
-    const assign = [], rot = new Map();
+    const assign = [];
     for (i++; i < lines.length; i++) {
       const t = lines[i].trim().split(/\s+/);
       if (/^ASSIGNMA$/i.test(t[0]) && t.length >= 3) assign.push({ material: t[1].toUpperCase(), region: t[2] });
-      else if (/^ROT-DEFI/i.test(t[0])) {
-        const raw = lines[i]; let wh, name;
-        if (raw.includes(',')) { const f = raw.split(',').map(x => x.trim()); wh = f.slice(1, 7); name = f[7] || ''; }
-        else { wh = [0, 1, 2, 3, 4, 5].map(k => raw.slice(10 + 10 * k, 20 + 10 * k).trim()); name = raw.slice(70).trim(); }
-        wh = wh.map(x => x === '' ? 0 : parseFloat(x)); while (wh.length < 6) wh.push(0);
-        if (name && wh.every(isFinite) && wh[0] > 0 && (wh[3] || wh[4] || wh[5])) warnings.push(`ROT-DEFI ${name}: a card holding both a rotation and a translation is read as translation then rotation (the export writes them on separate cards).`);
-        if (name && wh.every(isFinite)) { if (!rot.has(name)) rot.set(name, []); rot.get(name).push(wh); }
-        else if (!name) warnings.push('ROT-DEFI card without name ignored (only named transformations are supported).');
-      }
+      else if (/^ROT-DEFI/i.test(t[0])) rotCard(lines[i]);
     }
     // bodies inside $Start_transform: F maps the local frame to the file frame; "-name" is the inverse transformation
     const xfM = (nm) => {
