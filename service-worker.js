@@ -1,7 +1,7 @@
 /* Combinatorial Geometry Tool — service worker.
  * Network-first: the latest files are always fetched when online; the cache is only an offline fallback.
  * The cache name carries the version, so each release starts from a clean cache. */
-const VERSION = '1.43.1';
+const VERSION = '1.44.0';
 const CACHE = 'cgt-' + VERSION;
 const ASSETS = ['./', './index.html', './css/style.css', './js/lib/three.min.js', './js/core.js', './js/state.js', './js/scene.js', './js/cut.js', './js/compare.js', './js/check.js', './js/snap.js', './js/graph.js', './js/surfcheck.js', './js/tpl.js', './js/ui/common.js', './js/ui/layout.js', './js/ui/toolwin.js', './js/ui/status.js', './js/ui/features.js', './js/ui/check-window.js', './js/ui/diagram.js', './js/ui/surfcheck.js', './js/ui/compact.js', './js/ui/compare.js', './js/ui/void-combine.js', './js/ui/menus.js', './js/ui/legend.js', './js/ui/tree.js', './js/ui/groups.js', './js/ui/multiselect.js', './js/ui/props.js', './js/ui/components.js', './js/ui/region-editor.js', './js/ui/edit.js', './js/ui/pick.js', './js/ui/files.js', './js/ui/start.js', './js/pwa.js', './manifest.json', './version.json', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {

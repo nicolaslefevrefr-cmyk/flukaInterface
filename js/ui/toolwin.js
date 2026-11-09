@@ -130,6 +130,7 @@ function onOptChange(e) {
   if (k === 'numStep' && !(v > 0)) return;
   S.opt[k] = v;
   if (k === 'numStep') renderRight();
+  if (k === 'showParts') { toggleParts(v); renderRight(); }
   if (['coplanar', 'coTol', 'sharp', 'edgeSharpOnly', 'edgeSoft'].includes(k)) { clearPick(); APP.clearHover(); }
   if (k === 'theme') applyTheme();
   if (k === 'snapFeat') renderToolOpts();

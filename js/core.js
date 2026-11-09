@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.43.1';
+  FK.VERSION = '1.44.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2425,6 +2425,14 @@
     const used = new Set(model.bodies.map(b => b.name.toLowerCase()));
     const shared = [];                         // planes already written: {n, d, name}  (n outward unit normal, d = n·point)
     const TN = 1e-7, TD = 1e-6, TA = 1e-6;     // same plane within TN (normal), TD cm (offset); "axis aligned" within TA
+    // the planes defined by the user come first: a cutting plane that coincides with one of them uses it (no duplicate plane in the INP)
+    for (const b of model.bodies) {
+      if (b.type === 'RAW' || b.noExport || !FK.isPlaneType(b.type)) continue;
+      const wb = opts.resolve(b), p = wb.p; let n, pt;
+      if (wb.type === 'PLA') { const L = V.len([p[0], p[1], p[2]]); if (!(L > 1e-12)) continue; n = V.mul([p[0], p[1], p[2]], 1 / L); pt = [p[3], p[4], p[5]]; }
+      else if (wb.type === 'XYP') { n = [0, 0, 1]; pt = [0, 0, p[0]]; } else if (wb.type === 'XZP') { n = [0, 1, 0]; pt = [0, p[0], 0]; } else if (wb.type === 'YZP') { n = [1, 0, 0]; pt = [p[0], 0, 0]; } else continue;
+      shared.push({ n, d: V.dot(n, pt), name: b.name });
+    }
     for (const b of model.bodies) {
       if (b.type === 'RAW' || b.noExport) continue;
       const wb = opts.resolve(b);
@@ -2456,6 +2464,22 @@
       }
       res.set(b.name, { rpp: { type: 'RPP', p: [bb.min[0], bb.max[0], bb.min[1], bb.max[1], bb.min[2], bb.max[2]], prec: 9 }, planes, refs });
     }
+    return res;
+  };
+  /** What the INP really contains for each body (model body → parts), in the export frame, with the INP names.
+   *  Part: { name, type, p, prec, role: 'main' | 'cut', auto, owner (model body name), text (card lines) }.
+   *  A body written as it is has one part; a rotated RPP gives the bounding RPP + its cutting planes. opts: { resolve, style, arb }. Returns Map(model body → parts[]). */
+  FK.exportParts = function (model, opts) {
+    const res = new Map(), view = FK.inpView(model), split = opts && opts.transform ? new Map() : FK.splitObox(view, opts), style = (opts && opts.style) || 1;
+    const mg = opts && opts.resolve && !(opts.transform) ? FK.activeMerges(view, opts, split).act : new Map();
+    model.bodies.forEach((b, i) => {
+      if (b.noExport || b.type === 'RAW') return;
+      const vb = view.bodies[i], sp = split.get(vb.name), parts = [];
+      const mk = (name, wb, role, auto) => parts.push({ name, type: wb.type, p: wb.p, prec: wb.prec, role, auto, owner: b.name, mergedInto: mg.has(name) ? mg.get(name).keep : '', text: FK.exportBodyText(wb, name, style, opts || {}) });
+      if (sp) { mk(vb.name, sp.rpp, 'main', false); parts[0].uses = sp.refs.map(r => (r.sign < 0 ? '-' : '+') + r.name); for (const pl of sp.planes) mk(pl.name, pl.body, 'cut', true); }
+      else mk(vb.name, opts && opts.resolve ? opts.resolve(b) : b, 'main', false);
+      res.set(b, parts);
+    });
     return res;
   };
   /** Replaces, in an expression, each split body by RPP ∩ planes : +A → +A +A p1 …, −A → −(+A +A p1 …). */

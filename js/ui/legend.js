@@ -1,6 +1,10 @@
 /* ui/legend.js — "Colour regions by material": toggle and legend over the 3D view
  * Part of the user interface: the files of js/ui/ are classic scripts that share one scope (load order: see index.html). */
 'use strict';
+function toggleParts(on) {
+  S.opt.showParts = on === undefined ? !S.opt.showParts : !!on; APP._partsOn = S.opt.showParts; APP.rebuildParts(); APP.save();
+  toast(S.opt.showParts ? 'Exported sub-objects shown (blue: bounding RPP, orange: cutting planes)' : 'Exported sub-objects hidden');
+}
 function toggleColorBy() {
   S.opt.colorBy = S.opt.colorBy === 'material' ? '' : 'material';
   APP.applyStyles(); updateLegend(); APP.save();

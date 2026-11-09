@@ -34,7 +34,7 @@ function flush() {
   try {
     if (S.pick && S.pick.ownerKind !== 'stl' && !fl.keepPick) { S.pick = null; APP.drawHighlight(APP.gSel, null); }
     APP.sync(); syncProjName(); if (fl.tree || fl.right) grSchedule();
-    if (fl.tree || fl.right || fl.csys) APP.rebuildCsys();
+    if (fl.tree || fl.right || fl.csys) { APP.rebuildCsys(); if (S.opt.showParts || APP._partsOn) { APP.rebuildParts(); APP._partsOn = !!S.opt.showParts; } }
     if (fl.measures) APP.rebuildMeasures();
     if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
     if (fl.right) renderRight(); else { updateLive(); if (fl.csys) updateCsysFields(); }

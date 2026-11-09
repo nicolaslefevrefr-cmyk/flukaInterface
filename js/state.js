@@ -152,6 +152,10 @@
   };
   /** Applies a fix proposed by FK.checkAlignment (descriptors are in the export frame). Returns { ok, msg }. */
   APP.applyFix = function (fx) {
+    if (fx.type === 'merge') {                              // identical planes of the INP: accepted as a merge (same as Check ▸ Compact)
+      APP.snap(); for (const d of fx.drops) (S.model.merges = S.model.merges || []).push({ keep: fx.keep, drop: d.name, sign: d.sign, tolA: Math.max(fx.tolA, d.dn) * 1.01 + 1e-12, tolD: Math.max(fx.tolD, d.dd) * 1.01 + 1e-12 });
+      return { ok: true, msg: `${fx.drops.length} plane${fx.drops.length > 1 ? 's' : ''} merged into ${fx.keep}` };
+    }
     const M = FK.M, V = FK.V, find = (n) => S.model.bodies.find(b => b.name === n);
     const B = find(fx.name), R = fx.ref ? find(fx.ref) : null;
     if (!B || (fx.ref && !R)) return { ok: false, msg: 'Body not found' };
@@ -589,7 +593,7 @@
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
-  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpNoNeg', 'checksFold', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpNoNeg', 'checksFold', 'showParts', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
     'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
     'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
@@ -1410,6 +1414,8 @@
     xf: (b) => { const cs = b.cs || 0; return { key: cs, name: cs ? APP.csysLabel(cs) : 'Global', m: APP.relM(b) }; },
     comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
   });
+  /** What the INP really contains for each body: Map(body → parts) in the export frame (a rotated RPP gives the bounding RPP + its cutting planes). Empty in transform mode. */
+  APP.exportParts = () => S.opt.inpTransform ? new Map() : FK.exportParts(S.model, Object.assign({}, APP.inpOpts(), { transform: false }));
   APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, APP.inpOpts());
   /** The checks as records { sev: 'e' | 'w' | 'i', text, t, id } — t / id point to the geometry concerned (body / region) when it can be found. */
   const ERR_RE = /duplicate name|invalid name|unknown body|empty expression|non-numeric|is used by|unexpected|expected|unbalanced|syntax|cannot|unreadable/i;

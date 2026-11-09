@@ -21,7 +21,8 @@
 
   const gStl = new THREE.Group(), gBody = new THREE.Group(), gRegion = new THREE.Group(),
     gMeasure = new THREE.Group(), gCsys = new THREE.Group(), gFeat = new THREE.Group(), gDev = new THREE.Group(), gChk = new THREE.Group(), gPcs = new THREE.Group(), gSel = new THREE.Group(), gHover = new THREE.Group(), gPend = new THREE.Group(), gCut = new THREE.Group();
-  scene.add(gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gDev, gChk, gPcs, gSel, gHover, gCut);
+  const gParts = new THREE.Group();
+  scene.add(gParts, gStl, gBody, gRegion, gMeasure, gCsys, gPend, gFeat, gDev, gChk, gPcs, gSel, gHover, gCut);
   let axes = null;
 
   let needRender = true;
@@ -563,7 +564,7 @@
     for (const g of [gFeat, gDev, gChk, gPcs]) clearGroup(g);   // temporary overlays: they are redrawn by their own tool when needed
     lastWsig = null;
     if (APP.drawHighlight) { APP.drawHighlight(gSel, null); APP.drawHighlight(gHover, null, true); }
-    APP.sync(); if (APP.rebuildCsys) APP.rebuildCsys(); if (APP.rebuildMeasures) APP.rebuildMeasures();
+    APP.sync(); if (APP.rebuildCsys) APP.rebuildCsys(); if (APP.rebuildMeasures) APP.rebuildMeasures(); APP.rebuildParts();
     needRender = true;
     return orphans;
   };
@@ -666,6 +667,26 @@
   const clabels = document.createElement('div');
   clabels.id = 'clabels'; labelsEl.parentElement.appendChild(clabels);
   const csysLab = [];
+  /** Sub-objects that the INP really contains for the bodies written differently (bounding RPP + cutting planes of a rotated RPP, QUA of an oblique cylinder…): drawn when S.opt.showParts. */
+  APP.rebuildParts = function () {
+    for (const ch of gParts.children.slice()) disposeObj(ch);
+    needRender = true;
+    if (!S.opt.showParts || !S.W) return;
+    const W = S.W, ex = APP.exportCs(), mw = ex ? APP.csysWorld(ex) : null;
+    for (const [b, ps] of APP.exportParts()) {
+      if (b.visible === false || !(ps.length > 1 || (ps[0] && ps[0].type !== b.type))) continue;
+      for (const pt of ps) {
+        if (pt.mergedInto) continue;
+        try {
+          let pw = { type: pt.type, p: pt.p };
+          if (mw) { if (pt.type === 'ICC') continue; pw = FK.worldBody(pw, mw); }
+          const cut = pt.role === 'cut', col = cut ? '#e8590c' : '#1c7ed6', op = cut ? 0.22 : 0.12;
+          if (FK.isPlaneType(pw.type)) { const pv = planeVisual({ color: col, opacity: op, id: -1 }, W, pw); if (pv) { pv.mesh.raycast = () => {}; gParts.add(pv.group); } }
+          else { const polys = FK.bodyPolys(pw, W); if (polys && polys.length) { const o = makeSolidGroup(FK.polysToPositions(polys), col, op, 'part', -1); o.mesh.raycast = () => {}; gParts.add(o.group); } }
+        } catch (e) { /* a part that cannot be drawn is skipped */ }
+      }
+    }
+  };
   APP.rebuildCsys = function () {
     clearGroup(gCsys); clabels.innerHTML = ''; csysLab.length = 0;
     const L = Math.max((S.W ? FK.boxDiag(S.W) : 100) * 0.07, 1);

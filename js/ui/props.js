@@ -181,6 +181,18 @@ function cadRow(it, kind) {
   if (!S.stls.length) return '';
   return `<div class="fld full"><label title="Mesh this ${kind} was made from / is compared with (used to show / hide linked objects and for the CAD ↔ CG comparison)">CAD source ⓘ</label><select data-k="cad"><option value="" ${cur === '' ? 'selected' : ''}>Automatic${an && cur === '' ? ' → ' + esc(an.name) : ''}</option><option value="none" ${cur === 'none' ? 'selected' : ''}>None</option>${S.stls.map(m => `<option value="${m.id}" ${cur === String(m.id) ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>`;
 }
+/** Read-only "Exported as": what the INP really contains for a body written differently from its definition (other frame, bounding RPP + cutting planes, QUA…). */
+function partsHTML(b) {
+  if (b.type === 'RAW' || S.opt.inpTransform) return '';
+  const ps = APP.exportParts().get(b); if (!ps || !ps.length) return '';
+  const moved = !FK.M.isIdentity(APP.relM(b), 1e-12);
+  if (!moved && ps.length === 1 && ps[0].type === b.type) return '';
+  const lines = ps.map(pt => pt.mergedInto ? `* ${pt.name}: identical to ${pt.mergedInto} (merged, not written)` : pt.text).join('\n');
+  const main = ps[0], cuts = ps.filter(x => x.role === 'cut');
+  const note = ps.length > 1 ? `<div class="muted" style="font-size:12px">Rotated RPP: written as a bounding RPP and ${cuts.length} cutting plane${cuts.length === 1 ? '' : 's'}${main.uses && main.uses.length ? `; the regions use <code>${esc(main.name)} ${esc(main.uses.join(' '))}</code>` : ''}. A plane identical to one of yours is reused instead of being written again.</div>` : ps[0].type !== b.type ? `<div class="muted" style="font-size:12px">${esc(b.type)} written as ${esc(ps[0].type === 'ICC' ? 'QUA' : ps[0].type)}.</div>` : '';
+  return `<div class="fld full"><label>Exported as <span class="muted">(read-only)</span></label><textarea class="expr" readonly rows="${Math.min(8, lines.split('\n').length + 1)}">${esc(lines)}</textarea>${note}
+    <label class="chk" style="margin-top:4px"><input type="checkbox" data-opt="showParts" ${S.opt.showParts ? 'checked' : ''}>Show these sub-objects in the view</label></div>`;
+}
 function bodyProps(b) {
   const info = FK.BODY_TYPES[b.type];
   let h = '';
@@ -216,7 +228,7 @@ function bodyProps(b) {
   const general = `<div class="sec"><h4><span>Body · ${esc(b.type === 'RAW' ? b.rawType : b.type)}</span></h4><div class="fields">
     <div class="fld full"><label title="Maximum 8 characters in the INP file">Name</label><input type="text" data-k="name" value="${esc(b.name)}"></div>${exportRow(b, 'body')}${cadRow(b, 'body')}${csHTML}</div></div>
     <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
-  const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}</div>${planeBtns}</div>`;
+  const definition = `<div class="sec"><h4><span>Geometric definition</span></h4><div class="fields">${defFields}${inpLine}${partsHTML(b)}</div>${planeBtns}</div>`;
   const view = b.type !== 'RAW' ? `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>` : null;
   const operations = `<div class="sec"><h4><span>Operations</span></h4>${b.type !== 'RAW' ? scaleSection() : ''}
     <div class="btns">${b.type !== 'RAW' ? '<button class="btn" data-act="regFromBodyCut" title="Creates a region made of this body, then lets you click faces to cut it with planes">New region from this body + cut by faces…</button><button class="btn" data-act="snapCheck" title="Propose exact values: axis on X / Y / Z, coaxial / parallel with other cylinders, equal radii, faces and ends coincident with other objects">Check alignment with other objects…</button>' : ''}<button class="btn" data-act="dup">Duplicate</button></div>

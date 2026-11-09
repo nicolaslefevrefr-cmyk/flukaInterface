@@ -2,9 +2,34 @@
  * Part of the user interface: the files of js/ui/ are classic scripts that share one scope (load order: see index.html). */
 'use strict';
 /* ---------- Geometry check window ---------- */
-const FIX_HINT = { snapAxis: 'Set the axis exactly on the global axis', snapPlane: 'Set the plane exactly perpendicular to the global axis (XYP / XZP / YZP when possible)', align: 'Rotate the second cylinder so that its axis is parallel to the first', concentric: 'Move the second cylinder onto the axis of the first', radius: 'Give the second cylinder the radius of the first', shift: 'Translate the second cylinder along its axis so the ends touch', planeMerge: 'Make the second plane coincide with the first', face: 'Move the face onto the reference face' };
+const FIX_HINT = { merge: 'Merge the identical planes into one (like Check ▸ Compact)', snapAxis: 'Set the axis exactly on the global axis', snapPlane: 'Set the plane exactly perpendicular to the global axis (XYP / XZP / YZP when possible)', align: 'Rotate the second cylinder so that its axis is parallel to the first', concentric: 'Move the second cylinder onto the axis of the first', radius: 'Give the second cylinder the radius of the first', shift: 'Translate the second cylinder along its axis so the ends touch', planeMerge: 'Make the second plane coincide with the first', face: 'Move the face onto the reference face' };
 const CHK = { last: null, bodies: [], tol: 0.01 };
-function chkAlign(bodies, tol) { return FK.checkAlignment(bodies.filter(b => b.type !== 'RAW').map(b => Object.assign({ name: b.name }, APP.xbody(b))), { tol }); }
+/** Alignment findings on what the INP really contains: a rotated RPP counts as its bounding RPP + cutting planes. Also lists the duplicate planes of the INP. */
+function chkAlign(bodies, tol) {
+  const parts = APP.exportParts(), auto = new Map(), list = [];
+  for (const b of bodies) {
+    if (b.type === 'RAW') continue;
+    const ps = parts.get(b);
+    if (ps && ps.length > 1) for (const pt of ps) { if (pt.mergedInto) continue; list.push({ name: pt.role === 'main' ? b.name : pt.name, type: pt.type, p: pt.p, prec: pt.prec }); if (pt.role === 'cut') auto.set(pt.name, b.name); }
+    else list.push(Object.assign({ name: b.name }, APP.xbody(b)));
+  }
+  const out = FK.checkAlignment(list, { tol }), note = (f) => {
+    const au = f.names.filter(n => auto.has(n)); if (!au.length) return f;
+    let text = f.text; for (const n of au) text = text.split(n).join(`${n} (cut plane of ${auto.get(n)})`);
+    return Object.assign({}, f, { text, names: [...new Set(f.names.map(n => auto.get(n) || n))], fix: null });
+  };
+  const res = out.map(note);
+  // duplicate planes written in the INP (user planes and generated cutting planes)
+  const opts = { style: S.opt.style, resolve: APP.xbody }, view = FK.inpView(S.model), act = FK.activeMerges(view, opts).act, tolA = Math.min(1e-3, tol / 100);
+  const own = (nm) => { const i = view.bodies.findIndex(b => b.name === nm); return i >= 0 ? S.model.bodies[i].name : nm; };
+  for (const g of FK.findPlaneMerges(Object.assign({}, view, { merges: [] }), opts, tolA, tol)) {
+    const drops = g.drops.filter(x => !act.has(x.name)); if (!drops.length) continue;
+    const lab = (pl) => pl.auto ? `${pl.name} (cut plane of ${own(pl.owner)})` : own(pl.name), dd = Math.max(...drops.map(x => x.dd));
+    res.push({ level: 'warn', kind: 'dup', text: `Planes ${[g.keep].concat(drops).map(lab).join(' / ')} coincide (≤ ${(dd * 10).toPrecision(2)} mm apart): written ${drops.length + 1} times in the INP — merge them to avoid gaps`, names: [...new Set([g.keep.owner].concat(drops.map(x => x.owner)).map(own))],
+      fix: { type: 'merge', keep: g.keep.name, drops: drops.map(x => ({ name: x.name, sign: x.sign, dn: x.dn, dd: x.dd })), tolA, tolD: tol } });
+  }
+  return res;
+}
 /** Applies one fix, or all of them in turn (findings are recomputed after each change). */
 function chkSolve(i) {
   const R = CHK.last; if (!R) return;
