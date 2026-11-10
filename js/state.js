@@ -593,7 +593,7 @@
   };
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
-  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpNoNeg', 'checksFold', 'showParts', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
+  APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpComments', 'inpNoNeg', 'checksFold', 'showParts', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
     'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
     'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
@@ -1436,7 +1436,7 @@
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   /** Options of the INP generator. Transform mode: each body is written in the frame of its coordinate system inside $Start_transform / $End_transform (ROT-DEFI cards after GEOEND). */
   APP.inpOpts = () => ({
-    style: S.opt.style, zoneLines: S.opt.inpZones !== false, noNegParen: S.opt.inpNoNeg !== false, maxZones: APP.maxZones(), zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform,
+    style: S.opt.style, zoneLines: S.opt.inpZones !== false, comments: +S.opt.inpComments || 0, noNegParen: S.opt.inpNoNeg !== false, maxZones: APP.maxZones(), zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform,
     xf: (b) => { const cs = b.cs || 0; return { key: cs, name: cs ? APP.csysLabel(cs) : 'Global', m: APP.relM(b) }; },
     comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
   });

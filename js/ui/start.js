@@ -4,7 +4,7 @@
 /* ---------- Start-up ---------- */
 function init() {
   APP.load();
-  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform; $('#inpZones').checked = S.opt.inpZones !== false;
+  $('#inpStyle').value = String(S.opt.style || 2); $('#inpFull').checked = S.opt.inpFull !== false; $('#inpTransform').checked = !!S.opt.inpTransform; $('#inpZones').checked = S.opt.inpZones !== false; $('#inpComments').value = String(+S.opt.inpComments || 0);
   APP.startLoop();
   APP.sync(); APP.rebuildMeasures(); APP.rebuildCsys();
   renderLeft(); renderToolOpts(); renderRight(); updateInp(); updateStatus(); syncToolbar();

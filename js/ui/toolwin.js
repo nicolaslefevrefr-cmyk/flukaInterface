@@ -140,6 +140,7 @@ function onOptChange(e) {
   if (k === 'invX' || k === 'invY') syncToolbar();
   if (k === 'pieceHl') updatePieces(true);
   if (k === 'inpComment' || k === 'inpTransform') { if ($('#inpTransform')) $('#inpTransform').checked = !!S.opt.inpTransform; updateInp(); }
+  if (k === 'inpComments') { S.opt.inpComments = +v; $('#inpComments').value = String(+v); updateInp(); }
   if (k === 'inpZones') { S.opt.inpZones = v; $('#inpZones').checked = v; updateInp(); }
   if (k === 'inpNoNeg') { S.opt.inpNoNeg = v; updateInp(); }
   if (k === 'zonesPerLine') { S.opt.zonesPerLine = +v; updateInp(); }

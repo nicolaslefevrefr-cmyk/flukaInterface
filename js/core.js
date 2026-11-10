@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.45.0';
+  FK.VERSION = '1.46.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2575,9 +2575,14 @@
    * regions A8 + I5 + expression), every line <= 132 columns. */
   FK.generateInp = function (model, opts) {
     opts = opts || {};
+    const srcModel = model;
     model = FK.inpView(model);
     const style = opts.style === 3 ? 3 : opts.style === 2 ? 2 : 1;
     const out = [];
+    // comment lines before the objects, with the name given in the tool: 0 none, 1 regions only, 2 every object
+    const cmLevel = opts.comments === true ? 2 : (+opts.comments || 0), toolB = new Map(), toolR = new Map();
+    model.bodies.forEach((b, i) => toolB.set(b.name, srcModel.bodies[i].name)); model.regions.forEach((r, i) => toolR.set(r.name, srcModel.regions[i].name));
+    const note = (lvl, name, what) => { if (cmLevel >= lvl) out.push('*' + name + (what ? ' (' + what + ')' : '') + '*'.repeat(Math.max(6, 40 - name.length - (what ? what.length + 3 : 0)))); };
     const title = (model.title || 'Geometry').replace(/\s+$/, '');
     for (const l of FK.geoHeader(title, opts)) out.push(l);
     const tf = !!(opts.transform && opts.xf);
@@ -2592,18 +2597,19 @@
         let bl = byKey.get(x.key); if (!bl) { bl = { name: FK.xfName(x.name, names), m: x.m, bodies: [] }; byKey.set(x.key, bl); blocks.push(bl); }
         bl.bodies.push(b);
       }
-      for (const b of plain) out.push(bodyLine(b, style, opts));
+      for (const b of plain) { note(2, toolB.get(b.name) || b.name); out.push(bodyLine(b, style, opts)); }
       for (const bl of blocks) {
         out.push(`$Start_transform ${bl.name}`);
-        for (const b of bl.bodies) out.push(FK.exportBodyText(b, b.name, style, opts));
+        for (const b of bl.bodies) { note(2, toolB.get(b.name) || b.name); out.push(FK.exportBodyText(b, b.name, style, opts)); }
         out.push('$End_transform');
       }
     } else
     for (const b of model.bodies) {
       if (b.noExport || mg.has(b.name)) continue;
       const sp = split.get(b.name);
-      if (sp) { out.push(FK.exportBodyText(sp.rpp, b.name, style, opts)); sp.planes.forEach(pl => { if (!mg.has(pl.name)) out.push(FK.exportBodyText(pl.body, pl.name, style, opts)); }); }
-      else out.push(bodyLine(b, style, opts));
+      const tn = toolB.get(b.name) || b.name;
+      if (sp) { note(2, tn); out.push(FK.exportBodyText(sp.rpp, b.name, style, opts)); sp.planes.forEach(pl => { if (!mg.has(pl.name)) { note(2, pl.name, 'cut plane of ' + tn); out.push(FK.exportBodyText(pl.body, pl.name, style, opts)); } }); }
+      else { note(2, tn); out.push(bodyLine(b, style, opts)); }
     }
     out.push('END');
     for (const r of model.regions) {
@@ -2617,6 +2623,7 @@
         if (opts.noNegParen) expr = FK.denegate(expr, opts.maxZones || 10).expr;
       } catch (e) { /* garder tel quel */ }
       const nv = (r.nvois === undefined || r.nvois === '' ? 5 : r.nvois);
+      note(1, toolR.get(r.name) || r.name);
       // one zone per line, each starting with "|" (also the first one), when the region has several zones
       let zt = null;
       if (opts.zoneLines || /\n/.test(r.expr || '')) {
