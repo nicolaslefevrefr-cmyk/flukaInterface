@@ -284,6 +284,7 @@ function csysProps(c) {
     <div class="fld full"><label>Name</label><input type="text" data-k="name" value="${esc(c.name)}"></div>
     <div class="fld full"><label>Defined relative to</label><select data-k="cparent">${parents}</select></div>
     <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" data-k="cfrozen" ${c.frozen ? 'checked' : ''}>Freeze: does not follow its parent (keeps its world pose)</label></div>
+    ${APP.csysUnused(true).some(x => x.id === c.id) ? `<div class="fld full"><label class="chk" style="margin:0" title="Writes its ROT-DEFI card in the INP file even though no exported body is defined in it (transform mode only)"><input type="checkbox" data-k="cforce" ${c.forceExport ? 'checked' : ''}>Export it anyway (ROT-DEFI card)</label><div class="muted" style="font-size:12px;margin-top:3px">⚠ Not used by any exported body.${S.opt.inpTransform ? '' : ' Written only when the INP is exported in transform mode (Settings).'}</div></div>` : ''}
     </div>
     <div class="muted" style="font-size:12px;margin:2px 0 6px">Unless frozen, this system moves with its parent. ${kids.length ? kids.length + ' child system(s) (' + kids.filter(k => k.frozen).length + ' frozen). ' : ''}${nb ? nb + ' body(ies) defined in this system.' : ''}</div></div>`;
   const meth = c.def ? c.def.method : 'manual';

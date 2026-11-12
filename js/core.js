@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.49.3';
+  FK.VERSION = '1.50.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2599,8 +2599,13 @@
         let bl = byKey.get(x.key); if (!bl) { bl = { name: FK.xfName(x.name, names), m: x.m, bodies: [] }; byKey.set(x.key, bl); blocks.push(bl); }
         bl.bodies.push(b);
       }
+      for (const f of (opts.forceXf || [])) {                   // coordinate systems marked "export anyway": their ROT-DEFI card is written even if no body uses them
+        if (byKey.has(f.key) || !f.m || f.m.every((v, i) => Math.abs(v - [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0][i]) < 1e-12)) continue;
+        const bl = { name: FK.xfName(f.name, names), m: f.m, bodies: [], bare: true }; byKey.set(f.key, bl); blocks.push(bl);
+      }
       for (const b of plain) { note(2, toolB.get(b.name) || b.name); out.push(bodyLine(b, style, opts)); }
       for (const bl of blocks) {
+        if (bl.bare) continue;
         out.push(`$Start_transform ${bl.name}`);
         for (const b of bl.bodies) { note(2, toolB.get(b.name) || b.name); out.push(FK.exportBodyText(b, b.name, style, opts)); }
         out.push('$End_transform');

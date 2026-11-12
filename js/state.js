@@ -1555,11 +1555,19 @@
     const todoN = todo.filter(([, it]) => !it.noExport); if (!todoN.length) return 0;
     APP.snap(); todoN.forEach(([k, it]) => APP.setSmartInpName(k, it)); APP.changed({ tree: true, right: true }); return todoN.length;
   };
+  /** Coordinate systems that no exported body is defined in (and that are not the export frame): nothing refers to them in the INP file.
+   *  force = true keeps those marked "export anyway" in the list (default: they are not reported). */
+  APP.csysUnused = function (force) {
+    const ex = APP.exportCs(), used = new Set(S.model.bodies.filter(b => !b.noExport).map(b => b.cs || 0));
+    return (S.model.csys || []).filter(c => c.id !== ex && !used.has(c.id) && (force || !c.forceExport));
+  };
+  /** Transformations of the coordinate systems marked "export anyway" (transform mode: their ROT-DEFI card is written even if no body uses them). */
+  APP.forcedXf = () => (S.model.csys || []).filter(c => c.forceExport && c.id !== APP.exportCs()).map(c => ({ key: c.id, name: c.name, m: APP.relM({ cs: c.id }) }));
   /** Stops exporting every body that no exported region uses. Returns the number of bodies affected. */
   APP.skipUnusedBodies = function () { const u = APP.unusedBodies(); if (!u.length) return 0; APP.snap(); u.forEach(b => { b.noExport = true; }); APP.changed({ tree: true, right: true }); return u.length; };
   /** Options of the INP generator. Transform mode: each body is written in the frame of its coordinate system inside $Start_transform / $End_transform (ROT-DEFI cards after GEOEND). */
   APP.inpOpts = () => ({
-    style: S.opt.style, zoneLines: S.opt.inpZones !== false, comments: +S.opt.inpComments || 0, noNegParen: S.opt.inpNoNeg !== false, maxZones: APP.maxZones(), zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform,
+    style: S.opt.style, zoneLines: S.opt.inpZones !== false, comments: +S.opt.inpComments || 0, noNegParen: S.opt.inpNoNeg !== false, maxZones: APP.maxZones(), zonesPerLine: S.opt.zonesPerLine || 1, resolve: APP.xbody, transform: !!S.opt.inpTransform, forceXf: S.opt.inpTransform ? APP.forcedXf() : [],
     xf: (b) => { const cs = b.cs || 0; return { key: cs, name: cs ? APP.csysLabel(cs) : 'Global', m: APP.relM(b) }; },
     comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
   });
@@ -1572,6 +1580,7 @@
   APP.issues = () => APP.warnings().map(text => {
     const sev = ERR_RE.test(text) ? 'e' : INFO_RE.test(text) ? 'i' : 'w';
     const regFirst = /^Region\b/.test(text), rec = { sev, text };
+    if (/^Coordinate system\b/.test(text)) { const m0 = text.match(/"([^"]+)"/), c0 = m0 && S.model.csys.find(x => x.name === m0[1]); if (c0) { rec.t = 'csys'; rec.id = c0.id; return rec; } }
     for (const m of text.matchAll(/"([^"]+)"/g)) {
       const r = S.model.regions.find(x => x.name === m[1]), b = S.model.bodies.find(x => x.name === m[1]);
       const hit = regFirst ? (r ? ['region', r] : b ? ['body', b] : null) : (b ? ['body', b] : r ? ['region', r] : null);
@@ -1616,6 +1625,7 @@
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }
     for (const b of APP.unusedBodies()) w.push(`${b.type === 'RAW' ? b.rawType : b.type} "${b.name}" is not used by any exported region`);
+    for (const c of APP.csysUnused()) w.push(`Coordinate system "${c.name}" is not used by any exported body`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.quality) for (const q of c.quality) w.push(`Region "${r.name}" ${q.text}`); }
     return w;
   };

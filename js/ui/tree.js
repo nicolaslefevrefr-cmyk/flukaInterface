@@ -22,7 +22,7 @@ function regionWarns(r) {
   if (S.model.materials && !r.noExport && !APP.getMaterial(r.mat)) w.push('No material assigned');
   return w;
 }
-let UNUSED = new Set(), INPN = { bodies: new Map(), regions: new Map() };
+let UNUSED = new Set(), UNUSEDCS = new Set(), INPN = { bodies: new Map(), regions: new Map() };
 let TF = '';                                   // tree filter (transient)
 const fl = (list) => TF ? list.filter(o => String(o.name || '').toLowerCase().includes(TF)) : list;
 const treeState = () => S.opt.tree || (S.opt.tree = {});
@@ -47,7 +47,7 @@ function csysTree(list, pid, depth) {
       ${kids ? `<button class="chev" data-act="fold" data-k="cs${c.id}">${open ? '−' : '+'}</button>` : '<span class="chev"></span>'}
       <button class="vis${c.visible ? '' : ' off'}" data-act="vis" title="Show / hide">${c.visible ? ICON.eye : ICON.eyeOff}</button>
       <button class="rad${isA ? ' on' : ''}" data-act="activate" data-cid="${c.id}" title="Set as active coordinate system" aria-label="Active">${isA ? '●' : '○'}</button>
-      <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="ty">${APP.exportCs() === c.id ? '⇥ export ' : ''}${c.frozen ? '🔒 ' : ''}${c.parent ? '↳ ' + esc(APP.csysLabel(c.parent)) : ''}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div></div>` +
+      <span class="sw" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span>${UNUSEDCS.has(c.id) ? '<span class="wicon" tabindex="0" title="Not used by any exported body (Properties ▸ General: export it anyway)">⚠</span>' : ''}${c.forceExport ? '<span class="wicon info" tabindex="0" title="Export forced (transform mode)">ⓘ</span>' : ''}<span class="ty">${APP.exportCs() === c.id ? '⇥ export ' : ''}${c.frozen ? '🔒 ' : ''}${c.parent ? '↳ ' + esc(APP.csysLabel(c.parent)) : ''}</span><button class="mn" data-act="imenu" title="Actions">⋮</button></div></div>` +
       (kids && open ? csysTree(list, c.id, depth + 1) : '');
   }).join('');
 }
@@ -87,7 +87,7 @@ function catBody(g) {
   return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
 }
 function renderLeft() {
-  UNUSED = new Set(APP.unusedBodies().map(b => b.id)); INPN = FK.inpNames(S.model);
+  UNUSEDCS = new Set(APP.csysUnused().map(c => c.id)); UNUSED = new Set(APP.unusedBodies().map(b => b.id)); INPN = FK.inpNames(S.model);
   let h = `<div class="tree">`;
   for (const g of GROUPS_DEF) {
     const list = fl(g.items()), open = TF ? true : isOpen(g.k), anyVis = list.some(o => o.visible);

@@ -72,6 +72,7 @@ function onField(e) {
     case 'mat': if (e.type === 'change' && type === 'region') APP.setRegionMaterial(it, +t.value); break;
     case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
     case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
+    case 'cforce': if (e.type === 'change' && type === 'csys') { APP.snap(); if (t.checked) it.forceExport = true; else delete it.forceExport; APP.changed({ tree: true, right: true }); } break;
     case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
     case 'cad': if (e.type === 'change') { APP.snap(); it.meta = it.meta || {}; if (t.value === '') delete it.meta.cad; else it.meta.cad = t.value === 'none' ? 0 : +t.value; APP.changed({ tree: true, right: true }); } break;
     case 'exportInp': if (e.type === 'change') {
