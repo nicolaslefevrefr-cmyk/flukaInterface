@@ -318,7 +318,12 @@
     const wsig = W.min.concat(W.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
     const byName = new Map();
     for (const b of S.model.bodies) if (!byName.has(b.name)) byName.set(b.name, b);
-    { const wc = FK.boxCenter(W); world.r = Math.max(FK.boxDiag(W) / 2, 1); world.c.set(wc[0], wc[1], wc[2]); updateClip(true); needRender = true; }
+    // Zone of the automatic envelope boxes (AIR / BLCKBODY): the zone W ignores very large bodies, so they would be cut to it and a margin change would show nothing
+    let Wenv = W;
+    { const eb = S.model.bodies.filter(b => b.auto).map(b => FK.bodyBBox(wbodies.get(b.id))).filter(Boolean);
+      if (eb.length) { let lo = W.min.slice(), hi = W.max.slice(); for (const x of eb) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], x.min[k]); hi[k] = Math.max(hi[k], x.max[k]); } const pad = FK.boxDiag({ min: lo, max: hi }) * 0.01; Wenv = { min: lo.map(v => v - pad), max: hi.map(v => v + pad) }; } }
+    const wsigE = Wenv === W ? wsig : Wenv.min.concat(Wenv.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
+    { const wc = FK.boxCenter(Wenv); world.r = Math.max(FK.boxDiag(Wenv) / 2, 1); world.c.set(wc[0], wc[1], wc[2]); updateClip(true); needRender = true; }
     if (wsig !== lastWsig) {
       lastWsig = wsig;
       sceneR = Math.max(FK.boxDiag(W) / 2, 1);
@@ -334,7 +339,8 @@
     for (const b of S.model.bodies) {
       seenB.add(b.id);
       const wb = wbodies.get(b.id);
-      const sig = wsig + '|' + wb.type + '|' + wb.p.join(',') + (FK.isPlaneType(wb.type) ? '|' + b.color : '');
+      const WB = b.auto ? Wenv : W;
+      const sig = (b.auto ? wsigE : wsig) + '|' + wb.type + '|' + wb.p.join(',') + (FK.isPlaneType(wb.type) ? '|' + b.color : '');
       let c = bodyC.get(b.id);
       if (c && c.sig === sig && c.colorKey === b.color) continue;
       if (c && c.group) disposeObj(c.group);
@@ -343,10 +349,10 @@
       try {
         if (b.type === 'RAW') { /* not displayed */ }
         else if (FK.isPlaneType(wb.type)) {
-          const pv = planeVisual(b, W, wb);
+          const pv = planeVisual(b, WB, wb);
           if (pv) { c.group = pv.group; c.mesh = pv.mesh; c.lines = pv.lines; }
         } else {
-          c.polys = FK.bodyPolys(wb, W);
+          c.polys = FK.bodyPolys(wb, WB);
           if (c.polys && c.polys.length) {
             const o = makeSolidGroup(FK.polysToPositions(c.polys), b.color, b.opacity, 'body', b.id);
             c.group = o.group; c.mesh = o.mesh; c.lines = o.lines;
@@ -364,6 +370,13 @@
       return c.polys;
     };
     const ctx = { body: (n) => { const b = byName.get(n); return b ? polysOf(b) : null; }, world: () => FK.boxPolys(W) };
+    const polysOfE = (b) => {                                  // same bodies, clipped to the larger zone of the envelope regions
+      if (b.auto) return polysOf(b);
+      const c = bodyC.get(b.id); if (!c) return null;
+      if (c.polysE === undefined || c.sigE !== wsigE) { try { c.polysE = FK.bodyPolys(wbodies.get(b.id), Wenv); } catch (e) { c.polysE = null; } c.sigE = wsigE; }
+      return c.polysE;
+    };
+    const ctxE = { body: (n) => { const b = byName.get(n); return b ? polysOfE(b) : null; }, world: () => FK.boxPolys(Wenv) };
     const seenR = new Set();
     for (const r of S.model.regions) {
       seenR.add(r.id);
@@ -373,18 +386,19 @@
       if (!needed) continue;
       let ast = null, names = [];
       try { ast = FK.parseExpr(r.expr); names = Array.from(FK.exprNames(ast)); } catch (e) { c.err = e.message; if (c.group) { disposeObj(c.group); c.group = null; } c.sig = 'err:' + r.expr; continue; }
-      const sig = wsig + '|' + r.expr + '|' + r.color + '|' + names.map(n => { const b = byName.get(n); if (!b) return '?'; const w = wbodies.get(b.id); return w.type + w.p.join(','); }).join(';');
+      const envR = r.auto === 'air' || r.auto === 'bb', WZ = envR ? Wenv : W, cx = envR ? ctxE : ctx;
+      const sig = (envR ? wsigE : wsig) + '|' + r.expr + '|' + r.color + '|' + names.map(n => { const b = byName.get(n); if (!b) return '?'; const w = wbodies.get(b.id); return w.type + w.p.join(','); }).join(';');
       if (c.sig === sig) continue;
       if (c.group) { disposeObj(c.group); c.group = null; }
       c.sig = sig; c.err = null; c.vol = null; c.area = null; c.bbox = null; c.polys = null;
       try {
-        const polys = FK.evalExpr(ast, ctx);
+        const polys = FK.evalExpr(ast, cx);
         c.polys = polys;
         c.vol = FK.polysVolume(polys); c.area = FK.polysArea(polys); c.bbox = FK.polysBBox(polys);
         c.diag = null; c.quality = null;
-        if (polys.length && c.vol >= 1e-9) { try { c.quality = FK.checkRegionQuality(ast, { W, polys, vol: c.vol, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.quality = null; } }
+        if (polys.length && c.vol >= 1e-9) { try { c.quality = FK.checkRegionQuality(ast, { W: WZ, polys, vol: c.vol, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.quality = null; } }
         if (!polys.length || c.vol < 1e-9) {
-          try { c.diag = FK.diagnoseRegion(ast, { W, world: ctx.world, body: ctx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.diag = null; }
+          try { c.diag = FK.diagnoseRegion(ast, { W: WZ, world: cx.world, body: cx.body, wbody: (n) => { const b = byName.get(n); return b ? wbodies.get(b.id) : null; } }); } catch (e) { c.diag = null; }
         }
         if (polys.length) {
           const o = makeSolidGroup(FK.polysToPositions(polys), r.color, r.opacity, 'region', r.id);

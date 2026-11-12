@@ -51,15 +51,29 @@ const dlg = $('#dlgImport');
 function openImport() { if (!dlg.open) dlg.showModal(); }
 $('#btnInpImport').onclick = openImport;
 $('#btnPickInp').onclick = () => $('#fileInp').click();
-$('#fileInp').onchange = async (e) => { const fl = e.target.files[0]; if (fl) $('#importText').value = await fl.text(); e.target.value = ''; };
-dlg.addEventListener('close', () => {
+let bigInp = null;                       // text of a big file: kept out of the text box (filling a multi-MB textarea freezes the page)
+$('#fileInp').onchange = async (e) => {
+  const fl = e.target.files[0]; e.target.value = ''; if (!fl) return;
+  const t = await fl.text();
+  if (t.length > 400000) { bigInp = t; $('#importText').value = ''; $('#importText').placeholder = `${fl.name} — ${(t.length / 1048576).toFixed(1)} MB, ${t.split('\n').length} lines loaded (not shown). Press Import.`; }
+  else { bigInp = null; $('#importText').placeholder = ''; $('#importText').value = t; }
+};
+$('#importText').addEventListener('input', () => { bigInp = null; });
+dlg.addEventListener('close', async () => {
   if (dlg.returnValue !== 'ok') return;
+  dlg.returnValue = '';
   const mode = (document.querySelector('input[name=impMode]:checked') || {}).value || 'replace';
-  const res = APP.importInp($('#importText').value, mode);
+  const text = bigInp !== null ? bigInp : $('#importText').value; bigInp = null;
+  let res = null;
+  await withProgress('Importing the INP', 5, async (step) => {
+    await step('Reading the cards and building the model…');
+    res = APP.importInp(text, mode);
+    if (res && res.model && (res.model.bodies.length || res.model.regions.length)) await flushWithProgress(step, { tree: true, right: true, fit: true });
+  });
+  $('#importText').placeholder = '';
   const xi = res && res.xfInfo && res.xfInfo.total ? ` — ${res.xfInfo.created} coordinate system${res.xfInfo.created > 1 ? 's' : ''} from the ROT-DEFI cards (${res.xfInfo.bodies} bod${res.xfInfo.bodies > 1 ? 'ies' : 'y'} attached${res.xfInfo.unused.length ? `, unused: ${res.xfInfo.unused.join(', ')}` : ''})` : '';
   if (res && res.warnings && res.warnings.length) toast('Import' + xi + ' : ' + res.warnings[0]);
   else if (res) toast('Import finished' + xi);
-  dlg.returnValue = '';
 });
 
 /* ---------- Loading meshes ---------- */

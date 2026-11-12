@@ -26,23 +26,51 @@ $('#btnInpClose').onclick = () => sheet.classList.remove('open');
 function syncProjName() { const i = $('#projName'); if (i && document.activeElement !== i && i.value !== (S.model.title || '')) i.value = S.model.title || ''; document.title = (S.model.title ? S.model.title + ' — ' : '') + 'Combinatorial Geometry Tool'; }
 $('#projName').addEventListener('input', e => { APP.snap('title'); S.model.title = e.target.value; document.title = (e.target.value ? e.target.value + ' — ' : '') + 'Combinatorial Geometry Tool'; APP.changed({}); });
 /* ---------- Deferred updates ---------- */
-let flags = {}, scheduled = false, saveT = 0;
-APP.hooks.changed = (fl) => { Object.assign(flags, fl); if (!scheduled) { scheduled = true; setTimeout(flush, 30); } };
+let flags = {}, scheduled = false, saveT = 0, LOADING = 0;
+APP.hooks.changed = (fl) => { Object.assign(flags, fl); if (LOADING) return; if (!scheduled) { scheduled = true; setTimeout(flush, 30); } };
+/** The deferred update, cut into named stages (the progress bar of a big import shows them one by one). */
+function flushStages(fl) {
+  return [
+    ['Building the 3D view', () => {
+      if (S.pick && S.pick.ownerKind !== 'stl' && !fl.keepPick) { S.pick = null; APP.drawHighlight(APP.gSel, null); }
+      APP.sync(); syncProjName(); if (fl.tree || fl.right) grSchedule();
+      if (fl.tree || fl.right || fl.csys) { APP.rebuildCsys(); if (S.opt.showParts || APP._partsOn) { APP.rebuildParts(); APP._partsOn = !!S.opt.showParts; } }
+      if (fl.measures) APP.rebuildMeasures();
+    }],
+    ['Building the lists and panels', () => {
+      if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
+      if (fl.right) renderRight(); else { updateLive(); if (fl.csys) updateCsysFields(); }
+    }],
+    ['Writing the INP text and running the checks', () => { updateInp(); }],
+    ['Finishing', () => {
+      updateLegend(); updateStatus(); updateDropHint(); updatePieces();
+      if (APP.cutUpdate) APP.cutUpdate();
+      if (fl.fit) APP.fit();
+      clearTimeout(saveT); saveT = setTimeout(APP.save, 400);
+    }]];
+}
 function flush() {
   scheduled = false;
   const fl = flags; flags = {};
-  try {
-    if (S.pick && S.pick.ownerKind !== 'stl' && !fl.keepPick) { S.pick = null; APP.drawHighlight(APP.gSel, null); }
-    APP.sync(); syncProjName(); if (fl.tree || fl.right) grSchedule();
-    if (fl.tree || fl.right || fl.csys) { APP.rebuildCsys(); if (S.opt.showParts || APP._partsOn) { APP.rebuildParts(); APP._partsOn = !!S.opt.showParts; } }
-    if (fl.measures) APP.rebuildMeasures();
-    if (fl.tree) { renderLeft(); renderToolOpts(); if (!fl.right) syncRightStyle(); }
-    if (fl.right) renderRight(); else { updateLive(); if (fl.csys) updateCsysFields(); }
-    updateInp(); updateLegend(); updateStatus(); updateDropHint(); updatePieces();
-    if (APP.cutUpdate) APP.cutUpdate();
-    if (fl.fit) APP.fit();
-    clearTimeout(saveT); saveT = setTimeout(APP.save, 400);
-  } catch (e) { console.error(e); toast('Error: ' + e.message); }
+  try { for (const st of flushStages(fl)) st[1](); } catch (e) { console.error(e); toast('Error: ' + e.message); }
+}
+/* ---------- Progress bar for long operations (opening a big INP / project) ---------- */
+const paintNow = () => new Promise(r => { let d = false; const go = () => { if (!d) { d = true; r(); } }; try { requestAnimationFrame(() => setTimeout(go, 0)); } catch (e) { /* no rAF */ } setTimeout(go, 60); });
+/** Runs work(step) with an overlay; step(label) names the next stage and lets the browser paint it. total = number of stages. */
+async function withProgress(title, total, work) {
+  const box = $('#loadBox'); let n = 0;
+  const t0 = Date.now();
+  $('#lbTitle').textContent = title; $('#lbFill').style.width = '0%'; $('#lbText').textContent = ''; $('#lbTime').textContent = ''; box.hidden = false;
+  const tick = setInterval(() => { $('#lbTime').textContent = Math.round((Date.now() - t0) / 1000) + ' s'; }, 500);
+  LOADING++;
+  const step = async (label) => { $('#lbFill').style.width = Math.round(100 * n / Math.max(1, total)) + '%'; $('#lbText').textContent = `${n + 1} / ${total} — ${label}`; n++; await paintNow(); };
+  try { return await work(step); }
+  finally { LOADING--; $('#lbFill').style.width = '100%'; clearInterval(tick); box.hidden = true; }
+}
+/** After an operation that changed the model with the deferred update held back: runs the update stage by stage. */
+async function flushWithProgress(step, extra) {
+  const fl = Object.assign({}, flags, extra || {}); flags = {};
+  for (const st of flushStages(fl)) { await step(st[0] + '…'); try { st[1](); } catch (e) { console.error(e); toast('Error: ' + e.message); } }
 }
 /** The "drop a file" hint disappears as soon as anything at all is in the project. */
 function updateDropHint() {

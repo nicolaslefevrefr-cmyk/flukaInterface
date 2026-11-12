@@ -49,7 +49,16 @@ async function saveProject(withMeshes) {
     toast(withMeshes === false ? `Project saved (geometry only, ${(txt.length / 1048576).toFixed(2)} MB)` : `Project saved (${S.stls.length} mesh${S.stls.length === 1 ? '' : 'es'} embedded, ${(txt.length / 1048576).toFixed(1)} MB)`);
   } catch (e) { console.error(e); toast('Save failed: ' + e.message); }
 }
-$('#fileProj').onchange = async (e) => { const fl = e.target.files[0]; if (fl && await APP.importProject(await fl.text())) toast(`Project loaded (${S.stls.length} mesh${S.stls.length === 1 ? '' : 'es'})`); e.target.value = ''; };
+$('#fileProj').onchange = async (e) => {
+  const fl = e.target.files[0]; e.target.value = ''; if (!fl) return;
+  let ok = false;
+  await withProgress('Opening the project', 6, async (step) => {
+    await step('Reading the file…'); const txt = await fl.text();
+    await step('Loading the model and the meshes…'); ok = await APP.importProject(txt);
+    if (ok) await flushWithProgress(step);
+  });
+  if (ok) toast(`Project loaded (${S.stls.length} mesh${S.stls.length === 1 ? '' : 'es'})`);
+};
 const menuAt = (btn, items) => { const r = btn.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, items); };
 async function saveConfigFile() {
   const blob = new Blob([APP.exportConfig()], { type: 'application/json' });
