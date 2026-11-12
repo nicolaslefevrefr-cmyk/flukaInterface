@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.50.0)
+# Combinatorial Geometry Tool  (v1.50.1)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.50.1** — After an INP import the automatic checks are paused (they were the slow part on a big file); the checks panel offers "Run the checks now", after which they stay automatic.
 - **1.50.0** — Warnings on coordinate systems that no exported body is defined in (⚠ in the tree, in the checks list, click to select). Their Properties ▸ General tab offers "Export it anyway (ROT-DEFI card)": in transform mode the card is written even if nothing uses the system.
 - **1.49.3** — Fix: the AIR / BLCKBODY regions and their boxes were cut to the render zone (which ignores very large bodies), so a margin change showed nothing; they now have their own larger zone, and the camera clipping planes cover it. New progress bar (stage, counter, elapsed time, moving stripe) when opening an INP or a project .json; a big INP file is kept out of the text box (filling it froze the page).
 - **1.49.2** — Fix 3D view: large objects could be cut (missing faces). The far clipping plane now always covers everything that exists (it was based on the last fitted selection, so showing a big object afterwards or panning clipped it).

@@ -87,7 +87,7 @@ function catBody(g) {
   return h + rowsOf(k, all.filter(o => !groups.some(x => x.id === o.grp)));
 }
 function renderLeft() {
-  UNUSEDCS = new Set(APP.csysUnused().map(c => c.id)); UNUSED = new Set(APP.unusedBodies().map(b => b.id)); INPN = FK.inpNames(S.model);
+  UNUSEDCS = S.checksOff ? new Set() : new Set(APP.csysUnused().map(c => c.id)); UNUSED = S.checksOff ? new Set() : new Set(APP.unusedBodies().map(b => b.id)); INPN = FK.inpNames(S.model);
   let h = `<div class="tree">`;
   for (const g of GROUPS_DEF) {
     const list = fl(g.items()), open = TF ? true : isOpen(g.k), anyVis = list.some(o => o.visible);

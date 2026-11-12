@@ -7,6 +7,11 @@ let curGo = '';
 function updateInp() {
   const t = APP.inpText();
   if (inpText.value !== t) inpText.value = t;
+  if (S.checksOff) {                                    // after an import: the automatic checks are the slow part of a big file, they run on demand
+    $('#isCount').innerHTML = '<span class="i">ⓘ checks not run</span>';
+    $('#inpWarn').innerHTML = '<div class="is i"><i>ⓘ</i><span>The automatic checks are paused after the import (they can take a long time on a big file).</span></div><button type="button" class="pill" data-runchecks title="Runs every check on the current model; they then stay automatic">Run the checks now</button>';
+    const bd = $('#warnBadge'); bd.hidden = true; return;
+  }
   const w = APP.warnings();
   const nun = APP.unusedBodies().length, nsh = FK.inpNames(S.model).shortened.filter(x => !x.noExport).length;
   const cp = APP.complexPlan(), ncx = cp.flat.length + cp.split.length + cp.fail.length;
@@ -18,6 +23,10 @@ function updateInp() {
     : `<div class="is ${x.sev}"><i>${IC[x.sev]}</i><span>${linkify(x.text, x.t)}</span></div>`).join('') + (ncx ? `<button type="button" class="pill" data-flatall title="Rewrites the too complex formulas as zones without parentheses; when a region would keep more zones than the limit, cuts it into several regions (same material, no overlap)">Simplify the ${ncx} complex region${ncx > 1 ? 's' : ''}</button> ` : '') + (nsh ? `${w.length ? '<br>' : ''}<button type="button" class="pill" data-autoall title="Gives each of them a short name: its first letters followed by 2 digits (kept unique)">Auto-name the ${nsh} long name${nsh > 1 ? 's' : ''}</button> ` : '') + `<br><button type="button" class="pill" data-renameall title="Prefix + number for the names written in the INP file">Rename the INP names…</button> ` + (nun ?  `${w.length ? '<br>' : ''}<button type="button" class="pill" data-skipunused title="Stops exporting the bodies and planes that no exported region uses">Do not export the ${nun} unused object${nun > 1 ? 's' : ''}</button>` : '');
   const badge = $('#warnBadge'); badge.hidden = !w.length; badge.textContent = w.length;
 }
+$('#inpWarn').addEventListener('click', e => {
+  if (e.target.closest('[data-runchecks]')) { runChecksNow(); return; }
+});
+async function runChecksNow() { await withProgress('Running the checks', 1, async (step) => { await step('Checking the geometry and the INP text…'); S.checksOff = false; updateInp(); }); renderLeft(); }
 $('#inpWarn').addEventListener('click', e => {
   if (e.target.closest('[data-renameall]')) { openInpRename(null); return; }
   if (e.target.closest('.oref')) return;
@@ -68,6 +77,7 @@ dlg.addEventListener('close', async () => {
   await withProgress('Importing the INP', 5, async (step) => {
     await step('Reading the cards and building the model…');
     res = APP.importInp(text, mode);
+    if (res && res.model && (res.model.bodies.length || res.model.regions.length)) S.checksOff = true;
     if (res && res.model && (res.model.bodies.length || res.model.regions.length)) await flushWithProgress(step, { tree: true, right: true, fit: true });
   });
   $('#importText').placeholder = '';

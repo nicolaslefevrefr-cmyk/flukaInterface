@@ -637,6 +637,7 @@
     return n;
   };
   APP.importProject = async function (text) {
+    S.checksOff = false;
     let o; try { o = JSON.parse(text); } catch (e) { APP.toast('Invalid JSON'); return false; }
     if (!o || !o.model || !Array.isArray(o.model.bodies)) { APP.toast('Not a project file'); return false; }
     const stls = [];
@@ -1508,7 +1509,7 @@
   };
 
   APP.newModel = function (all) {
-    APP.snap();
+    APP.snap(); S.checksOff = false;
     if (all) { for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m); S.stls = []; }
     S.model = { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [], materials: FK.defaultMaterials() };
     S.measures = []; S.sel = null; S.pick = null; S.pending = null; S.fill = null;
