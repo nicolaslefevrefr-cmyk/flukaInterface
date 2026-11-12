@@ -1334,6 +1334,12 @@
     APP.snap();
     if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], components: [], materials: S.model.materials || FK.defaultMaterials(), exportCs: S.model.exportCs || 0 }; S.sel = null; }
     const used = bodyNames(), map = new Map(), xfCs = new Map();
+    // a coordinate system of the same name and the same placement (previous import of the same file) is reused instead of duplicated
+    const csFor = (name, W) => {
+      const nm = String(name || 'TR').replace(/[^A-Za-z0-9_]/g, '') || 'TR', cl = M.clean(W, 1e-6), Wc = cl.ok ? cl.m : W;
+      const same = S.model.csys.find(c => c.name === nm && (() => { try { const Q = APP.csysWorld(c.id); return Q.every((v, i) => Math.abs(v - Wc[i]) < 1e-6); } catch (e) { return false; } })());
+      return same || APP.addCsys(Wc, { name: FK.uniqueName(nm, csysNames()), parent: 0 });
+    };
     for (const b of imp.bodies) {
       let nm = b.name;
       if (used.has(nm)) nm = FK.uniqueName(nm, used);
@@ -1342,14 +1348,20 @@
       if (b.xfm) {                                           // written inside $Start_transform: the body keeps its own coordinates in a new coordinate system
         let c = xfCs.get(b.xfKey);
         if (!c) {
-          const E = APP.csysWorld(APP.exportCs()), W = M.mul(E, b.xfm), cl = M.clean(W, 1e-6);
-          c = APP.addCsys(cl.ok ? cl.m : W, { name: FK.uniqueName(String(b.xfName || 'TR').replace(/[^A-Za-z0-9_]/g, '') || 'TR', csysNames()), parent: 0 }); xfCs.set(b.xfKey, c);
+          c = csFor(b.xfName, M.mul(APP.csysWorld(APP.exportCs()), b.xfm)); xfCs.set(b.xfKey, c);
         }
         b.cs = c.id;
       }
       delete b.xfm; delete b.xfName; delete b.xfKey;
       S.model.bodies.push(b);
     }
+    // transformations defined by ROT-DEFI cards but used by no body: coordinate systems too (to attach objects later)
+    const xfUsed = new Set([...xfCs.keys()].join('>').split('>').map(n => n.replace(/^-/, ''))), xfNew = [];
+    for (const t of res.transforms || []) {
+      if (xfUsed.has(t.name) || FK.M.isIdentity(t.m, 1e-12)) continue;
+      csFor(t.name, M.mul(APP.csysWorld(APP.exportCs()), t.m)); xfNew.push(t.name);
+    }
+    res.xfInfo = { total: (res.transforms || []).length, created: xfCs.size + xfNew.length, unused: xfNew, bodies: imp.bodies.filter(b => b.cs !== APP.exportCs()).length };
     const rused = regionNames(), rByOrig = new Map();
     for (const r of imp.regions) {
       try {

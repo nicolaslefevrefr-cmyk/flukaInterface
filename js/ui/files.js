@@ -56,8 +56,9 @@ dlg.addEventListener('close', () => {
   if (dlg.returnValue !== 'ok') return;
   const mode = (document.querySelector('input[name=impMode]:checked') || {}).value || 'replace';
   const res = APP.importInp($('#importText').value, mode);
-  if (res && res.warnings && res.warnings.length) toast('Import : ' + res.warnings[0]);
-  else if (res) toast('Import finished');
+  const xi = res && res.xfInfo && res.xfInfo.total ? ` — ${res.xfInfo.created} coordinate system${res.xfInfo.created > 1 ? 's' : ''} from the ROT-DEFI cards (${res.xfInfo.bodies} bod${res.xfInfo.bodies > 1 ? 'ies' : 'y'} attached${res.xfInfo.unused.length ? `, unused: ${res.xfInfo.unused.join(', ')}` : ''})` : '';
+  if (res && res.warnings && res.warnings.length) toast('Import' + xi + ' : ' + res.warnings[0]);
+  else if (res) toast('Import finished' + xi);
   dlg.returnValue = '';
 });
 

@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.46.0';
+  FK.VERSION = '1.48.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -913,6 +913,8 @@
       const co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[0][2], 2 * P[1][2], -2 * Pc[0], -2 * Pc[1], -2 * Pc[2], V.dot(c, Pc) - R * R];
       return lines('QUA', co.map(x => fmt(x)));
     }
+    // RPP: CG requires min < max on each axis (the tool accepts both orders, e.g. a box defined in a rotated coordinate system)
+    if (wb.type === 'RPP') { const q = wb.p.slice(); for (let k = 0; k < 6; k += 2) if (q[k] > q[k + 1]) { const t = q[k]; q[k] = q[k + 1]; q[k + 1] = t; } wb = Object.assign({}, wb, { p: q }); }
     if (style === 3) return lines(wb.type, wb.p.map(x => fmt(x, wb.prec)));
     return head(wb.type) + wb.p.map(x => fmt(x, wb.prec)).join(' ');
   };
@@ -2658,7 +2660,7 @@
 
 
   /* ---------------- Materials (names only) and the complete input file ---------------- */
-  FK.DEFAULT_MATERIALS = ['BLCKHOLE', 'VACUUM', 'STEEL', 'COPPER'];
+  FK.DEFAULT_MATERIALS = ['BLCKHOLE', 'VACUUM', 'STEEL', 'COPPER', 'CONCRETE', 'AIR'];
   FK.defaultMaterials = () => FK.DEFAULT_MATERIALS.map((n, i) => ({ id: i + 1, name: n }));
   FK.materialName = (model, r) => { const m = r && r.mat ? (model.materials || []).find(x => x.id === r.mat) : null; return m ? m.name : ''; };
   /** FLUKA material names: upper case, letters / digits / _, at most 8 characters, first character a letter. */
@@ -2826,7 +2828,9 @@
     for (const r of model.regions) {
       try { r.expr = FK.formatExpr(FK.parseExpr(r.expr)); } catch (e) { warnings.push(`Region ${r.name}: ${e.message}`); }
     }
-    return { model, warnings, assign };
+    const transforms = [];                                    // every ROT-DEFI transformation of the file (used or not): { name, m }
+    for (const [name, cards] of rot) { try { transforms.push({ name, m: FK.rotDefiMatrix(cards) }); } catch (e) { warnings.push(`ROT-DEFI ${name}: ${e.message}`); } }
+    return { model, warnings, assign, transforms };
   };
 
   root.FK = FK;

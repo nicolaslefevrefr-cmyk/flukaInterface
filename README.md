@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.46.0)
+# Combinatorial Geometry Tool  (v1.48.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,8 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.48.0** — Fix: an RPP is always written with min < max on each axis (a box defined in a rotated coordinate system could be stored with reversed bounds, which the tool accepted but CG rejects: "Assertion failed w(3)<w(4)"). CONCRETE and AIR added to the default materials (`tests/rpp-reversed-bounds.inp`).
+- **1.47.0** — INP import of ROT-DEFI: every transformation of the file becomes a coordinate system (named after the ROT-DEFI name, also the ones used by no body) and the bodies of each `$Start_transform` block are attached to it; importing the same file again reuses the coordinate systems of the same name and placement instead of duplicating them. The import message gives the count. Round trip through the transform mode checked on a real file (`tests/rotdefi-in-geometry.inp`).
 - **1.46.0** — INP export: comment lines with the name used in the tool before the objects (`*NAME******`): none, regions only, or all objects (bodies, planes, regions; cutting planes are labelled with their body). Option in the INP panel bar and in Settings.
 - **1.45.0** — Splitting a complex region (typically the void around the parts) into sub-regions: the expansion into zones now simplifies at every step (a void of 9 zones with nested negations gives 11 plain zones instead of an explosion), already disjoint zones are kept as they are, and *Split into regions…* groups the zones in regions of at most *Most zones per region* zones (no parenthesis, no overlap, same material). The Checks panel button *Simplify the N complex regions* rewrites as zones what fits and cuts the rest into several regions, after confirmation (`tests/vacuum-combi.inp`).
 - **1.44.1** — *Exported as* box uses the full width of the properties panel; the *In the INP: OBOX …* line is removed from the geometric definition (that body is not written any more).
