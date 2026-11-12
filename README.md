@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.48.0)
+# Combinatorial Geometry Tool  (v1.49.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.49.0** — Automatic regions (Tools ▸ Create automatic regions): GLOBAL (union of the exported regions whose material is not AIR / BLCKHOLE / VACUUM; not exported by default; read-only), AIR (box AIRBOX around GLOBAL minus every exported region; material AIR; margin editable in its Definition tab) and BLCKBODY (box BBBOX around AIRBOX minus AIRBOX; material BLCKHOLE; margin editable). The formulas and the two boxes are recomputed at every change, so renaming, adding or removing objects is followed. The regions and boxes are locked (no rename / delete / edit); "Convert to ordinary regions" unlocks them.
 - **1.48.0** — Fix: an RPP is always written with min < max on each axis (a box defined in a rotated coordinate system could be stored with reversed bounds, which the tool accepted but CG rejects: "Assertion failed w(3)<w(4)"). CONCRETE and AIR added to the default materials (`tests/rpp-reversed-bounds.inp`).
 - **1.47.0** — INP import of ROT-DEFI: every transformation of the file becomes a coordinate system (named after the ROT-DEFI name, also the ones used by no body) and the bodies of each `$Start_transform` block are attached to it; importing the same file again reuses the coordinate systems of the same name and placement instead of duplicating them. The import message gives the count. Round trip through the transform mode checked on a real file (`tests/rotdefi-in-geometry.inp`).
 - **1.46.0** — INP export: comment lines with the name used in the tool before the objects (`*NAME******`): none, regions only, or all objects (bodies, planes, regions; cutting planes are labelled with their body). Option in the INP panel bar and in Settings.

@@ -53,6 +53,11 @@ function onField(e) {
     const v = parseFloat(t.value); if (!isFinite(v)) return;
     it.offset[+t.dataset.off] = v; APP.buildStl(it); APP.changed({ keepPick: false }); return;
   }
+  if (t.dataset.auto) {
+    if (e.type !== 'input' && e.type !== 'change') return;
+    const v = parseFloat(t.value); if (!isFinite(v) || v < 0) return;
+    APP.snap('automargin' + t.dataset.auto); APP.setAutoMargin(t.dataset.auto, v); APP.changed(e.type === 'change' ? { tree: true, right: true } : {}); return;
+  }
   switch (k) {
     case 'name':
       if (e.type === 'input' && (type === 'body' || type === 'region')) { const c = t.selectionStart, v = t.value.replace(/[^A-Za-z0-9_]/g, '_'); if (v !== t.value) { t.value = v; try { t.setSelectionRange(c, c); } catch (err) { /* ignore */ } } return; }
@@ -160,6 +165,7 @@ function onActClick(e) {
     case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
     case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
     case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
+    case 'autoConvert': { const n = APP.convertAuto(); toast(n ? 'Automatic regions converted to ordinary objects' : 'Nothing to convert'); } break;
     case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;
     case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
     case 'csysCut': if (it && S.sel.t === 'csys') APP.cutUseSrc('cs:' + it.id + ':' + a.dataset.pl); break;

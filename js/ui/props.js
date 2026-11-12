@@ -192,7 +192,43 @@ function partsHTML(b) {
   const note = ps.length > 1 ? `<div class="muted" style="font-size:12px">Rotated RPP: written as a bounding RPP and ${cuts.length} cutting plane${cuts.length === 1 ? '' : 's'}${main.uses && main.uses.length ? `; the regions use <code>${esc(main.name)} ${esc(main.uses.join(' '))}</code>` : ''}. A plane identical to one of yours is reused instead of being written again.</div>` : ps[0].type !== b.type ? `<div class="muted" style="font-size:12px">${esc(b.type)} written as ${esc(ps[0].type === 'ICC' ? 'QUA' : ps[0].type)}.</div>` : '';
   return `<div class="fld full partsBox"><label>Exported as <span class="muted">(read-only)</span></label><textarea class="expr" readonly rows="${Math.min(8, lines.split('\n').length + 1)}">${esc(lines)}</textarea>${note}</div><div class="fld full"><label title="Blue: bounding RPP · orange: cutting planes">Show these sub-objects in the view</label><input type="checkbox" class="pchk" data-opt="showParts" ${S.opt.showParts ? 'checked' : ''}></div>`;
 }
+/** Read-only panels of the automatic regions GLOBAL / AIR / BLCKBODY and of their two boxes. */
+function autoNote(k) {
+  return { global: 'Union of the exported regions whose material is not AIR, BLCKHOLE or VACUUM. Not exported by default; its definition follows the model and cannot be edited.',
+    air: 'Box around GLOBAL, minus every exported region: air fills what is left. The box and the formula follow the model; only the margin is editable.',
+    bb: 'Box around AIR, minus AIR (outer shell of black hole). The box and the formula follow the model; only the margin is editable.' }[k];
+}
+function autoRegionProps(r) {
+  const k = r.auto, A = APP.AUTO;
+  const general = `<div class="sec"><h4><span>Automatic region · ${esc(A.names[k])}</span></h4><div class="fields">
+    <div class="fld full"><label>Name</label><input type="text" value="${esc(r.name)}" disabled></div>
+    <div class="fld full"><label title="Material assigned to this region (ASSIGNMA card)">Material</label><select data-k="mat"><option value="0">— none —</option>${(S.model.materials || []).map(m => `<option value="${m.id}" ${r.mat === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>
+    ${exportRow(r, 'region')}</div></div>
+    <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+  const marg = k === 'global' ? '' : `<div class="fld full"><label title="Distance added on each side of the box">${k === 'air' ? 'Margin around GLOBAL (cm)' : 'Margin around AIR (cm)'}</label><input type="number" min="0" step="1" data-auto="${k}" value="${esc(String(APP.autoMargin(k)))}"></div>`;
+  const bx = k === 'global' ? null : APP.autoBody(k);
+  const definition = `<div class="sec"><h4><span>Definition <small class="muted">(read-only)</small></span></h4><div class="fields">${marg}
+    <div class="fld full"><label>Expression</label><textarea class="expr" readonly rows="4">${esc(r.expr || '')}</textarea></div>
+    ${bx ? `<div class="fld full"><div class="muted" style="font-size:12px">Box <b>${esc(bx.name)}</b>: <code>RPP ${esc(bx.p.map(x => +(+x).toFixed(4)).join(' '))}</code></div></div>` : ''}</div>
+    <div class="muted" style="font-size:12px;margin-top:6px">${esc(autoNote(k))}</div></div>`;
+  const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
+  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies: editable, no longer recomputed">Convert to ordinary regions</button></div></div>`;
+  return tabbed({ general, view, definition, operations });
+}
+function autoBodyProps(b) {
+  const A = APP.AUTO, r = APP.autoRegion(b.auto);
+  const general = `<div class="sec"><h4><span>Automatic box · RPP</span></h4><div class="fields">
+    <div class="fld full"><label>Name</label><input type="text" value="${esc(b.name)}" disabled></div>${exportRow(b, 'body')}</div></div>
+    <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
+  const definition = `<div class="sec"><h4><span>Geometric definition <small class="muted">(read-only)</small></span></h4><div class="fields">
+    <div class="fld full"><code>RPP ${esc(b.p.map(x => +(+x).toFixed(4)).join(' '))}</code></div></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Computed from the model; change the margin in region ${r ? esc(r.name) : esc(A.names[b.auto])}.</div></div>`;
+  const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>`;
+  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies">Convert to ordinary regions</button></div></div>`;
+  return tabbed({ general, view, definition, operations });
+}
 function bodyProps(b) {
+  if (b.auto) return autoBodyProps(b);
   const info = FK.BODY_TYPES[b.type];
   let h = '';
   if (b.type === 'RAW') h += `<div class="fld full"><label>Card kept as-is</label><textarea class="expr" readonly>${esc((b.raw || []).join('\n'))}</textarea></div>`;
@@ -374,6 +410,7 @@ function onCsysField(e, t, it) {
   }
 }
 function regionProps(r) {
+  if (r.auto) return autoRegionProps(r);
   const bodyTypeOf = (b) => b.type === 'RAW' ? (b.rawType || 'RAW') : b.type;
   const byType = new Map(); for (const b of S.model.bodies) { const t = bodyTypeOf(b); if (!byType.has(t)) byType.set(t, []); byType.get(t).push(b); }
   const collate = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });

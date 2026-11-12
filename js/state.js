@@ -27,7 +27,7 @@
     const g = { body: APP.getBody, region: APP.getRegion, stl: APP.getStl, measure: APP.getMeasure, csys: (id) => APP.getCsys(id), comp: APP.getComp, material: APP.getMaterial }[S.sel.t];
     return g ? g(S.sel.id) || null : null;
   };
-  APP.changed = (f) => { if (APP.syncComps) APP.syncComps(); if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
+  APP.changed = (f) => { if (APP.syncComps) APP.syncComps(); if (APP.syncAuto) APP.syncAuto(); if (APP.syncLinks) APP.syncLinks(); if (APP.hooks.changed) APP.hooks.changed(f || {}); };
   APP.toast = (m) => { if (APP.hooks.toast) APP.hooks.toast(m); };
   const color = (i) => FK.PALETTE[i % FK.PALETTE.length];
 
@@ -828,7 +828,7 @@
   APP.complexPlan = function () {
     const lim = APP.maxParen(), zl = APP.maxZones(), out = { flat: [], split: [], fail: [] };
     for (const r of S.model.regions) {
-      if (r.noExport) continue;
+      if (r.noExport || r.auto) continue;
       const st = APP.regionStats(r); let neg = false;
       try { neg = FK.hasNegUnion(r.expr); } catch (e) { neg = false; }
       if (!(st.depth > lim || (zl && st.zones > zl) || neg)) continue;
@@ -851,7 +851,7 @@
   };
   /** Flattens every exported region nested deeper than the limit. Returns { done, failed: [names] }. */
   APP.flattenAllComplex = function () {
-    const lim = APP.maxParen(), todo = S.model.regions.filter(r => !r.noExport && APP.regionStats(r).depth > lim);
+    const lim = APP.maxParen(), todo = S.model.regions.filter(r => !r.noExport && !r.auto && APP.regionStats(r).depth > lim);
     if (!todo.length) return { done: 0, failed: [] };
     APP.snap(); const failed = []; let done = 0;
     for (const r of todo) {
@@ -879,6 +879,107 @@
     return out;
   };
   /** Strong (live) links: region.meta.link = { a, b, op, more: [{ op, id }], mode } (region ids). The expression is recomputed whenever the parents change. */
+  /* ---------- Automatic regions: GLOBAL (union of the real components), AIR (box around it), BLCKBODY (box around AIR) ---------- */
+  // The formulas and the boxes are recomputed from the model at every change, so renaming, adding or removing objects is followed.
+  // r.auto = 'global' | 'air' | 'bb' ; b.auto = 'air' | 'bb' ; margins in S.model.autoCfg = { air, bb } (cm).
+  APP.AUTO = { names: { global: 'GLOBAL', air: 'AIR', bb: 'BLCKBODY' }, boxes: { air: 'AIRBOX', bb: 'BBBOX' }, mats: { global: '', air: 'AIR', bb: 'BLCKHOLE' }, EXCL: ['AIR', 'BLCKHOLE', 'BLCKBODY', 'VACUUM'], DEF_MARGIN: 50 };
+  APP.autoRegion = (k) => S.model.regions.find(r => r.auto === k) || null;
+  APP.autoBody = (k) => S.model.bodies.find(b => b.auto === k) || null;
+  APP.hasAuto = () => S.model.regions.some(r => r.auto);
+  APP.autoMargin = (k) => { const c = S.model.autoCfg || {}; const v = c[k]; return isFinite(v) && v >= 0 ? +v : APP.AUTO.DEF_MARGIN; };
+  const autoFb = new Map();                                   // bounding boxes obtained by evaluation (regions made of planes): cache
+  const autoBoxOf = function (ast) {                          // upper bound of an expression, in the export frame; null = unbounded / unknown
+    const un = (a, b) => !a ? b : { min: a.min.map((x, i) => Math.min(x, b.min[i])), max: a.max.map((x, i) => Math.max(x, b.max[i])) };
+    const it = (a, b) => !a ? b : { min: a.min.map((x, i) => Math.max(x, b.min[i])), max: a.max.map((x, i) => Math.min(x, b.max[i])) };
+    let out = null;
+    for (const z of ast.zones) {
+      let bx = null;
+      for (const t of z) {
+        if (t.sign < 0) continue;
+        let tb = null;
+        if (t.name) { const b = S.model.bodies.find(x => x.name === t.name); if (b) { try { tb = FK.bodyBBox(APP.xbody(b)); } catch (e) { tb = null; } } }
+        else if (t.sub) tb = autoBoxOf(t.sub);
+        if (tb) bx = it(bx, tb);
+      }
+      if (!bx) return null;
+      out = un(out, bx);
+    }
+    return out;
+  };
+  const autoRegionBox = function (r) {
+    let ast; try { ast = FK.parseExpr(r.expr || ''); } catch (e) { return null; }
+    const bx = autoBoxOf(ast); if (bx) return bx;
+    const key = r.expr + '|' + JSON.stringify([S.model.bodies.map(b => [b.name, b.type, b.p, b.cs]), S.model.csys, S.model.exportCs]);
+    if (autoFb.has(key)) return autoFb.get(key);
+    let res = null;
+    try {
+      const ev = APP.evalRegionNow(r);
+      if (!ev.error && ev.bbox) {
+        const ex = APP.exportCs(), inv = ex ? M.inv(APP.csysWorld(ex)) : null, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+        for (let c = 0; c < 8; c++) {
+          let q = [c & 1 ? ev.bbox.max[0] : ev.bbox.min[0], c & 2 ? ev.bbox.max[1] : ev.bbox.min[1], c & 4 ? ev.bbox.max[2] : ev.bbox.min[2]];
+          if (inv) q = M.apply(inv, q);
+          for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q[k]); hi[k] = Math.max(hi[k], q[k]); }
+        }
+        res = { min: lo, max: hi };
+      }
+    } catch (e) { res = null; }
+    if (autoFb.size > 50) autoFb.clear(); autoFb.set(key, res); return res;
+  };
+  /** Recomputes the three regions and their two boxes. Returns true when something changed. */
+  APP.syncAuto = function () {
+    const m = S.model; if (!m || !m.regions || !m.regions.some(r => r.auto)) return false;
+    const A = APP.AUTO, rg = APP.autoRegion('global'), ra = APP.autoRegion('air'), rb = APP.autoRegion('bb'), ba = APP.autoBody('air'), bb = APP.autoBody('bb');
+    const matOf = (r) => { const mt = r.mat ? APP.getMaterial(r.mat) : null; return mt ? mt.name.toUpperCase() : ''; };
+    const real = m.regions.filter(r => !r.auto && !r.noExport && r.expr && r.expr.trim());
+    const core = real.filter(r => !A.EXCL.includes(matOf(r)));
+    const unionOf = (list) => { const zones = []; for (const r of list) { try { zones.push(...FK.parseExpr(r.expr).zones); } catch (e) { /* invalid formula: ignored */ } } return zones.length ? FK.formatExpr({ zones }) : ''; };
+    let ch = false;
+    const setProp = (o, k, v) => { if (JSON.stringify(o[k]) !== JSON.stringify(v)) { o[k] = v; ch = true; } };
+    // formulas
+    const U = unionOf(core), Uall = unionOf(real);
+    if (rg) setProp(rg, 'expr', U);
+    if (ra && ba) { let e = '+' + ba.name; if (Uall) { try { e = FK.complementExpr(Uall, ba.name, 'compact'); } catch (err) { e = '+' + ba.name; } } setProp(ra, 'expr', e); }
+    if (rb && bb && ba) setProp(rb, 'expr', '+' + bb.name + ' -' + ba.name);
+    { const xa = !!((ra && !ra.noExport) || (rb && !rb.noExport)), xb = !!(rb && !rb.noExport);
+      if (ba && !!ba.noExport !== !xa) { if (xa) delete ba.noExport; else ba.noExport = true; ch = true; }
+      if (bb && !!bb.noExport !== !xb) { if (xb) delete bb.noExport; else bb.noExport = true; ch = true; } }
+    // boxes around the union of the real components (all of them, so that nothing is left outside AIR)
+    let box = null;
+    for (const r of core) { const x = autoRegionBox(r); if (x) box = !box ? x : { min: box.min.map((v, i) => Math.min(v, x.min[i])), max: box.max.map((v, i) => Math.max(v, x.max[i])) }; }
+    if (box && ba) {
+      const g = APP.autoMargin('air'), h = g + APP.autoMargin('bb'), lo = (v) => Math.floor(v * 1e4) / 1e4, hi = (v) => Math.ceil(v * 1e4) / 1e4;
+      const mk = (d) => [lo(box.min[0] - d), hi(box.max[0] + d), lo(box.min[1] - d), hi(box.max[1] + d), lo(box.min[2] - d), hi(box.max[2] + d)];
+      const ex = APP.exportCs();
+      setProp(ba, 'p', mk(g)); setProp(ba, 'cs', ex); if (bb) { setProp(bb, 'p', mk(h)); setProp(bb, 'cs', ex); }
+    }
+    return ch;
+  };
+  /** Creates (or completes) the three regions and the two boxes. */
+  APP.createAutoRegions = function () {
+    if (APP.hasAuto()) return { error: 'The automatic regions already exist' };
+    APP.snap();
+    const A = APP.AUTO, cs = APP.exportCs(); S.model.autoCfg = S.model.autoCfg || { air: A.DEF_MARGIN, bb: A.DEF_MARGIN };
+    const bn = new Set(S.model.bodies.map(b => b.name)), rn = new Set(S.model.regions.map(r => r.name));
+    const mkBody = (k) => { const b = APP.addBody('RPP', [0, 1, 0, 1, 0, 1], { name: FK.uniqueName(A.boxes[k], bn), cs, visible: false, color: k === 'air' ? '#7fb3d5' : '#8d8d8d' }); bn.add(b.name); b.auto = k; return b; };
+    const mkReg = (k, vis) => { const r = APP.addRegion(FK.uniqueName(A.names[k], rn), '', { visible: false, nvois: 5, color: k === 'global' ? '#5d6d7e' : k === 'air' ? '#7fb3d5' : '#8d8d8d' }); rn.add(r.name); r.auto = k; const mn = A.mats[k]; if (mn) { const mt = APP.materialByName(mn, true); if (mt) r.mat = mt.id; } if (k === 'global') r.noExport = true; return r; };
+    mkBody('air'); mkBody('bb'); const g = mkReg('global'), a = mkReg('air'), b = mkReg('bb');
+    APP.syncAuto();
+    S.sel = { t: 'region', id: a.id };
+    APP.changed({ tree: true, right: true });
+    return { global: g, air: a, bb: b };
+  };
+  /** Makes the three regions and the boxes ordinary objects (editable, no longer recomputed). */
+  APP.convertAuto = function () {
+    if (!APP.hasAuto()) return 0; APP.snap(); let n = 0;
+    for (const r of S.model.regions) if (r.auto) { delete r.auto; n++; }
+    for (const b of S.model.bodies) if (b.auto) { delete b.auto; n++; }
+    APP.changed({ tree: true, right: true }); return n;
+  };
+  APP.setAutoMargin = function (k, v) {
+    v = +v; if (!isFinite(v) || v < 0) return false;
+    S.model.autoCfg = S.model.autoCfg || {}; S.model.autoCfg[k] = v; APP.syncAuto(); return true;
+  };
   APP.syncLinks = function () {
     const regs = S.model && S.model.regions; if (!regs) return false;
     let any = false, changed = false;
@@ -1074,6 +1175,7 @@
   };
   /** Deletes several items [{ t, o }] in one undo step. */
   APP.deleteItems = function (list) {
+    if (list.some(x => (x.t === 'body' || x.t === 'region') && x.o.auto)) { list = list.filter(x => !((x.t === 'body' || x.t === 'region') && x.o.auto)); APP.toast('Automatic objects are not deleted'); if (!list.length) return; }
     APP.snap();
     const ids = (ty) => new Set(list.filter(x => x.t === ty).map(x => x.o.id));
     const bi = ids('body'), ri = ids('region'), mi = ids('measure'), si = ids('stl');
@@ -1091,6 +1193,7 @@
     if (t === 'csys') { APP.deleteCsys(id); return; }
     if (t === 'comp') { APP.deleteComp(id, false); return; }
     if (t === 'material') { APP.deleteMaterial(id); return; }
+    { const it0 = t === 'body' ? APP.getBody(id) : t === 'region' ? APP.getRegion(id) : null; if (it0 && it0.auto) { APP.toast('Automatic object: use "Convert to ordinary regions" to edit or delete it'); return; } }
     APP.snap();
     if (t === 'body') S.model.bodies = S.model.bodies.filter(b => b.id !== id);
     else if (t === 'region') S.model.regions = S.model.regions.filter(r => r.id !== id);
@@ -1104,6 +1207,7 @@
   APP.renameBody = function (b, nn) {
     nn = cleanTyped(nn);
     if (!nn || nn === b.name) return false;
+    if (b.auto) { APP.toast('Automatic object: its name cannot be changed'); return false; }
     if (S.model.bodies.some(x => x !== b && x.name === nn)) { APP.toast('A body with this name already exists'); return false; }
     APP.snap();
     const old = b.name; b.name = nn;
@@ -1114,6 +1218,7 @@
   APP.renameRegion = function (r, nn) {
     nn = cleanTyped(nn);
     if (!nn || nn === r.name) return false;
+    if (r.auto) { APP.toast('Automatic region: its name cannot be changed'); return false; }
     if (S.model.regions.some(x => x !== r && x.name === nn)) { APP.toast('A region with this name already exists'); return false; }
     APP.snap(); r.name = nn; APP.changed({ tree: true });
     return true;
