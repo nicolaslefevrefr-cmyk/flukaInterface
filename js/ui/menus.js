@@ -13,7 +13,8 @@ $('#btnTools').onclick = (e) => { const sd = $('#dlgSurf'); menuAt(e.currentTarg
       { label: 'Show the INP block and its warnings', icon: '≡', checked: sheet.classList.contains('open'), fn: () => $('#btnInp').click() },
       { label: 'Compact — merge duplicates…', icon: '⛓', fn: () => openCompact() }] },
     { sep: 1 },
-    { label: APP.hasAuto() ? 'Automatic regions (GLOBAL, AIR, BLCKBODY): exist' : 'Create automatic regions GLOBAL / AIR / BLCKBODY', icon: '▣', fn: () => { const r = APP.createAutoRegions(); toast(r.error ? r.error : 'GLOBAL (not exported), AIR and BLCKBODY created — set their margins in the Definition tab'); if (!r.error) { S.rtab = 'definition'; renderRight(); } } },
+    APP.hasAuto() ? { label: 'Update automatic regions (GLOBAL, AIR, BLCKBODY)', icon: '▣', fn: () => { const r = APP.updateAuto(); toast(r.error || (r.changed ? 'Automatic regions updated' : 'Automatic regions already up to date')); } }
+      : { label: 'Create automatic regions GLOBAL / AIR / BLCKBODY', icon: '▣', fn: () => { const r = APP.createAutoRegions(); toast(r.error ? r.error : 'GLOBAL (not exported), AIR and BLCKBODY created — set their margins in the Definition tab'); if (!r.error) { S.rtab = 'definition'; renderRight(); } } },
     { label: 'Rename the INP names…', icon: 'Ab', fn: () => { const ml = multiList(); openInpRename(ml || (S.sel ? [{ t: S.sel.t, o: APP.selItem() }] : null), true); } },
     { label: 'Settings…', icon: '⚙', fn: () => openSettings() }]); };
 /* ---- View menu: the toolbar commands as text (+ icon), in step with the toolbar buttons ---- */

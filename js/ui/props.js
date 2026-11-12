@@ -212,7 +212,7 @@ function autoRegionProps(r) {
     ${bx ? `<div class="fld full"><div class="muted" style="font-size:12px">Box <b>${esc(bx.name)}</b>: <code>RPP ${esc(bx.p.map(x => +(+x).toFixed(4)).join(' '))}</code></div></div>` : ''}</div>
     <div class="muted" style="font-size:12px;margin-top:6px">${esc(autoNote(k))}</div></div>`;
   const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
-  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies: editable, no longer recomputed">Convert to ordinary regions</button></div></div>`;
+  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn primary" data-act="autoUpdate" title="Recomputes GLOBAL, AIR, BLCKBODY and their boxes from the current model">Update automatic regions</button><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies: editable, no longer recomputed">Convert to ordinary regions</button></div></div>`;
   return tabbed({ general, view, definition, operations });
 }
 function autoBodyProps(b) {
@@ -224,7 +224,7 @@ function autoBodyProps(b) {
     <div class="fld full"><code>RPP ${esc(b.p.map(x => +(+x).toFixed(4)).join(' '))}</code></div></div>
     <div class="muted" style="font-size:12px;margin-top:6px">Computed from the model; change the margin in region ${r ? esc(r.name) : esc(A.names[b.auto])}.</div></div>`;
   const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(b)}</div>`;
-  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies">Convert to ordinary regions</button></div></div>`;
+  const operations = `<div class="sec"><h4><span>Operations</span></h4><div class="btns"><button class="btn primary" data-act="autoUpdate" title="Recomputes GLOBAL, AIR, BLCKBODY and their boxes from the current model">Update automatic regions</button><button class="btn" data-act="autoConvert" title="GLOBAL, AIR, BLCKBODY and their boxes become ordinary regions and bodies">Convert to ordinary regions</button></div></div>`;
   return tabbed({ general, view, definition, operations });
 }
 function bodyProps(b) {

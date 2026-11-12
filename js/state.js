@@ -955,6 +955,12 @@
     }
     return ch;
   };
+  /** Explicit refresh (command): drops the cached boxes and recomputes formulas and boxes. Returns { changed } or { error }. */
+  APP.updateAuto = function () {
+    if (!APP.hasAuto()) return { error: 'No automatic regions yet: create them first' };
+    APP.snap(); autoFb.clear(); const ch = APP.syncAuto();
+    APP.changed({ tree: true, right: true }); return { changed: ch };
+  };
   /** Creates (or completes) the three regions and the two boxes. */
   APP.createAutoRegions = function () {
     if (APP.hasAuto()) return { error: 'The automatic regions already exist' };

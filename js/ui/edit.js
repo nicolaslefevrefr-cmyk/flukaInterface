@@ -165,6 +165,7 @@ function onActClick(e) {
     case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
     case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
     case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
+    case 'autoUpdate': { const r = APP.updateAuto(); toast(r.error || (r.changed ? 'Automatic regions updated' : 'Automatic regions already up to date')); } break;
     case 'autoConvert': { const n = APP.convertAuto(); toast(n ? 'Automatic regions converted to ordinary objects' : 'Nothing to convert'); } break;
     case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;
     case 'detectFeat': if (it && S.sel.t === 'stl') openFeatDlg(it); break;
