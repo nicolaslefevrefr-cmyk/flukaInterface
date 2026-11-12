@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.49.1)
+# Combinatorial Geometry Tool  (v1.49.2)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.49.2** — Fix 3D view: large objects could be cut (missing faces). The far clipping plane now always covers everything that exists (it was based on the last fitted selection, so showing a big object afterwards or panning clipped it).
 - **1.49.1** — New command "Update automatic regions" (Tools menu and Operations tab of the automatic regions): recomputes GLOBAL, AIR, BLCKBODY and their boxes from the current model (a new object is picked up without deleting anything).
 - **1.49.0** — Automatic regions (Tools ▸ Create automatic regions): GLOBAL (union of the exported regions whose material is not AIR / BLCKHOLE / VACUUM; not exported by default; read-only), AIR (box AIRBOX around GLOBAL minus every exported region; material AIR; margin editable in its Definition tab) and BLCKBODY (box BBBOX around AIRBOX minus AIRBOX; material BLCKHOLE; margin editable). The formulas and the two boxes are recomputed at every change, so renaming, adding or removing objects is followed. The regions and boxes are locked (no rename / delete / edit); "Convert to ordinary regions" unlocks them.
 - **1.48.0** — Fix: an RPP is always written with min < max on each axis (a box defined in a rotated coordinate system could be stored with reversed bounds, which the tool accepted but CG rejects: "Assertion failed w(3)<w(4)"). CONCRETE and AIR added to the default materials (`tests/rpp-reversed-bounds.inp`).

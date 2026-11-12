@@ -39,20 +39,26 @@
   const cam = { target: new THREE.Vector3(0, 0, 0), q: qAzEl(-0.9, 0.5), dist: 300 };
   APP.cam = cam;
   let sceneR = 100;
+  const world = { r: 100, c: new THREE.Vector3() };           // radius / centre of everything that exists (not only what is shown): clipping planes must cover it
   function applyCam() {
     cam.q.normalize();
     camera.quaternion.copy(cam.q);
     camera.position.copy(cam.target).addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(cam.q), cam.dist);
     camera.updateMatrixWorld(true);
+    updateClip();
+    needRender = true;
+  }
+  function updateClip(onlyDepth) {
+    // clipping planes: far reaches the farthest object whatever the zoom / pan / fit
+    const R = Math.max(sceneR, world.r), far = cam.dist + cam.target.distanceTo(world.c) + 2 * R + 10;
     if (camera.isOrthographicCamera) {
       // same apparent size as the perspective view at the pivot; objects behind the camera plane stay visible
       const hh = cam.dist * Math.tan(FOV * Math.PI / 360);
-      camera.left = -hh * aspect; camera.right = hh * aspect; camera.top = hh; camera.bottom = -hh;
-      camera.near = -(sceneR * 4 + 10);
+      if (!onlyDepth) { camera.left = -hh * aspect; camera.right = hh * aspect; camera.top = hh; camera.bottom = -hh; }
+      camera.near = -(R * 4 + cam.target.distanceTo(world.c) + 10);
     } else camera.near = Math.max(0.001, cam.dist * 0.01);
-    camera.far = cam.dist + sceneR * 4 + 10;
+    camera.far = far;
     camera.updateProjectionMatrix();
-    needRender = true;
   }
   /** 'persp' | 'ortho' */
   APP.setProjection = function (mode) {
@@ -312,6 +318,7 @@
     const wsig = W.min.concat(W.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
     const byName = new Map();
     for (const b of S.model.bodies) if (!byName.has(b.name)) byName.set(b.name, b);
+    { const wc = FK.boxCenter(W); world.r = Math.max(FK.boxDiag(W) / 2, 1); world.c.set(wc[0], wc[1], wc[2]); updateClip(true); needRender = true; }
     if (wsig !== lastWsig) {
       lastWsig = wsig;
       sceneR = Math.max(FK.boxDiag(W) / 2, 1);
