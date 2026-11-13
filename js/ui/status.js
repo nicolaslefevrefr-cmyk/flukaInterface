@@ -53,9 +53,9 @@ document.addEventListener('click', e => {
   const d = b.closest('dialog'); e.preventDefault();
   if (d.open) d.close(b.value);
 });
-function askConfirm(msg, okLabel) {
+function askConfirm(msg, okLabel, cancelLabel) {
   return new Promise(res => {
-    const d = $('#dlgConfirm'); $('#confirmMsg').textContent = msg; $('#confirmOk').textContent = okLabel || 'OK'; d.returnValue = '';
+    const d = $('#dlgConfirm'); $('#confirmMsg').textContent = msg; $('#confirmOk').textContent = okLabel || 'OK'; $('#confirmCancel').textContent = cancelLabel || 'Cancel'; d.returnValue = '';
     const h = () => { d.removeEventListener('close', h); res(d.returnValue === 'ok'); };
     d.addEventListener('close', h); d.showModal();
   });

@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.50.1)
+# Combinatorial Geometry Tool  (v1.52.0)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,8 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.52.0** — Start-up: the previous session is no longer loaded automatically. When the storage holds a model or meshes, a dialog offers "Restore it" or "Start empty" (the preferences are always loaded); nothing is overwritten while the choice is pending, and the restore shows the progress bar.
+- **1.51.0** — Nested regions: Properties ▸ General ▸ "Inside region" places a region inside another one. In the INP the outer region is written as its own definition minus its sub-regions (its formula in the tool stays the simple outer volume; a read-only box shows what is written). GLOBAL and AIR use the top-level regions only (a sub-region whose parent is exported is already covered). GLOBAL's Definition tab lists regions added by hand (included whatever their material or export state). Regions that have sub-regions are not rewritten by "Simplify".
 - **1.50.1** — After an INP import the automatic checks are paused (they were the slow part on a big file); the checks panel offers "Run the checks now", after which they stay automatic.
 - **1.50.0** — Warnings on coordinate systems that no exported body is defined in (⚠ in the tree, in the checks list, click to select). Their Properties ▸ General tab offers "Export it anyway (ROT-DEFI card)": in transform mode the card is written even if nothing uses the system.
 - **1.49.3** — Fix: the AIR / BLCKBODY regions and their boxes were cut to the render zone (which ignores very large bodies), so a margin change showed nothing; they now have their own larger zone, and the camera clipping planes cover it. New progress bar (stage, counter, elapsed time, moving stripe) when opening an INP or a project .json; a big INP file is kept out of the text box (filling it froze the page).

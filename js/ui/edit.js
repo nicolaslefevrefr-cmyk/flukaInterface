@@ -72,6 +72,7 @@ function onField(e) {
     case 'mat': if (e.type === 'change' && type === 'region') APP.setRegionMaterial(it, +t.value); break;
     case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
     case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
+    case 'rparent': if (e.type === 'change' && type === 'region') APP.setRegionParent(it, t.value); break;
     case 'cforce': if (e.type === 'change' && type === 'csys') { APP.snap(); if (t.checked) it.forceExport = true; else delete it.forceExport; APP.changed({ tree: true, right: true }); } break;
     case 'cfrozen': if (e.type === 'change' && type === 'csys') APP.setCsysFrozen(it, t.checked); break;
     case 'cad': if (e.type === 'change') { APP.snap(); it.meta = it.meta || {}; if (t.value === '') delete it.meta.cad; else it.meta.cad = t.value === 'none' ? 0 : +t.value; APP.changed({ tree: true, right: true }); } break;
@@ -166,6 +167,8 @@ function onActClick(e) {
     case 'regionCompare': if (it && S.sel.t === 'region') openDevDlg({ region: it.id }); break;
     case 'splitStl': if (it && S.sel.t === 'stl') splitStl(it); break;
     case 'boolRegion': if (it && S.sel.t === 'region') openBoolDlg(it); break;
+    case 'gAdd': { const sel = $('#gAddSel'); if (sel) APP.setGlobalAdd(+sel.value, true); } break;
+    case 'gRemove': APP.setGlobalAdd(+t.dataset.rid, false); break;
     case 'autoUpdate': { const r = APP.updateAuto(); toast(r.error || (r.changed ? 'Automatic regions updated' : 'Automatic regions already up to date')); } break;
     case 'autoConvert': { const n = APP.convertAuto(); toast(n ? 'Automatic regions converted to ordinary objects' : 'Nothing to convert'); } break;
     case 'voidRegion': if (it && S.sel.t === 'region') openVoidDlg(it); break;

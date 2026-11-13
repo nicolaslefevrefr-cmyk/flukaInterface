@@ -57,7 +57,8 @@
   const KEY = 'fluka-geo-tool-v1';
   const stlMeta = (m) => ({ id: m.id, name: m.name, format: m.format || 'STL', unit: m.unit, offset: m.offset, flip: !!m.flip, visible: m.visible, opacity: m.opacity, color: m.color, edges: m.edges, grp: m.grp || 0, steps: m.steps || [], n: m.raw ? m.raw.length : 0 });
   APP.save = function () {
-    try { localStorage.setItem(KEY, JSON.stringify({ model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls: S.stls.map(stlMeta) })); } catch (e) { /* quota / private mode */ }
+    if (APP.holdSave) return;                       // start-up: the previous session is still waiting for the user's choice, do not overwrite it
+    try { localStorage.setItem(KEY, JSON.stringify({ saved: Date.now(), model: S.model, measures: S.measures, opt: S.opt, nextId: S.nextId, filter: S.filter, stls: S.stls.map(stlMeta) })); } catch (e) { /* quota / private mode */ }
     clearTimeout(APP._meshT); APP._meshT = setTimeout(() => APP.persistMeshes(), 600);
   };
   /* The triangles of the meshes are kept in IndexedDB (too big for localStorage), so that a page reload brings the meshes back. */
@@ -98,10 +99,32 @@
     if (n) APP.changed({ tree: true, right: true });
     return n;
   };
-  APP.load = function () {
+  /** What the previous session left in the local storage (null when nothing worth restoring). */
+  APP.peekSession = function () {
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY) || 'null'); if (!o || !o.model) return null;
+      const b = (o.model.bodies || []).length, r = (o.model.regions || []).length, m = (o.stls || []).length;
+      return b + r + m ? { bodies: b, regions: r, meshes: m, saved: o.saved || 0 } : null;
+    } catch (e) { return null; }
+  };
+  /** The user does not want the previous session: its model and meshes are removed from the storage. */
+  APP.discardSession = function () {
+    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    APP.holdSave = false; APP.save();
+  };
+  /** settingsOnly: only the preferences are read (the model, the meshes and the measures stay empty until the user agrees to restore them). */
+  APP.load = function (settingsOnly) {
     try {
       const raw = localStorage.getItem(KEY); if (!raw) return false;
       const o = JSON.parse(raw);
+      if (settingsOnly) {
+        Object.assign(S.opt, o.opt || {});
+        if (!(o.opt && o.opt.defV2)) { S.opt.render = 'opaque'; S.opt.edges = true; S.opt.invX = false; S.opt.invY = false; S.opt.defV2 = true; }
+        if (!(o.opt && o.opt.v118)) { S.opt.style = 2; S.opt.inpFull = true; S.opt.v118 = true; }
+        S.opt.scale = Object.assign({ mode: 'margin', val: 20, unit: 'mm' }, (o.opt || {}).scale);
+        if (o.filter) S.filter = o.filter;
+        return true;
+      }
       if (o.model && Array.isArray(o.model.bodies)) {
         S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
         S.measures = o.measures || []; S.nextId = o.nextId || 1000;
@@ -829,7 +852,7 @@
   APP.complexPlan = function () {
     const lim = APP.maxParen(), zl = APP.maxZones(), out = { flat: [], split: [], fail: [] };
     for (const r of S.model.regions) {
-      if (r.noExport || r.auto) continue;
+      if (r.noExport || r.auto || APP.regionChildren(r).length) continue;
       const st = APP.regionStats(r); let neg = false;
       try { neg = FK.hasNegUnion(r.expr); } catch (e) { neg = false; }
       if (!(st.depth > lim || (zl && st.zones > zl) || neg)) continue;
@@ -880,6 +903,45 @@
     return out;
   };
   /** Strong (live) links: region.meta.link = { a, b, op, more: [{ op, id }], mode } (region ids). The expression is recomputed whenever the parents change. */
+  /* ---------- Nested regions: a region placed "inside" another one is cut out of it when the INP is written ---------- */
+  /** Union of formulas (zones concatenated); regions whose formula does not parse are ignored. */
+  APP.unionExprs = function (list) {
+    const zones = []; for (const r of list) { try { zones.push(...FK.parseExpr(r.expr).zones); } catch (e) { /* invalid formula: ignored */ } }
+    return zones.length ? FK.formatExpr({ zones }) : '';
+  };
+  APP.regionParent = (r) => r.parent ? S.model.regions.find(x => x.id === r.parent && x !== r) || null : null;
+  /** Exported sub-regions of r (direct children). */
+  APP.regionChildren = (r, all) => S.model.regions.filter(x => x.parent === r.id && x !== r && (all || !x.noExport) && x.expr && x.expr.trim());
+  /** Formula written in the INP: the region minus the union of its sub-regions (the user's definition stays the simple outer volume). */
+  const effCache = new Map();
+  APP.effExpr = function (r) {
+    const kids = r.noExport ? [] : APP.regionChildren(r); if (!kids.length) return r.expr;
+    const U = APP.unionExprs(kids); if (!U) return r.expr;
+    const key = r.expr + '\u0001' + U, hit = effCache.get(key); if (hit !== undefined) return hit;
+    let e; try { e = FK.combineExpr(r.expr, U, 'sub', 'compact'); } catch (err) { e = r.expr; }
+    if (effCache.size > 400) effCache.clear(); effCache.set(key, e); return e;
+  };
+  /** Model as written in the INP file: same objects, the formulas of the regions that have sub-regions replaced. */
+  APP.expModel = function () {
+    const m = S.model; if (!m.regions.some(r => r.parent)) return m;
+    return Object.assign({}, m, { regions: m.regions.map(r => APP.regionChildren(r).length ? Object.assign({}, r, { expr: APP.effExpr(r) }) : r) });
+  };
+  /** Regions that can become the parent of r (not itself, not one of its descendants, not automatic). */
+  APP.parentChoices = function (r) {
+    const bad = new Set([r.id]); let grow = true;
+    while (grow) { grow = false; for (const x of S.model.regions) if (!bad.has(x.id) && bad.has(x.parent)) { bad.add(x.id); grow = true; } }
+    return S.model.regions.filter(x => !bad.has(x.id) && !x.auto);
+  };
+  APP.setRegionParent = function (r, pid) {
+    pid = +pid || 0; if (pid && !APP.parentChoices(r).some(x => x.id === pid)) return false;
+    APP.snap(); if (pid) r.parent = pid; else delete r.parent; APP.changed({ tree: true, right: true }); return true;
+  };
+  /** GLOBAL: regions added by hand to its definition. */
+  APP.globalAdd = () => { const c = S.model.autoCfg || {}; return (c.globalAdd || []).map(id => S.model.regions.find(r => r.id === id)).filter(r => r && !r.auto); };
+  APP.setGlobalAdd = function (id, on) {
+    S.model.autoCfg = S.model.autoCfg || {}; const a = new Set(S.model.autoCfg.globalAdd || []);
+    if (on) a.add(+id); else a.delete(+id); S.model.autoCfg.globalAdd = [...a]; APP.syncAuto(); APP.changed({ tree: true, right: true });
+  };
   /* ---------- Automatic regions: GLOBAL (union of the real components), AIR (box around it), BLCKBODY (box around AIR) ---------- */
   // The formulas and the boxes are recomputed from the model at every change, so renaming, adding or removing objects is followed.
   // r.auto = 'global' | 'air' | 'bb' ; b.auto = 'air' | 'bb' ; margins in S.model.autoCfg = { air, bb } (cm).
@@ -932,8 +994,13 @@
     const m = S.model; if (!m || !m.regions || !m.regions.some(r => r.auto)) return false;
     const A = APP.AUTO, rg = APP.autoRegion('global'), ra = APP.autoRegion('air'), rb = APP.autoRegion('bb'), ba = APP.autoBody('air'), bb = APP.autoBody('bb');
     const matOf = (r) => { const mt = r.mat ? APP.getMaterial(r.mat) : null; return mt ? mt.name.toUpperCase() : ''; };
-    const real = m.regions.filter(r => !r.auto && !r.noExport && r.expr && r.expr.trim());
-    const core = real.filter(r => !A.EXCL.includes(matOf(r)));
+    const real0 = m.regions.filter(r => !r.auto && !r.noExport && r.expr && r.expr.trim());
+    const inSet = (set) => (r) => !(r.parent && set.has(r.parent));         // a sub-region lies inside its parent: the parent's formula already covers it
+    const real = real0.filter(inSet(new Set(real0.map(r => r.id))));
+    const added = APP.globalAdd().filter(r => r.expr && r.expr.trim());
+    const coreAuto = real0.filter(r => !A.EXCL.includes(matOf(r)));
+    const coreAll = coreAuto.concat(added.filter(r => !coreAuto.includes(r)));
+    const core = coreAll.filter(inSet(new Set(coreAll.map(r => r.id))));
     const unionOf = (list) => { const zones = []; for (const r of list) { try { zones.push(...FK.parseExpr(r.expr).zones); } catch (e) { /* invalid formula: ignored */ } } return zones.length ? FK.formatExpr({ zones }) : ''; };
     let ch = false;
     const setProp = (o, k, v) => { if (JSON.stringify(o[k]) !== JSON.stringify(v)) { o[k] = v; ch = true; } };
@@ -1187,7 +1254,7 @@
     const ids = (ty) => new Set(list.filter(x => x.t === ty).map(x => x.o.id));
     const bi = ids('body'), ri = ids('region'), mi = ids('measure'), si = ids('stl');
     if (bi.size) S.model.bodies = S.model.bodies.filter(b => !bi.has(b.id));
-    if (ri.size) S.model.regions = S.model.regions.filter(r => !ri.has(r.id));
+    if (ri.size) { S.model.regions = S.model.regions.filter(r => !ri.has(r.id)); for (const r of S.model.regions) if (ri.has(r.parent)) delete r.parent; }
     if (mi.size) S.measures = S.measures.filter(m => !mi.has(m.id));
     if (si.size) { for (const s of S.stls.filter(x => si.has(x.id))) if (APP.hooks.disposeStl) APP.hooks.disposeStl(s); S.stls = S.stls.filter(x => !si.has(x.id)); }
     for (const x of list) { if (x.t === 'csys') APP.deleteCsys(x.o.id); else if (x.t === 'comp') APP.deleteComp(x.o.id, false); else if (x.t === 'material') APP.deleteMaterial(x.o.id); }
@@ -1203,7 +1270,7 @@
     { const it0 = t === 'body' ? APP.getBody(id) : t === 'region' ? APP.getRegion(id) : null; if (it0 && it0.auto) { APP.toast('Automatic object: use "Convert to ordinary regions" to edit or delete it'); return; } }
     APP.snap();
     if (t === 'body') S.model.bodies = S.model.bodies.filter(b => b.id !== id);
-    else if (t === 'region') S.model.regions = S.model.regions.filter(r => r.id !== id);
+    else if (t === 'region') { S.model.regions = S.model.regions.filter(r => r.id !== id); for (const r of S.model.regions) if (r.parent === id) delete r.parent; }
     else if (t === 'measure') S.measures = S.measures.filter(m => m.id !== id);
     else if (t === 'stl') { const s = APP.getStl(id); if (s && APP.hooks.disposeStl) APP.hooks.disposeStl(s); S.stls = S.stls.filter(x => x.id !== id); }
     S.sel = null;
@@ -1573,8 +1640,8 @@
     comment: S.opt.inpComment ? `${FK.APP_NAME} v${FK.VERSION}` : ''
   });
   /** What the INP really contains for each body: Map(body → parts) in the export frame (a rotated RPP gives the bounding RPP + its cutting planes). Empty in transform mode. */
-  APP.exportParts = () => S.opt.inpTransform ? new Map() : FK.exportParts(S.model, Object.assign({}, APP.inpOpts(), { transform: false }));
-  APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(S.model, APP.inpOpts());
+  APP.exportParts = () => S.opt.inpTransform ? new Map() : FK.exportParts(APP.expModel(), Object.assign({}, APP.inpOpts(), { transform: false }));
+  APP.inpText = () => (S.opt.inpFull !== false ? FK.generateFullInp : FK.generateInp)(APP.expModel(), APP.inpOpts());
   /** The checks as records { sev: 'e' | 'w' | 'i', text, t, id } — t / id point to the geometry concerned (body / region) when it can be found. */
   const ERR_RE = /duplicate name|invalid name|unknown body|empty expression|non-numeric|is used by|unexpected|expected|unbalanced|syntax|cannot|unreadable/i;
   const INFO_RE = /Transform mode|merged into identical|not used by any exported region|written in coordinate system|will be shortened|type not displayed|exported as|cut to 60/i;
@@ -1621,7 +1688,7 @@
     APP.changed({ tree: true });
   };
   APP.warnings = () => {
-    const w = FK.validate(S.model, APP.xbody, { transform: !!S.opt.inpTransform, maxParen: APP.maxParen(), maxZones: APP.maxZones(), noNegParen: S.opt.inpNoNeg !== false }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
+    const w = FK.validate(APP.expModel(), APP.xbody, { transform: !!S.opt.inpTransform, maxParen: APP.maxParen(), maxZones: APP.maxZones(), noNegParen: S.opt.inpNoNeg !== false }), long = APP.inpText().split('\n').filter(l => l.length > 132).length;
     if (APP.exportCs()) w.unshift(`INP written in coordinate system "${APP.csysLabel(APP.exportCs())}" (export frame)`);
     if (long) w.push(`${long} line(s) longer than 132 columns (CG limit)`);
     for (const r of S.model.regions) { if (r.noExport) continue; const c = APP.regionCache && APP.regionCache.get(r.id); if (c && c.diag && c.diag.length) w.push(`Region "${r.name}" is empty: ${String(c.diag[0].text).split(/\.\s+(?=[A-Z+\-(])/)[0]}`); }

@@ -207,7 +207,10 @@ function autoRegionProps(r) {
     <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
   const marg = k === 'global' ? '' : `<div class="fld full"><label title="Distance added on each side of the box">${k === 'air' ? 'Margin around GLOBAL (cm)' : 'Margin around AIR (cm)'}</label><input type="number" min="0" step="1" data-auto="${k}" value="${esc(String(APP.autoMargin(k)))}"></div>`;
   const bx = k === 'global' ? null : APP.autoBody(k);
-  const definition = `<div class="sec"><h4><span>Definition <small class="muted">(read-only)</small></span></h4><div class="fields">${marg}
+  const gAdd = k !== 'global' ? '' : (() => { const add = APP.globalAdd(), cand = S.model.regions.filter(x => !x.auto && !add.includes(x)); return `<div class="fld full"><label title="Regions added by hand to the union, whatever their material or export state">Regions added by hand</label>
+    ${add.length ? add.map(x => `<span class="chip" style="display:inline-flex;gap:4px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:1px 8px;margin:0 4px 4px 0"><span class="oref" role="button" tabindex="0" data-t="region" data-id="${x.id}">${esc(x.name)}</span><button class="btn sm" data-act="gRemove" data-rid="${x.id}" title="Remove from GLOBAL" style="padding:0 5px">×</button></span>`).join('') : '<div class="muted" style="font-size:12px">None.</div>'}
+    ${cand.length ? `<div style="display:flex;gap:6px;margin-top:4px"><select id="gAddSel">${cand.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="btn sm primary" data-act="gAdd">＋ Add</button></div>` : ''}</div>`; })();
+  const definition = `<div class="sec"><h4><span>Definition <small class="muted">(read-only)</small></span></h4><div class="fields">${marg}${gAdd}
     <div class="fld full"><label>Expression</label><textarea class="expr" readonly rows="4">${esc(r.expr || '')}</textarea></div>
     ${bx ? `<div class="fld full"><div class="muted" style="font-size:12px">Box <b>${esc(bx.name)}</b>: <code>RPP ${esc(bx.p.map(x => +(+x).toFixed(4)).join(' '))}</code></div></div>` : ''}</div>
     <div class="muted" style="font-size:12px;margin-top:6px">${esc(autoNote(k))}</div></div>`;
@@ -419,6 +422,7 @@ function regionProps(r) {
   const general = `<div class="sec"><h4><span>Region</span></h4><div class="fields">
     <div class="fld"><label>Name</label><input type="text" data-k="name" value="${esc(r.name)}"></div>
     <div class="fld"><label>Neighbour regions (2nd field)</label><input type="number" step="1" min="0" value="${r.nvois}" data-k="nvois"></div>
+    <div class="fld full"><label title="Nesting: this region lies inside the chosen one. In the INP the outer region is written as its own definition minus its sub-regions, so the outer formula stays simple and the operations of this region only concern this zone.">Inside region</label><select data-k="rparent"><option value="0">— none (top level) —</option>${APP.parentChoices(r).map(x => `<option value="${x.id}" ${r.parent === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
     <div class="fld"><label title="Material assigned to this region (ASSIGNMA card)">Material</label><select data-k="mat"><option value="0">— none —</option>${(S.model.materials || []).map(m => `<option value="${m.id}" ${r.mat === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>${exportRow(r, 'region')}${cadRow(r, 'region')}</div></div>
     <div class="sec"><h4><span>Information</span></h4><div id="liveInfo">${liveInfoHTML()}</div></div>`;
   const lk = r.meta && r.meta.link, dep = APP.linkDependents(r.id), others = S.model.regions.filter(x => x.id !== r.id && !dep.has(x.id));
@@ -438,6 +442,9 @@ function regionProps(r) {
     <div id="exprMsg">${regionMsg(r)}</div>
     ${lk ? '<div class="muted" style="font-size:12px">ⓘ Managed by the combination above.</div><!--' : ''}<div class="row2">${opts}</div>
     <div class="btns exprbtns"><button class="btn sm" data-act="cutRegion" title="Click a face of a mesh or object: its plane is created (or reused) and added to this formula">✂ Cut by a face…</button><button class="btn sm" data-act="pickRegion" title="Click a body or plane in the 3D view: it gets selected in the list below (overlapping objects are listed so you can choose)">🖱 Pick in view…</button><button class="btn sm" data-act="termAdd" title="Insert +body at the cursor">+ add</button><button class="btn sm" data-act="termSub" title="Insert -body at the cursor">− subtract</button><button class="btn sm" data-act="termUnion" title="Insert the union symbol | at the cursor, followed by +object when one is chosen in the list">| union</button><button class="btn sm" data-act="termParen" title="Insert a pair of parentheses at the cursor (wraps the selection)">( )</button><button class="btn sm" data-act="termDel" title="Remove every occurrence of the chosen body">remove</button></div>${lk ? '-->' : ''}</div>`;
+  const kids = APP.regionChildren(r, true), nestBox = kids.length ? `<div class="sec"><h4><span>Sub-regions <small class="muted">(nested inside this one)</small></span></h4>
+    <div class="muted" style="font-size:12px">${kids.map(k => `<span class="oref" role="button" tabindex="0" data-t="region" data-id="${k.id}">${esc(k.name)}</span>`).join(', ')}</div>
+    <div class="fld full"><label>Written in the INP (read-only): this definition minus the sub-regions</label><textarea class="expr partsTa" readonly rows="3">${esc(APP.effExpr(r))}</textarea></div></div>` : '';
   const view = `<div class="sec"><h4><span>View</span></h4>${commonStyle(r)}</div>`;
   const operations = `<div class="sec"><h4><span>Operations</span></h4>
     <div class="btns"><button class="btn" data-act="boolRegion" title="New region = this one minus / ∩ / ∪ another region, written with their bodies">Combine with another region… <small>(experimental)</small></button>
@@ -445,7 +452,7 @@ function regionProps(r) {
     <button class="btn" data-act="regionCompare" title="Colour this region by its distance to its CAD mesh; volumes and metrics">Compare with CAD…</button>
     <button class="btn" data-act="dup">Duplicate</button></div>
     <div class="btns opsdel"><button class="btn danger" data-act="del">Delete</button></div></div>`;
-  return tabbed({ general, view, definition, operations });
+  return tabbed({ general, view, definition: definition + nestBox, operations });
 }
 /** One mesh per connected solid of a mesh. */
 function splitStl(s) {
