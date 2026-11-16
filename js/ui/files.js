@@ -78,10 +78,10 @@ dlg.addEventListener('close', async () => {
     await step('Reading the cards and building the model…');
     res = APP.importInp(text, mode);
     if (res && res.model && (res.model.bodies.length || res.model.regions.length)) S.checksOff = true;
-    if (res && res.model && (res.model.bodies.length || res.model.regions.length)) await flushWithProgress(step, { tree: true, right: true, fit: true });
+    if (res && res.model && (res.model.bodies.length || res.model.regions.length || res.xfInfo)) await flushWithProgress(step, { tree: true, right: true, fit: true });
   });
   $('#importText').placeholder = '';
-  const xi = res && res.xfInfo && res.xfInfo.total ? ` — ${res.xfInfo.created} coordinate system${res.xfInfo.created > 1 ? 's' : ''} from the ROT-DEFI cards (${res.xfInfo.bodies} bod${res.xfInfo.bodies > 1 ? 'ies' : 'y'} attached${res.xfInfo.unused.length ? `, unused: ${res.xfInfo.unused.join(', ')}` : ''})` : '';
+  const xi = res && res.xfInfo && res.xfInfo.total ? ` — ${res.xfInfo.created} coordinate system${res.xfInfo.created > 1 ? 's' : ''} created${res.xfInfo.updated ? `, ${res.xfInfo.updated} placed` : ''} from the ROT-DEFI cards (${res.xfInfo.bodies} bod${res.xfInfo.bodies > 1 ? 'ies' : 'y'} attached${res.xfInfo.unused.length ? `, unused: ${res.xfInfo.unused.join(', ')}` : ''})` : '';
   if (res && res.warnings && res.warnings.length) toast('Import' + xi + ' : ' + res.warnings[0]);
   else if (res) toast('Import finished' + xi);
 });

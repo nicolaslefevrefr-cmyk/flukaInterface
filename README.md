@@ -1,4 +1,4 @@
-# Combinatorial Geometry Tool  (v1.53.0)
+# Combinatorial Geometry Tool  (v1.53.1)
 
 CAD (STL / OBJ) → CG / multi-line combinatorial geometry.
 
@@ -98,6 +98,7 @@ The version is `FK.VERSION` in `js/core.js` (shown next to the name; also in `ve
 The service worker is *network-first* (cache only as offline fallback, cache name carries the version), registered with `updateViaCache:'none'`, and the page reloads when a new worker takes control. `version.json` is fetched with `no-store` at load and on focus: a newer version shows a *Reload* bar. Settings ▸ About / updates has *Check for update* and *Force refresh* (unregisters the worker, empties the caches, reloads). The single-file standalone has no automatic update.
 
 ### Changelog
+- **1.53.1** — INP import and ROT-DEFI: the cards are now read wherever they are in the text (before GEOBEGIN, inside the geometry, after GEOEND). A $Start_transform whose ROT-DEFI cards are not in the pasted text no longer leaves its bodies in the global frame: the coordinate system of that name is created (at the origin) and the bodies are defined in it, with one warning per name. A text made of ROT-DEFI cards only places the coordinate systems of the same name (or creates them), so the cards can be imported after the geometry.
 - **1.53.0** — Fix: a body larger than the drawing zone (a very large box, an envelope) was cut to the zone on some sides, so Scale / margin looked applied on two axes only and edits of its coordinates showed nothing; every body and region now gets a drawing zone that contains it. Importing an STL / OBJ creates a mesh group named after the file (extension removed, upper case) holding all its objects. New default materials LEAD, TUNGSTEN, POLYETHY (appended once to existing projects). The "Keep position on frame change" option is removed.
 - **1.52.0** — Start-up: the previous session is no longer loaded automatically. When the storage holds a model or meshes, a dialog offers "Restore it" or "Start empty" (the preferences are always loaded); nothing is overwritten while the choice is pending, and the restore shows the progress bar.
 - **1.51.0** — Nested regions: Properties ▸ General ▸ "Inside region" places a region inside another one. In the INP the outer region is written as its own definition minus its sub-regions (its formula in the tool stays the simple outer volume; a read-only box shows what is written). GLOBAL and AIR use the top-level regions only (a sub-region whose parent is exported is already covered). GLOBAL's Definition tab lists regions added by hand (included whatever their material or export state). Regions that have sub-regions are not rewritten by "Simplify".

@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.53.0';
+  FK.VERSION = '1.53.1';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2736,6 +2736,7 @@
       if (name && wh.every(isFinite)) { if (!rot.has(name)) rot.set(name, []); rot.get(name).push(wh); }
       else if (!name) warnings.push('ROT-DEFI card without name ignored (only named transformations are supported).');
     };
+    for (const l of lines) if (/^\s*ROT-DEFI\b/i.test(l)) rotCard(l);      // everywhere in the text: before GEOBEGIN, inside the geometry, after GEOEND
     for (const l of lines) { const m = l.match(/^\s*TITLE\b/i); if (m) { const k = lines.indexOf(l); const t = (lines[k + 1] || '').trim(); if (t && !/^\s*GEOBEGIN/i.test(t)) { model.title = t.slice(0, 60); } break; } if (/^\s*GEOBEGIN\b/i.test(l)) break; }
     for (; i < lines.length; i++) {
       if (/^\s*GEOBEGIN\b/i.test(lines[i])) { foundBegin = true; if (!/COMBNAME/i.test(lines[i])) warnings.push('GEOBEGIN without COMBNAME: read as the free (name-based) format.'); i++; break; }
@@ -2758,7 +2759,7 @@
       const line = noComment(raw).trim();
       if (!line || line[0] === '*' || line[0] === '!') continue;
       const toks = line.split(/\s+/);
-      if (/^ROT-DEFI/i.test(toks[0])) { rotCard(raw); last = null; continue; }
+      if (/^ROT-DEFI/i.test(toks[0])) { last = null; continue; }
       if (toks[0].toUpperCase() === 'END') { if (!model.bodies.length && rot.size) { skippedEnd = true; continue; } i++; break; }       // an END after the ROT-DEFI cards only (no body yet) does not close the bodies
       if (line[0] === '$') {                                        // $Start_transform name / $End_transform (nested ones are composed, inner first)
         const d = toks[0].toLowerCase();
@@ -2819,7 +2820,6 @@
     for (i++; i < lines.length; i++) {
       const t = lines[i].trim().split(/\s+/);
       if (/^ASSIGNMA$/i.test(t[0]) && t.length >= 3) assign.push({ material: t[1].toUpperCase(), region: t[2] });
-      else if (/^ROT-DEFI/i.test(t[0])) rotCard(lines[i]);
     }
     // bodies inside $Start_transform: F maps the local frame to the file frame; "-name" is the inverse transformation
     const xfM = (nm) => {
@@ -2829,20 +2829,26 @@
       const F = FK.rotDefiMatrix(cards);
       return inv ? FK.M.inv(F) : F;
     };
+    const missingXf = new Map();                              // transformation name → number of bodies that use it without any ROT-DEFI card in the text
     for (const b of model.bodies) {
       if (!b.xf) continue;
-      let F = FK.M.id(), ok = true;
-      for (const nm of b.xf.slice().reverse()) { const m = xfM(nm); if (!m) { ok = false; warnings.push(`Body ${b.name}: transformation "${nm}" has no ROT-DEFI card: read without it.`); break; } F = FK.M.mul(m, F); }
-      if (ok && !FK.M.isIdentity(F, 1e-12)) { b.xfm = F; b.xfName = b.xf[b.xf.length - 1].replace(/^-/, ''); b.xfKey = b.xf.join('>'); }
+      let F = FK.M.id();
+      for (const nm of b.xf.slice().reverse()) {
+        const m = xfM(nm);
+        if (!m) { const k = nm.replace(/^-/, ''); missingXf.set(k, (missingXf.get(k) || 0) + 1); continue; }   // read as the identity: the body still gets its coordinate system
+        F = FK.M.mul(m, F);
+      }
+      b.xfm = F; b.xfName = b.xf[b.xf.length - 1].replace(/^-/, ''); b.xfKey = b.xf.join('>');
       delete b.xf;
     }
+    for (const [k, n] of missingXf) warnings.push(`Transformation "${k}": no ROT-DEFI card in this text (${n} bod${n > 1 ? 'ies' : 'y'}). Its coordinate system is created at the origin; import the ROT-DEFI cards afterwards to place it.`);
     if (model.tail.length) warnings.push('Lines after the regions block (LATTICE / volumes…) kept without processing.');
     for (const r of model.regions) {
       try { r.expr = FK.formatExpr(FK.parseExpr(r.expr)); } catch (e) { warnings.push(`Region ${r.name}: ${e.message}`); }
     }
     const transforms = [];                                    // every ROT-DEFI transformation of the file (used or not): { name, m }
     for (const [name, cards] of rot) { try { transforms.push({ name, m: FK.rotDefiMatrix(cards) }); } catch (e) { warnings.push(`ROT-DEFI ${name}: ${e.message}`); } }
-    return { model, warnings, assign, transforms };
+    return { model, warnings, assign, transforms, missingXf: Array.from(missingXf.keys()) };
   };
 
   root.FK = FK;

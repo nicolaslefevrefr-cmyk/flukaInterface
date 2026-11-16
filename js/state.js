@@ -1502,7 +1502,10 @@
   APP.importInp = function (text, mode) {
     const res = FK.parseInp(text);
     const imp = res.model;
-    if (!imp.bodies.length && !imp.regions.length) { APP.toast('No body or region found in this text'); return res; }
+    if (!imp.bodies.length && !imp.regions.length) {
+      if (res.transforms && res.transforms.length) return APP.applyRotDefi(res);          // only ROT-DEFI cards: they (re)place the coordinate systems of the same name
+      APP.toast('No body or region found in this text'); return res;
+    }
     APP.snap();
     if (mode === 'replace') { S.model = { title: imp.title, bodies: [], regions: [], tail: imp.tail || [], csys: S.model.csys || [], active: S.model.active || 0, groups: S.model.groups || [], components: [], materials: S.model.materials || FK.defaultMaterials(), exportCs: S.model.exportCs || 0 }; S.sel = null; }
     const used = bodyNames(), map = new Map(), xfCs = new Map();
@@ -1565,6 +1568,22 @@
     for (const a of res.assign || []) { const r = rByOrig.get(a.region); if (r) { const m = APP.materialByName(a.material, true); if (m) r.mat = m.id; } }   // ASSIGNMA cards after GEOEND
     S.opt.style = S.opt.style || 1;
     APP.changed({ tree: true, right: true, fit: true });
+    return res;
+  };
+
+  /** Text made of ROT-DEFI cards only: a coordinate system of the same name is placed accordingly (its bodies follow), otherwise one is created. */
+  APP.applyRotDefi = function (res) {
+    res.warnings = (res.warnings || []).filter(w => !/^GEOBEGIN not found/.test(w));
+    APP.snap(); let created = 0, updated = 0; const ew = APP.csysWorld(APP.exportCs());
+    for (const t of res.transforms) {
+      if (FK.M.isIdentity(t.m, 1e-12)) continue;
+      const cl = M.clean(M.mul(ew, t.m), 1e-6), W = cl.ok ? cl.m : M.mul(ew, t.m);
+      const c = S.model.csys.find(x => x.name.toLowerCase() === t.name.toLowerCase());
+      if (c) { c.m = M.mul(M.inv(APP.csysWorld(c.parent || 0)), W); updated++; }
+      else { APP.addCsys(W, { name: FK.uniqueName(t.name.replace(/[^A-Za-z0-9_]/g, '') || 'TR', csysNames()), parent: 0 }); created++; }
+    }
+    res.xfInfo = { total: res.transforms.length, created, updated, bodies: 0, unused: [] };
+    APP.changed({ tree: true, right: true, csys: true });
     return res;
   };
 
