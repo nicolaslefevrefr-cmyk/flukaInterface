@@ -87,6 +87,13 @@ dlg.addEventListener('close', async () => {
 });
 
 /* ---------- Loading meshes ---------- */
+/** Group (category "meshes") named after the file — extension removed, upper case — that receives every object of the file. */
+function groupForFile(fileName) {
+  const name = fileName.replace(/\.(stl|obj)$/i, '').trim().toUpperCase() || 'MESH';
+  let g = APP.groups().find(x => x.k === 'meshes' && x.name === name);
+  if (!g) { g = { id: APP.nid(), k: 'meshes', name, open: true }; APP.groups().push(g); } else g.open = true;
+  return g;
+}
 async function loadStlFiles(files) {
   let ok = 0;
   for (const file of files) {
@@ -96,19 +103,20 @@ async function loadStlFiles(files) {
       const buf = await file.arrayBuffer();
       const res = FK.parseMesh(buf, file.name);
       if (!res.count) { toast('Empty or unreadable mesh: ' + file.name); continue; }
+      const grp = groupForFile(file.name);
       const base = file.name.replace(/\.(stl|obj)$/i, ''), kind = res.format === 'OBJ' ? 'OBJ' : res.binary ? 'binary STL' : 'ASCII STL';
       if (res.parts && res.parts.length > 1) {      // several objects in one file → independent CAD objects
         const names = new Set(S.stls.map(m => m.name));
         res.parts.forEach((pt, k) => {
           let nm = pt.name && pt.name !== 'default' ? pt.name : base + '_' + (k + 1); for (let q = 2; names.has(nm); q++) nm = (pt.name || base) + ' (' + q + ')'; names.add(nm);
-          const stl = { id: APP.nid(), name: nm, file: file.name, format: res.format || 'STL', raw: pt.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: pt.count <= 80000, group: null, mesh: null };
+          const stl = { id: APP.nid(), name: nm, file: file.name, format: res.format || 'STL', raw: pt.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: FK.PALETTE[(S.stls.length + k) % FK.PALETTE.length], edges: pt.count <= 80000, grp: grp.id, group: null, mesh: null };
           APP.buildStl(stl); S.stls.push(stl); S.sel = { t: 'stl', id: stl.id };
         });
         ok++;
         toast(`${file.name}: ${res.parts.length} objects → ${res.parts.length} independent meshes (${res.count} triangles, ${kind}) — assumed unit: mm`);
         continue;
       }
-      const stl = { id: APP.nid(), name: base, file: file.name, format: res.format || 'STL', raw: res.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: '#8f9bb0', edges: res.count <= 80000, group: null, mesh: null };
+      const stl = { id: APP.nid(), name: base, file: file.name, format: res.format || 'STL', raw: res.positions, unit: 'mm', offset: [0, 0, 0], flip: false, visible: true, opacity: 0.6, color: '#8f9bb0', edges: res.count <= 80000, grp: grp.id, group: null, mesh: null };
       APP.buildStl(stl); S.stls.push(stl); S.sel = { t: 'stl', id: stl.id }; ok++;
       let extra = '';
       if (res.count <= 300000) { const nc = FK.meshComponents(res.positions).filter(c => c.count >= 4).length; if (nc > 1) extra = ` — ${nc} disjoint solids: use Operations ▸ Split into solids`; }

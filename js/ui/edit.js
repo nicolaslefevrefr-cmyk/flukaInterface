@@ -70,7 +70,7 @@ function onField(e) {
       else if (type === 'comp') { it.name = t.value.trim() || it.name; APP.changed({ tree: true }); }
       break;
     case 'mat': if (e.type === 'change' && type === 'region') APP.setRegionMaterial(it, +t.value); break;
-    case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value, S.opt.keepPos === true); break;
+    case 'bcs': if (e.type === 'change' && type === 'body') APP.setBodyCsys(it, +t.value); break;
     case 'cparent': if (e.type === 'change' && type === 'csys') { if (!APP.setCsysParent(it, +t.value, true)) renderRight(); } break;
     case 'rparent': if (e.type === 'change' && type === 'region') APP.setRegionParent(it, t.value); break;
     case 'cforce': if (e.type === 'change' && type === 'csys') { APP.snap(); if (t.checked) it.forceExport = true; else delete it.forceExport; APP.changed({ tree: true, right: true }); } break;

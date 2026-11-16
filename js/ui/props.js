@@ -248,8 +248,7 @@ function bodyProps(b) {
   } else info.fields.forEach((fl, i) => { h += numField(fl, `data-bf="${i}"`, b.p[i]); });
   const defFields = h; h = '';
   if (b.type !== 'RAW' || S.model.csys.length) {
-    h += `<div class="fld full"><label>Defined in coordinate system</label><select data-k="bcs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${b.cs === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-      <div class="fld full"><label class="chk" style="margin:0"><input type="checkbox" title="Recomputes the parameters so that the body stays where it is" data-opt="keepPos" ${S.opt.keepPos === true ? 'checked' : ''}>Keep position on frame change</label></div>`;
+    h += `<div class="fld full"><label>Defined in coordinate system</label><select data-k="bcs"><option value="0">Global (0,0,0)</option>${S.model.csys.map(c => `<option value="${c.id}" ${b.cs === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>`;
   }
   const csHTML = h; h = '';
   let inpLine = '';

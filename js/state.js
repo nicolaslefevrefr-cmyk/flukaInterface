@@ -5,7 +5,7 @@
   const V = FK.V, fmt = FK.fmt;
 
   const S = APP.S = {
-    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [], materials: FK.defaultMaterials() },
+    model: { title: 'Geometry', bodies: [], regions: [], tail: [], csys: [], active: 0, groups: [], components: [], materials: FK.defaultMaterials(), matV: 2 },
     measures: [], stls: [], nextId: 1,
     sel: null, filter: 'face', tool: 'select',
     pick: null, pending: null, W: null,
@@ -45,7 +45,7 @@
   function restore(str) {
     const o = JSON.parse(str);
     S.model = o.model; S.measures = o.measures;
-    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
+    S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials(); FK.upgradeMaterials(S.model);
     if (S.sel && !APP.selItem() && S.sel.t !== 'stl') S.sel = null;
     APP.changed({ tree: true, right: true, measures: true });
   }
@@ -126,7 +126,7 @@
         return true;
       }
       if (o.model && Array.isArray(o.model.bodies)) {
-        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
+        S.model = o.model; S.model.tail = S.model.tail || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials(); FK.upgradeMaterials(S.model);
         S.measures = o.measures || []; S.nextId = o.nextId || 1000;
         Object.assign(S.opt, o.opt || {});
         if (!(o.opt && o.opt.defV2)) { S.opt.render = 'opaque'; S.opt.edges = true; S.opt.invX = false; S.opt.invY = false; S.opt.defV2 = true; }   // new defaults, applied once
@@ -457,20 +457,13 @@
     APP.changed({ tree: true, right: true, toolopts: true });
   };
   /** Express body b in csys `id`. keep = true: the geometry stays where it is (exact conversion only). */
-  APP.setBodyCsys = function (b, id, keep) {
+  APP.setBodyCsys = function (b, id) {
     id = id || 0;
     if (b.cs === id || (!b.cs && !id)) return true;
-    let res = true;
     APP.snap();
-    if (keep && b.type !== 'RAW') {
-      const rel = M.mul(M.inv(APP.csysWorld(id)), APP.csysWorld(b.cs || 0));
-      const nb = FK.worldBody(JSON.parse(JSON.stringify(b)), rel);
-      if (nb.type === b.type || (FK.isPlaneType(b.type) && nb.type === 'PLA')) { b.type = nb.type; b.p = nb.p.map(x => +x.toFixed(6)); if (b.meta && b.meta.src) delete b.meta.src; }
-      else { res = false; APP.toast('Exact conversion impossible for ' + b.name + ': frame changed, the shape moves'); }
-    }
     b.cs = id;
     APP.changed({ tree: true, right: true });
-    return res;
+    return true;
   };
   APP.deleteCsys = function (id) {
     const c = APP.getCsys(id); if (!c) return;
@@ -617,7 +610,7 @@
   /* ---------- Configuration file (settings only, no geometry) ---------- */
   const OPT0 = JSON.parse(JSON.stringify(S.opt));
   APP.CONFIG_KEYS = ['theme', 'axes', 'multiPick', 'invX', 'invY', 'margin', 'zoomCursor', 'numStep', 'showInpName', 'exprText', 'res', 'render', 'edges', 'colorBy', 'maxParen', 'maxZones', 'inpZones', 'inpComments', 'inpNoNeg', 'checksFold', 'showParts', 'zonesPerLine', 'names', 'proj', 'lw', 'rw', 'dw', 'sheetH',
-    'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl', 'keepPos',
+    'snapOn', 'snap', 'snapTol', 'snapAng', 'snapFeat', 'coplanar', 'coTol', 'sharp', 'edgeSoft', 'edgeSharpOnly', 'circleAll', 'ptMode', 'pieceHl',
     'cutKeep', 'cutZone', 'cutStay', 'cutMergeAng', 'cutMergeTol', 'style', 'inpFull', 'inpTransform', 'inpComment', 'inpRen', 'scale', 'scaleOpen', 'secClosed'];
   /** Settings (and the list of materials) as a JSON text: the project file holds the geometry only. */
   APP.exportConfig = function () {
@@ -672,7 +665,7 @@
     APP.snap();
     for (const m of S.stls) if (APP.hooks.disposeStl) APP.hooks.disposeStl(m);
     S.stls = stls; for (const m of stls) APP.buildStl(m);
-    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials();
+    S.model = o.model; S.model.tail = S.model.tail || []; S.model.regions = S.model.regions || []; S.model.csys = S.model.csys || []; S.model.active = S.model.active || 0; S.model.groups = S.model.groups || []; S.model.components = S.model.components || []; S.model.materials = S.model.materials || FK.defaultMaterials(); FK.upgradeMaterials(S.model);
     S.measures = o.measures || [];
     // the settings (tolerances, mouse rotation…) live in the configuration file: older projects that carried them are not allowed to overwrite the current ones
     if (o.filter) S.filter = o.filter;

@@ -318,11 +318,18 @@
     const wsig = W.min.concat(W.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
     const byName = new Map();
     for (const b of S.model.bodies) if (!byName.has(b.name)) byName.set(b.name, b);
-    // Zone of the automatic envelope boxes (AIR / BLCKBODY): the zone W ignores very large bodies, so they would be cut to it and a margin change would show nothing
-    let Wenv = W;
-    { const eb = S.model.bodies.filter(b => b.auto).map(b => FK.bodyBBox(wbodies.get(b.id))).filter(Boolean);
-      if (eb.length) { let lo = W.min.slice(), hi = W.max.slice(); for (const x of eb) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], x.min[k]); hi[k] = Math.max(hi[k], x.max[k]); } const pad = FK.boxDiag({ min: lo, max: hi }) * 0.01; Wenv = { min: lo.map(v => v - pad), max: hi.map(v => v + pad) }; } }
-    const wsigE = Wenv === W ? wsig : Wenv.min.concat(Wenv.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
+    // Drawing zones. The zone W ignores very large bodies (they would flatten everything else), so a body that goes beyond W is drawn
+    // in a larger zone of its own (W grown to its box): otherwise it would be cut to W on some sides and edits would not show.
+    const fmtZ = (Z) => Z.min.concat(Z.max).map(x => x.toFixed(3)).join(',') + '|r' + FK.resolution;
+    const bboxOf = new Map();
+    for (const b of S.model.bodies) { if (b.type === 'RAW' || FK.isPlaneType(b.type)) continue; try { const x = FK.bodyBBox(wbodies.get(b.id)); if (x && x.min.concat(x.max).every(isFinite)) bboxOf.set(b.id, x); } catch (e) { /* no box */ } }
+    const zoneUnion = (Z0, boxes) => {
+      const lo = Z0.min.slice(), hi = Z0.max.slice(); let grew = false;
+      for (const x of boxes) for (let k = 0; k < 3; k++) { if (x.min[k] < lo[k]) { lo[k] = x.min[k]; grew = true; } if (x.max[k] > hi[k]) { hi[k] = x.max[k]; grew = true; } }
+      if (!grew) return Z0;
+      const pad = FK.boxDiag({ min: lo, max: hi }) * 0.01; return { min: lo.map(v => v - pad), max: hi.map(v => v + pad) };
+    };
+    const Wenv = zoneUnion(W, Array.from(bboxOf.values()));          // everything that exists: the camera clipping planes must cover it
     { const wc = FK.boxCenter(Wenv); world.r = Math.max(FK.boxDiag(Wenv) / 2, 1); world.c.set(wc[0], wc[1], wc[2]); updateClip(true); needRender = true; }
     if (wsig !== lastWsig) {
       lastWsig = wsig;
@@ -339,8 +346,8 @@
     for (const b of S.model.bodies) {
       seenB.add(b.id);
       const wb = wbodies.get(b.id);
-      const WB = b.auto ? Wenv : W;
-      const sig = (b.auto ? wsigE : wsig) + '|' + wb.type + '|' + wb.p.join(',') + (FK.isPlaneType(wb.type) ? '|' + b.color : '');
+      const WB = zoneUnion(W, bboxOf.has(b.id) ? [bboxOf.get(b.id)] : []);
+      const sig = (WB === W ? wsig : fmtZ(WB)) + '|' + wb.type + '|' + wb.p.join(',') + (FK.isPlaneType(wb.type) ? '|' + b.color : '');
       let c = bodyC.get(b.id);
       if (c && c.sig === sig && c.colorKey === b.color) continue;
       if (c && c.group) disposeObj(c.group);
@@ -370,13 +377,18 @@
       return c.polys;
     };
     const ctx = { body: (n) => { const b = byName.get(n); return b ? polysOf(b) : null; }, world: () => FK.boxPolys(W) };
-    const polysOfE = (b) => {                                  // same bodies, clipped to the larger zone of the envelope regions
-      if (b.auto) return polysOf(b);
-      const c = bodyC.get(b.id); if (!c) return null;
-      if (c.polysE === undefined || c.sigE !== wsigE) { try { c.polysE = FK.bodyPolys(wbodies.get(b.id), Wenv); } catch (e) { c.polysE = null; } c.sigE = wsigE; }
-      return c.polysE;
+    const ctxZ = new Map();                                    // one context per zone (a region with a huge body is evaluated in a larger zone)
+    const ctxFor = (Z) => {
+      if (Z === W) return ctx;
+      const zs = fmtZ(Z); if (ctxZ.has(zs)) return ctxZ.get(zs);
+      const polysZ = (b) => {
+        const c = bodyC.get(b.id); if (!c) return null;
+        c.zp = c.zp || new Map();
+        if (!c.zp.has(zs)) { let pl = null; try { pl = FK.bodyPolys(wbodies.get(b.id), Z); } catch (e) { pl = null; } if (c.zp.size > 4) c.zp.clear(); c.zp.set(zs, pl); }
+        return c.zp.get(zs);
+      };
+      const x = { body: (n) => { const b = byName.get(n); return b ? polysZ(b) : null; }, world: () => FK.boxPolys(Z) }; ctxZ.set(zs, x); return x;
     };
-    const ctxE = { body: (n) => { const b = byName.get(n); return b ? polysOfE(b) : null; }, world: () => FK.boxPolys(Wenv) };
     const seenR = new Set();
     for (const r of S.model.regions) {
       seenR.add(r.id);
@@ -386,8 +398,8 @@
       if (!needed) continue;
       let ast = null, names = [];
       try { ast = FK.parseExpr(r.expr); names = Array.from(FK.exprNames(ast)); } catch (e) { c.err = e.message; if (c.group) { disposeObj(c.group); c.group = null; } c.sig = 'err:' + r.expr; continue; }
-      const envR = r.auto === 'air' || r.auto === 'bb', WZ = envR ? Wenv : W, cx = envR ? ctxE : ctx;
-      const sig = (envR ? wsigE : wsig) + '|' + r.expr + '|' + r.color + '|' + names.map(n => { const b = byName.get(n); if (!b) return '?'; const w = wbodies.get(b.id); return w.type + w.p.join(','); }).join(';');
+      const WZ = zoneUnion(W, names.map(n => { const b = byName.get(n); return b && bboxOf.get(b.id); }).filter(Boolean)), cx = ctxFor(WZ);
+      const sig = (WZ === W ? wsig : fmtZ(WZ)) + '|' + r.expr + '|' + r.color + '|' + names.map(n => { const b = byName.get(n); if (!b) return '?'; const w = wbodies.get(b.id); return w.type + w.p.join(','); }).join(';');
       if (c.sig === sig) continue;
       if (c.group) { disposeObj(c.group); c.group = null; }
       c.sig = sig; c.err = null; c.vol = null; c.area = null; c.bbox = null; c.polys = null;

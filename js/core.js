@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const FK = {};
-  FK.VERSION = '1.52.0';
+  FK.VERSION = '1.53.0';
   FK.APP_NAME = 'Combinatorial Geometry Tool';
   FK.resolution = 1;   // global tessellation factor of the displayed curved bodies (cylinders, cones, spheres)
   FK.seg = (n) => Math.max(8, Math.round(n * FK.resolution));
@@ -2665,8 +2665,15 @@
 
 
   /* ---------------- Materials (names only) and the complete input file ---------------- */
-  FK.DEFAULT_MATERIALS = ['BLCKHOLE', 'VACUUM', 'STEEL', 'COPPER', 'CONCRETE', 'AIR'];
+  FK.DEFAULT_MATERIALS = ['BLCKHOLE', 'VACUUM', 'STEEL', 'COPPER', 'CONCRETE', 'AIR', 'LEAD', 'TUNGSTEN', 'POLYETHY'];
   FK.defaultMaterials = () => FK.DEFAULT_MATERIALS.map((n, i) => ({ id: i + 1, name: n }));
+  /** Projects made with an older list: the materials added to the defaults since (LEAD, TUNGSTEN, POLYETHY) are appended once. */
+  FK.upgradeMaterials = function (model) {
+    if (!model || !Array.isArray(model.materials) || model.matV >= 2) return;
+    const have = new Set(model.materials.map(m => m.name)); let id = model.materials.reduce((a, m) => Math.max(a, m.id || 0), 0);
+    for (const n of ['LEAD', 'TUNGSTEN', 'POLYETHY']) if (!have.has(n)) model.materials.push({ id: ++id, name: n });
+    model.matV = 2;
+  };
   FK.materialName = (model, r) => { const m = r && r.mat ? (model.materials || []).find(x => x.id === r.mat) : null; return m ? m.name : ''; };
   /** FLUKA material names: upper case, letters / digits / _, at most 8 characters, first character a letter. */
   FK.cleanMaterialName = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 8);
